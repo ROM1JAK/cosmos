@@ -18,10 +18,10 @@ if (!mongoURI) {
 // --- SCHEMAS ---
 const MessageSchema = new mongoose.Schema({
     content: String, type: String,
-    senderName: String, senderColor: String, senderAvatar: String, senderRole: String, ownerId: String, // Ajout ownerId pour sécurité edit
+    senderName: String, senderColor: String, senderAvatar: String, senderRole: String, ownerId: String,
     targetName: String, roomId: { type: String, required: true },
     replyTo: { id: String, author: String, content: String },
-    edited: { type: Boolean, default: false }, // Pour afficher "(modifié)"
+    edited: { type: Boolean, default: false },
     date: String, timestamp: { type: Date, default: Date.now }
 });
 const Message = mongoose.model('Message', MessageSchema);
@@ -53,15 +53,33 @@ io.on('connection', async (socket) => {
     socket.emit('char_created_success', newChar);
   });
   
-  // MODIFIER PERSONNAGE
+  // MODIFIER PERSONNAGE (ET METTRE À JOUR L'HISTORIQUE)
   socket.on('edit_char', async (data) => {
-      // data contient { originalName, newName, newRole, newAvatar, newColor }
-      await Character.updateOne({ name: data.originalName, ownerId: data.ownerId }, {
-          name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor
-      });
-      // On renvoie la liste mise à jour au joueur
+      // 1. Mise à jour du personnage dans la table Characters
+      await Character.updateOne(
+          { name: data.originalName, ownerId: data.ownerId }, 
+          { name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor }
+      );
+
+      // 2. MAGIE : Mise à jour de TOUS les anciens messages de ce perso
+      await Message.updateMany(
+          { senderName: data.originalName, ownerId: data.ownerId }, // Critère de recherche
+          { $set: { 
+              senderName: data.newName, 
+              senderRole: data.newRole, 
+              senderAvatar: data.newAvatar, 
+              senderColor: data.newColor 
+          }}
+      );
+
+      // 3. Renvoi des données fraîches au créateur
       const myChars = await Character.find({ ownerId: data.ownerId });
       socket.emit('my_chars_data', myChars);
+
+      // 4. Demander à tout le monde de rafraîchir l'historique pour voir les changements immédiatement
+      // (Optionnel mais recommandé pour le "live")
+      const currentRoomHistory = await Message.find({ roomId: data.currentRoomId }).sort({ timestamp: 1 }).limit(200);
+      io.emit('force_history_refresh', { roomId: data.currentRoomId }); // On crée un nouvel event pour ça
   });
 
   socket.on('delete_char', async (charName) => {
@@ -83,36 +101,32 @@ io.on('connection', async (socket) => {
       socket.emit('history_data', history);
   });
 
-  // --- MESSAGES (CRUD) ---
+  // --- MESSAGES ---
   socket.on('message_rp', async (msgData) => {
     if (!msgData.roomId) return; 
     const newMessage = new Message(msgData);
     await newMessage.save();
-    io.to(msgData.roomId).emit('message_rp', msgData); // Renvoie l'objet complet (avec _id)
+    io.to(msgData.roomId).emit('message_rp', msgData);
   });
 
-  // SUPPRIMER MESSAGE
   socket.on('delete_message', async (msgId) => {
       await Message.findByIdAndDelete(msgId);
-      io.emit('message_deleted', msgId); // On broadcast à tout le monde
+      io.emit('message_deleted', msgId);
   });
 
-  // MODIFIER MESSAGE
   socket.on('edit_message', async (data) => {
       await Message.findByIdAndUpdate(data.id, { content: data.newContent, edited: true });
       io.emit('message_updated', { id: data.id, newContent: data.newContent });
   });
 
-  // --- INDICATEUR D'ÉCRITURE ---
+  // --- TYPING ---
   socket.on('typing_start', (data) => {
-      // data = { roomId, charName }
       socket.to(data.roomId).emit('display_typing', data);
   });
   
   socket.on('typing_stop', (data) => {
       socket.to(data.roomId).emit('hide_typing', data);
   });
-
 });
 
 const port = process.env.PORT || 3000;
