@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cosmos</title>
+    <title>RP Verse</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css"> 
 </head>
@@ -13,13 +13,30 @@
 
     <div id="login-modal" class="modal-overlay hidden">
         <div class="modal-box">
-            <h2 style="margin-top:0; color:white;">Authentification</h2>
-            <p style="color:#aaa; font-size:0.9em;">Entrez votre code secret pour retrouver vos personnages.</p>
+            <h2>Authentification</h2>
+            <p style="color:#aaa; font-size:0.9em; margin-bottom:15px;">Entrez votre code secret.</p>
             <input type="text" id="loginIdInput" placeholder="Ex: TeamRP2025" class="modal-input">
             <div class="modal-buttons">
-                <button onclick="submitLogin()" class="btn-primary" style="width:100%;">Se connecter</button>
+                <button onclick="submitLogin()" class="btn-primary full-width">Se connecter</button>
                 <button onclick="closeLoginModal()" class="btn-text">Annuler</button>
             </div>
+        </div>
+    </div>
+
+    <div id="profile-modal" class="modal-overlay hidden" onclick="closeProfileModal()">
+        <div class="modal-box profile-box" onclick="event.stopPropagation()">
+            <div class="profile-header">
+                <img id="profileAvatar" src="" class="profile-avatar-large">
+                <div class="profile-title">
+                    <h2 id="profileName">Nom</h2>
+                    <span id="profileRole" class="profile-role-tag">Rôle</span>
+                </div>
+            </div>
+            <div class="profile-body">
+                <h4 style="color:#aaa; margin-bottom:5px;">Histoire / Description</h4>
+                <p id="profileDesc" class="profile-desc-text">Aucune description.</p>
+            </div>
+            <button onclick="closeProfileModal()" class="btn-primary full-width" style="margin-top:15px;">Fermer</button>
         </div>
     </div>
 
@@ -28,10 +45,9 @@
     </button>
 
     <div id="app-container">
-        
         <div id="sidebar">
             <div class="sidebar-header">
-                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
                     <h2 class="app-title">RP Verse</h2>
                     <button class="btn-close-sidebar" onclick="toggleSidebar()">✕</button>
                 </div>
@@ -42,7 +58,7 @@
             <div class="sidebar-section">
                 <h3>Salons</h3>
                 <div id="roomList"></div>
-                <button class="btn-add-room" onclick="createRoomPrompt()">+ Salon</button>
+                <button class="btn-add-room" onclick="createRoomPrompt()">+ Créer Salon</button>
             </div>
 
             <div class="sidebar-section">
@@ -54,24 +70,26 @@
                     <input type="text" id="newCharName" placeholder="Nom">
                     <input type="text" id="newCharRole" placeholder="Rôle">
                     <input type="text" id="newCharAvatar" placeholder="URL Avatar">
+                    <textarea id="newCharDesc" placeholder="Histoire / Description..." rows="3"></textarea>
                     <div class="color-picker-wrapper">
                         <span>Couleur:</span> <input type="color" id="newCharColor" value="#5c7cfa">
                     </div>
                     <button onclick="createCharacter()" class="btn-primary">Créer</button>
                 </div>
 
-                <div id="edit-char-form" class="create-form hidden" style="border: 1px solid #eab308;">
-                    <h4 style="margin:0 0 5px 0; font-size:0.8em; color:#eab308;">Modifier Personnage</h4>
+                <div id="edit-char-form" class="create-form hidden edit-mode">
+                    <h4 style="margin:0 0 5px 0; color:#eab308;">Modifier</h4>
                     <input type="hidden" id="editCharOriginalName">
-                    <input type="text" id="editCharName" placeholder="Nouveau Nom">
-                    <input type="text" id="editCharRole" placeholder="Nouveau Rôle">
-                    <input type="text" id="editCharAvatar" placeholder="Nouvel Avatar">
+                    <input type="text" id="editCharName" placeholder="Nom">
+                    <input type="text" id="editCharRole" placeholder="Rôle">
+                    <input type="text" id="editCharAvatar" placeholder="Avatar">
+                    <textarea id="editCharDesc" placeholder="Description..." rows="3"></textarea>
                     <div class="color-picker-wrapper">
                         <span>Couleur:</span> <input type="color" id="editCharColor">
                     </div>
                     <div style="display:flex; gap:5px;">
-                        <button onclick="submitEditCharacter()" class="btn-primary" style="background:#eab308; color:black;">Sauver</button>
-                        <button onclick="cancelEditCharacter()" class="btn-primary" style="background:#444;">Annuler</button>
+                        <button onclick="submitEditCharacter()" class="btn-primary btn-warning">Sauver</button>
+                        <button onclick="cancelEditCharacter()" class="btn-secondary">Annuler</button>
                     </div>
                 </div>
             </div>
@@ -86,17 +104,15 @@
             <div id="messages"></div>
 
             <div id="typing-indicator" class="hidden">
-                <span class="typing-dots">
-                    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-                </span>
-                <span id="typing-text">Quelqu'un écrit...</span>
+                <span class="typing-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
+                <span id="typing-text">...</span>
             </div>
             
             <div id="input-wrapper">
                 <div id="context-bar" class="hidden">
                     <div class="context-info">
                         <span id="context-icon">↩️</span>
-                        <span id="context-text">Répondre à ...</span>
+                        <span id="context-text">Répondre...</span>
                     </div>
                     <button class="btn-close-reply" onclick="cancelContext()">✕</button>
                 </div>
@@ -104,10 +120,11 @@
                 <div id="input-zone">
                     <select id="charSelector"></select>
                     <input id="txtInput" type="text" autocomplete="off" placeholder="Message..." />
-                    <button class="btn-icon" onclick="askForImage()" title="Image">🖼️</button>
-                    <button class="btn-send" onclick="sendMessage()">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
-                    </button>
+                    <button class="btn-icon" onclick="askForImage()">🖼️</button>
+                    <button class="btn-send" onclick="sendMessage()">➤</button>
+                </div>
+                <div class="markdown-help">
+                    *Italique* &nbsp; **Gras** &nbsp; ||Spoiler||
                 </div>
             </div>
         </div>
@@ -117,4 +134,3 @@
     <script src="app.js"></script> 
 </body>
 </html>
-
