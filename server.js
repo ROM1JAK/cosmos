@@ -38,7 +38,15 @@ const RoomSchema = new mongoose.Schema({
     allowedCharacters: [String] // Array de noms de personnages autorisés
 });
 const Room = mongoose.model('Room', RoomSchema);
+// ... (au début du fichier)
+const mongoose = require('mongoose');
 
+// --- AJOUTER CETTE LIGNE ---
+app.use(express.static(__dirname)); // Rend tous les fichiers du dossier accessibles (CSS, JS)
+
+// --- CONNEXION BASE DE DONNÉES ---
+const mongoURI = process.env.MONGO_URI; 
+// ... le reste du code est le même
 // --- SERVEUR WEB ---
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/index.html');
@@ -121,3 +129,4 @@ const port = process.env.PORT || 3000;
 http.listen(port, () => {
   console.log(`Serveur lancé sur le port ${port}`);
 });
+
