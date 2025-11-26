@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>RP Multi-Perso</title>
+    <style>
+        /* --- STYLE CSS (Look sombre style Discord) --- */
+        body { background-color: #36393f; color: #dcddde; font-family: sans-serif; display: flex; height: 100vh; margin: 0; }
+        
+        /* Barre latérale pour gérer les persos */
+        #sidebar { width: 250px; background-color: #2f3136; padding: 20px; border-right: 1px solid #202225; }
+        h3 { color: #fff; margin-top: 0; }
+        
+        /* Zone de chat */
+        #chat-area { flex: 1; display: flex; flex-direction: column; padding: 20px; }
+        #messages { flex: 1; overflow-y: scroll; margin-bottom: 20px; background-color: #36393f; }
+        
+        /* Les messages */
+        .message { margin-bottom: 10px; padding: 5px 10px; border-radius: 5px; }
+        .message:hover { background-color: #32353b; }
+        .char-name { font-weight: bold; cursor: pointer; }
+        .timestamp { font-size: 0.7em; color: #72767d; margin-left: 10px; }
+        
+        /* Zone de saisie */
+        #input-zone { display: flex; gap: 10px; background-color: #40444b; padding: 10px; border-radius: 8px; }
+        select { background: #2f3136; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer;}
+        input[type="text"] { flex: 1; background: transparent; border: none; color: white; outline: none; }
+        button { background-color: #5865F2; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+        
+        /* Création de perso */
+        .create-form input { width: 100%; margin-bottom: 5px; padding: 5px; box-sizing: border-box; }
+        .char-item { padding: 5px; border-bottom: 1px solid #444; display: flex; align-items: center; justify-content: space-between;}
+        .color-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px;}
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h3>Créer un Perso</h3>
+        <div class="create-form">
+            <input type="text" id="newCharName" placeholder="Nom (ex: Gandalf)">
+            <input type="color" id="newCharColor" value="#ff0000">
+            <button onclick="createCharacter()" style="width:100%">Ajouter</button>
+        </div>
+        <hr>
+        <h3>Mes Persos</h3>
+        <div id="myCharList"></div>
+    </div>
+
+    <div id="chat-area">
+        <div id="messages"></div>
+        
+        <div id="input-zone">
+            <select id="charSelector">
+                <option value="Narrateur">Narrateur</option>
+            </select>
+            
+            <input id="txtInput" autocomplete="off" placeholder="Écrivez votre RP ici..." />
+            <button onclick="sendMessage()">Envoyer</button>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        var socket = io();
+        
+        // --- 1. CHARGEMENT AU DÉMARRAGE ---
+        // On regarde s'il y a déjà des persos sauvegardés
+        let savedData = localStorage.getItem("mesPersonnagesRP");
+        
+        // Si oui, on les charge. Sinon, on crée une liste vide.
+        let myCharacters = savedData ? JSON.parse(savedData) : [];
+
+        // On lance l'affichage tout de suite pour voir les persos sauvegardés
+        updateUI();
+
+        // --- 2. FONCTION SAUVEGARDE ---
+        function saveToBrowser() {
+            // On transforme la liste en texte (JSON) et on la stocke
+            localStorage.setItem("mesPersonnagesRP", JSON.stringify(myCharacters));
+        }
+
+        // --- 3. CRÉATION DE PERSO ---
+        function createCharacter() {
+            const name = document.getElementById('newCharName').value;
+            const color = document.getElementById('newCharColor').value;
+            
+            if(!name) return;
+
+            const charObj = { name, color };
+            myCharacters.push(charObj);
+
+            saveToBrowser(); // <--- On sauvegarde après l'ajout
+            updateUI();
+            
+            document.getElementById('newCharName').value = '';
+        }
+
+        // --- 4. SUPPRESSION DE PERSO (NOUVEAU) ---
+        function deleteCharacter(index) {
+            // On retire le perso de la liste selon son numéro (index)
+            myCharacters.splice(index, 1);
+            saveToBrowser(); // <--- On sauvegarde après la suppression
+            updateUI();
+        }
+
+        // --- 5. MISE À JOUR DE L'INTERFACE ---
+        function updateUI() {
+            const list = document.getElementById('myCharList');
+            const select = document.getElementById('charSelector');
+            
+            // On sauvegarde le perso actuellement sélectionné pour ne pas le perdre lors du rafraîchissement de la liste
+            const currentSelection = select.value;
+
+            list.innerHTML = "";
+            select.innerHTML = '<option value="Narrateur" data-color="#ffffff">Narrateur</option>';
+
+            myCharacters.forEach((char, index) => {
+                // Ajout dans la liste de gauche avec un bouton supprimer
+                // Note le "onclick='deleteCharacter(${index})'" qui permet de cibler le bon perso
+                list.innerHTML += `
+                    <div class="char-item">
+                        <div>
+                            <span class="color-dot" style="background:${char.color}"></span>
+                            ${char.name}
+                        </div>
+                        <button style="background:red; padding:2px 6px; font-size:0.7em;" onclick="deleteCharacter(${index})">X</button>
+                    </div>`;
+                
+                // Ajout dans le menu déroulant
+                const option = document.createElement("option");
+                option.value = char.name;
+                option.text = char.name;
+                option.dataset.color = char.color;
+                select.appendChild(option);
+            });
+
+            // Si le perso qu'on avait sélectionné existe toujours, on le remet
+            // Sinon on revient sur Narrateur
+            if (myCharacters.some(c => c.name === currentSelection)) {
+                select.value = currentSelection;
+            }
+        }
+
+        // --- 6. ENVOI DU MESSAGE (Standard) ---
+        function sendMessage() {
+            const textInput = document.getElementById('txtInput');
+            const text = textInput.value;
+            
+            if (text.trim() === "") return;
+
+            const selector = document.getElementById('charSelector');
+            const selectedOption = selector.options[selector.selectedIndex];
+            
+            const charName = selectedOption.value;
+            const charColor = selectedOption.dataset.color || "#ffffff";
+
+            const messageData = {
+                text: text,
+                nomPerso: charName,
+                couleur: charColor
+            };
+
+            socket.emit('message_rp', messageData);
+            textInput.value = '';
+        }
+
+        document.getElementById("txtInput").addEventListener("keyup", function(event) {
+            if (event.key === "Enter") {
+                sendMessage();
+            }
+        });
+
+        // --- 7. RÉCEPTION (Standard) ---
+        socket.on('message_rp', function(msg) {
+            const messagesDiv = document.getElementById('messages');
+            const messageElement = document.createElement('div');
+            messageElement.className = 'message';
+            
+            messageElement.innerHTML = `
+                <span class="char-name" style="color: ${msg.couleur}">${msg.nomPerso}</span>
+                <span class="timestamp">${new Date().toLocaleTimeString()}</span>
+                <div class="content">${msg.text}</div>
+            `;
+            
+            messagesDiv.appendChild(messageElement);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        });
+    </script>
+</body>
+</html>
