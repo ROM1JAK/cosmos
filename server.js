@@ -5,11 +5,10 @@ const io = require('socket.io')(http);
 const mongoose = require('mongoose');
 
 // --- CONNEXION BASE DE DONNÉES ---
-// On récupère le lien secret depuis Render (voir Phase 3)
 const mongoURI = process.env.MONGO_URI; 
 
 if (!mongoURI) {
-    console.error("ERREUR CRITIQUE: Il manque la variable MONGO_URI sur Render !");
+    console.error("ERREUR CRITIQUE: Il manque la variable MONGO_URI !");
 } else {
     mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
         .then(() => console.log('Connecté à MongoDB !'))
@@ -17,24 +16,26 @@ if (!mongoURI) {
 }
 
 // --- MODÈLES DE DONNÉES (SCHEMAS) ---
-// 1. Structure d'un message
+// Note : Les messages n'ont pas besoin de changer
 const MessageSchema = new mongoose.Schema({
     content: String,
-    type: String, // 'text' ou 'image'
+    type: String, 
     senderName: String,
     senderColor: String,
     senderAvatar: String,
-    targetName: String, // Pour les MP
+    targetName: String, 
     date: String,
-    timestamp: { type: Date, default: Date.now } // Pour trier
+    timestamp: { type: Date, default: Date.now }
 });
 const Message = mongoose.model('Message', MessageSchema);
 
-// 2. Structure d'un personnage (Partagé)
+// NOUVEAU MODÈLE DE PERSONNAGE (avec rôle et propriétaire)
 const CharacterSchema = new mongoose.Schema({
     name: String,
     color: String,
-    avatar: String
+    avatar: String,
+    role: String, // NOUVEAU : Champ pour le rôle (ex: "Guerrier", "Mage")
+    ownerId: String // NOUVEAU : L'ID unique du joueur qui a créé ce personnage
 });
 const Character = mongoose.model('Character', CharacterSchema);
 
@@ -47,35 +48,43 @@ app.get('/', (req, res) => {
 io.on('connection', async (socket) => {
   console.log('Joueur connecté');
 
-  // 1. Quand quelqu'un arrive, on lui envoie TOUT l'historique et les Persos
-  const allMessages = await Message.find().sort({ timestamp: 1 }).limit(200); // Les 200 derniers
-  const allChars = await Character.find();
+  // Au démarrage, on envoie tous les messages. 
+  // ATTENTION : On n'envoie plus TOUS les persos, on les filtre plus tard.
+  const allMessages = await Message.find().sort({ timestamp: 1 }).limit(200); 
   
-  socket.emit('init_data', { messages: allMessages, characters: allChars });
+  socket.emit('init_data', { messages: allMessages });
 
-  // 2. Réception d'un message
+  // Réception de l'ID du joueur pour lui envoyer ses persos
+  socket.on('request_my_chars', async (playerId) => {
+      // On envoie au joueur QUI SE CONNECTE les persos qui lui appartiennent
+      const myChars = await Character.find({ ownerId: playerId });
+      socket.emit('my_chars_data', myChars);
+  });
+
+
+  // 1. Réception d'un message
   socket.on('message_rp', async (msgData) => {
-    // On sauvegarde dans la base de données
     const newMessage = new Message(msgData);
     await newMessage.save();
-
-    // On renvoie à tout le monde
     io.emit('message_rp', msgData);
   });
 
-  // 3. Création d'un nouveau personnage
+  // 2. Création d'un nouveau personnage
   socket.on('create_char', async (charData) => {
     const newChar = new Character(charData);
     await newChar.save();
     
-    // On dit à tout le monde d'ajouter ce perso à leur liste
-    io.emit('new_char_created', charData);
+    // On ne renvoie rien à tout le monde. On laisse le créateur mettre à jour son propre UI.
+    // L'ajout dans la liste de l'ami se fait via la fonction 'request_my_chars' au démarrage.
+    socket.emit('char_created_success', charData);
   });
   
-  // 4. Suppression d'un personnage
+  // 3. Suppression d'un personnage
   socket.on('delete_char', async (charName) => {
       await Character.deleteOne({ name: charName });
-      io.emit('char_deleted', charName);
+      // On n'a pas besoin de le notifier aux autres car ils ne le voient pas.
+      // On le notifie juste au joueur qui a fait la suppression pour mettre à jour sa liste.
+      socket.emit('char_deleted_success', charName);
   });
 });
 
