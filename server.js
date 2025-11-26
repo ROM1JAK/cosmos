@@ -27,7 +27,8 @@ const MessageSchema = new mongoose.Schema({
 const Message = mongoose.model('Message', MessageSchema);
 
 const CharacterSchema = new mongoose.Schema({
-    name: String, color: String, avatar: String, role: String, ownerId: String
+    name: String, color: String, avatar: String, role: String, ownerId: String,
+    description: String // NOUVEAU : Histoire/Bio du perso
 });
 const Character = mongoose.model('Character', CharacterSchema);
 
@@ -38,6 +39,7 @@ const Room = mongoose.model('Room', RoomSchema);
 
 // --- SOCKET ---
 io.on('connection', async (socket) => {
+  // Init
   const allRooms = await Room.find();
   socket.emit('rooms_data', allRooms);
 
@@ -47,23 +49,34 @@ io.on('connection', async (socket) => {
       socket.emit('my_chars_data', myChars);
   });
 
+  // Récupérer la bio d'un perso (pour le profil)
+  socket.on('get_char_profile', async (charName) => {
+      // On cherche le personnage le plus récent avec ce nom
+      const char = await Character.findOne({ name: charName }).sort({_id: -1});
+      if(char) socket.emit('char_profile_data', char);
+  });
+
   socket.on('create_char', async (charData) => {
     const newChar = new Character(charData);
     await newChar.save();
     socket.emit('char_created_success', newChar);
   });
   
-  // MODIFIER PERSONNAGE (ET METTRE À JOUR L'HISTORIQUE)
   socket.on('edit_char', async (data) => {
-      // 1. Mise à jour du personnage dans la table Characters
       await Character.updateOne(
           { name: data.originalName, ownerId: data.ownerId }, 
-          { name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor }
+          { 
+              name: data.newName, 
+              role: data.newRole, 
+              avatar: data.newAvatar, 
+              color: data.newColor,
+              description: data.newDescription 
+          }
       );
 
-      // 2. MAGIE : Mise à jour de TOUS les anciens messages de ce perso
+      // Mise à jour rétroactive des messages
       await Message.updateMany(
-          { senderName: data.originalName, ownerId: data.ownerId }, // Critère de recherche
+          { senderName: data.originalName, ownerId: data.ownerId },
           { $set: { 
               senderName: data.newName, 
               senderRole: data.newRole, 
@@ -72,14 +85,11 @@ io.on('connection', async (socket) => {
           }}
       );
 
-      // 3. Renvoi des données fraîches au créateur
       const myChars = await Character.find({ ownerId: data.ownerId });
       socket.emit('my_chars_data', myChars);
-
-      // 4. Demander à tout le monde de rafraîchir l'historique pour voir les changements immédiatement
-      // (Optionnel mais recommandé pour le "live")
-      const currentRoomHistory = await Message.find({ roomId: data.currentRoomId }).sort({ timestamp: 1 }).limit(200);
-      io.emit('force_history_refresh', { roomId: data.currentRoomId }); // On crée un nouvel event pour ça
+      
+      // Force refresh historique pour voir les changements
+      io.emit('force_history_refresh', { roomId: data.currentRoomId });
   });
 
   socket.on('delete_char', async (charName) => {
@@ -90,14 +100,16 @@ io.on('connection', async (socket) => {
   // --- SALONS ---
   socket.on('join_room', (roomId) => { socket.join(roomId); });
   socket.on('leave_room', (roomId) => { socket.leave(roomId); });
+  
   socket.on('create_room', async (roomData) => {
       const newRoom = new Room(roomData);
       await newRoom.save();
       const updatedRooms = await Room.find();
       io.emit('rooms_data', updatedRooms);
   });
+  
   socket.on('request_history', async (roomId) => {
-      const history = await Message.find({ roomId: roomId }).sort({ timestamp: 1 }).limit(200);
+      const history = await Message.find({ roomId: roomId }).sort({ timestamp: 1 }).limit(100);
       socket.emit('history_data', history);
   });
 
@@ -120,13 +132,8 @@ io.on('connection', async (socket) => {
   });
 
   // --- TYPING ---
-  socket.on('typing_start', (data) => {
-      socket.to(data.roomId).emit('display_typing', data);
-  });
-  
-  socket.on('typing_stop', (data) => {
-      socket.to(data.roomId).emit('hide_typing', data);
-  });
+  socket.on('typing_start', (data) => { socket.to(data.roomId).emit('display_typing', data); });
+  socket.on('typing_stop', (data) => { socket.to(data.roomId).emit('hide_typing', data); });
 });
 
 const port = process.env.PORT || 3000;
