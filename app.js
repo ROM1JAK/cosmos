@@ -6,9 +6,11 @@ let currentRoomId = 'global';
 let PLAYER_ID; 
 let currentReply = null; 
 
-// --- FONCTIONS BASE ---
-function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
-function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
+// --- UI & LOGIN ---
+function toggleSidebar() { 
+    document.getElementById('sidebar').classList.toggle('open'); 
+    document.getElementById('mobile-overlay').classList.toggle('open'); // Gère le fond noir
+}
 
 function getPlayerId() {
     let id = localStorage.getItem('rp_player_id');
@@ -45,7 +47,12 @@ function joinRoom(roomId) {
     document.getElementById('messages').innerHTML = ""; 
     socket.emit('request_history', currentRoomId);
     cancelReply();
-    if(window.innerWidth <= 768) document.getElementById('sidebar').classList.remove('open');
+    
+    // Fermeture propre sur mobile
+    if(window.innerWidth <= 768) {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('mobile-overlay').classList.remove('open');
+    }
     updateRoomListUI();
 }
 socket.on('rooms_data', (rooms) => { allRooms = rooms; updateRoomListUI(); });
@@ -66,6 +73,7 @@ function createCharacter() {
     socket.emit('create_char', { name, role, color, avatar, ownerId: PLAYER_ID });
     toggleCreateForm();
 }
+function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
 socket.on('my_chars_data', (chars) => { myCharacters = chars; updateUI(); });
 socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(); });
 function deleteCharacter(name) { if(confirm('Supprimer ?')) socket.emit('delete_char', name); }
@@ -80,15 +88,13 @@ function updateUI() {
     myCharacters.forEach(char => {
         list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><button class="btn-delete" onclick="deleteCharacter('${char.name}')">×</button></div>`;
         const opt = document.createElement('option');
-        opt.value = char.name; opt.text = char.name; 
-        opt.dataset.color = char.color; opt.dataset.avatar = char.avatar; opt.dataset.role = char.role;
+        opt.value = char.name; opt.text = char.name; opt.dataset.color = char.color; opt.dataset.avatar = char.avatar; opt.dataset.role = char.role;
         select.appendChild(opt);
     });
     if (prev && (prev === "Narrateur" || myCharacters.some(c => c.name === prev))) select.value = prev;
 }
 
-// --- MESSAGERIE & UI ---
-
+// --- MESSAGERIE ---
 function triggerReply(id, author, content) {
     currentReply = { id, author, content };
     document.getElementById('reply-bar').style.display = 'flex';
@@ -129,55 +135,39 @@ function sendPayload(content, type) {
     socket.emit('message_rp', msg);
 }
 
-socket.on('history_data', (msgs) => {
-    document.getElementById('messages').innerHTML = "";
-    msgs.forEach(displayMessage);
-    scrollToBottom();
-});
-socket.on('message_rp', (msg) => {
-    if(msg.roomId === currentRoomId) { displayMessage(msg); scrollToBottom(); }
-});
+socket.on('history_data', (msgs) => { document.getElementById('messages').innerHTML = ""; msgs.forEach(displayMessage); scrollToBottom(); });
+socket.on('message_rp', (msg) => { if(msg.roomId === currentRoomId) { displayMessage(msg); scrollToBottom(); } });
 
-// --- AFFICHAGE MESSAGE (C'est ici qu'on change le design de la réponse) ---
 function displayMessage(msg) {
     const div = document.createElement('div');
     const isPrivate = msg.targetName && msg.targetName !== "";
     div.className = 'message-container';
 
-    // HTML DE LA RÉPONSE (NETTOYÉ : PLUS D'IMAGE, JUSTE TEXTE ET LIGNE)
     let replyHTML = "";
-    // Si c'est une réponse, on ajoute de la marge en haut pour la ligne courbée
     let spacingStyle = "";
-
     if (msg.replyTo && msg.replyTo.author) {
-        spacingStyle = "margin-top: 15px;"; // Espace pour la ligne courbée
+        spacingStyle = "margin-top: 15px;";
         replyHTML = `
             <div class="reply-spine"></div>
             <div class="reply-context-line" style="margin-left: 55px;">
                 <span class="reply-name">@${msg.replyTo.author}</span>
                 <span class="reply-text">${msg.replyTo.content}</span>
-            </div>
-        `;
+            </div>`;
     }
 
-    // Contenu
     let contentHTML = msg.type === "image" 
         ? `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">` 
         : `<div class="text-body">${msg.content}</div>`;
 
-    // Sécurisation des chaînes pour les onclick
     const safeAuthor = msg.senderName.replace(/'/g, "\\'");
     const safeContent = msg.content.replace(/'/g, "\\'");
 
-    // HTML FINAL
     div.innerHTML = `
         ${replyHTML}
-        
         <div class="msg-actions">
-            <button class="action-btn" onclick="triggerReply('${msg._id}', '${safeAuthor}', '${safeContent}')" title="Répondre">↩️</button>
-            <button class="action-btn" onclick="triggerDM('${safeAuthor}')" title="MP">✉️</button>
+            <button class="action-btn" onclick="triggerReply('${msg._id}', '${safeAuthor}', '${safeContent}')">↩️</button>
+            <button class="action-btn" onclick="triggerDM('${safeAuthor}')">✉️</button>
         </div>
-
         <div style="position:relative; ${spacingStyle} ${isPrivate ? 'background:rgba(218, 55, 60, 0.05); border-radius:4px;' : ''}">
             <img src="${msg.senderAvatar}" class="avatar-img">
             <div style="margin-left: 55px;">
