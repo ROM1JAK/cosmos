@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RP Verse Online</title>
+    <title>RP Verse Privé</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
-        /* On garde ton super style moderne */
+        /* CSS (Identique, sauf le petit ajustement pour le rôle) */
         :root { --bg-color: #1a1b1e; --sidebar-bg: #25262b; --input-bg: #2c2e33; --accent-color: #5c7cfa; --text-color: #c1c2c5; --msg-private-border: #ff6b6b; }
         body { background-color: var(--bg-color); color: var(--text-color); font-family: 'Inter', sans-serif; display: flex; height: 100vh; margin: 0; overflow: hidden; }
         ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
@@ -24,7 +24,9 @@
         .avatar-img { width: 50px; height: 50px; border-radius: 12px; object-fit: cover; margin-right: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
         .message-content { flex: 1; }
         .char-header { display: flex; align-items: baseline; margin-bottom: 5px; }
+        /* AJUSTEMENT POUR AFFICHER LE RÔLE */
         .char-name { font-weight: 700; cursor: pointer; margin-right: 10px; font-size: 1.1em;}
+        .char-role { font-size: 0.85em; color: #999; margin-left: 5px;}
         .timestamp { font-size: 0.75em; color: #666; }
         .private-badge { font-size: 0.7em; background: var(--msg-private-border); color: white; padding: 2px 6px; border-radius: 4px; margin-left: 10px; font-weight: bold; }
         .text-body { line-height: 1.5; color: #e1e1e6; white-space: pre-wrap; }
@@ -33,20 +35,27 @@
         .controls-group { display: flex; flex-direction: column; gap: 5px; width: 200px; }
         .btn-icon { background: #373a40; color: #ccc; border: none; width: 45px; height: 45px; border-radius: 8px; font-size: 1.2em; cursor: pointer;}
         #txtInput { height: 50px; margin-bottom: 0; font-size: 1rem; }
+        /* Affichage de l'ID du joueur */
+        #player-id-display { font-size: 0.75em; color: #777; margin-top: 10px; text-align: center; }
     </style>
 </head>
 <body>
 
     <div id="sidebar">
+        <h3 id="player-id-display">ID Joueur: Chargement...</h3>
+        
+        <hr style="border:0; border-top:1px solid #333; margin: 20px 0;">
+
         <h3>Création de Personnage</h3>
         <div class="create-form">
-            <input type="text" id="newCharName" placeholder="Nom du personnage">
+            <input type="text" id="newCharName" placeholder="Nom du personnage" required>
+            <input type="text" id="newCharRole" placeholder="Rôle (Ex: Guerrier, Marchand)" required>
             <input type="text" id="newCharAvatar" placeholder="URL Image (Optionnel)">
             <input type="color" id="newCharColor" value="#5c7cfa" style="height:30px; padding:0;">
             <button onclick="createCharacter()" class="btn-primary">Créer le Perso</button>
         </div>
         <hr style="border:0; border-top:1px solid #333; margin: 20px 0;">
-        <h3>Personnages (Monde)</h3>
+        <h3>Mes Personnages Privés</h3>
         <div id="myCharList" style="overflow-y: auto; flex:1;"></div>
     </div>
 
@@ -67,50 +76,80 @@
     <script>
         var socket = io();
         let myCharacters = [];
+        let PLAYER_ID; // Variable pour stocker l'ID unique du joueur
 
-        // --- 1. INITIALISATION (Réception depuis la DB) ---
-        socket.on('init_data', (data) => {
-            // On charge l'historique
-            const messagesDiv = document.getElementById('messages');
-            messagesDiv.innerHTML = ""; // On vide pour éviter les doublons
-            data.messages.forEach(msg => displayMessage(msg));
-
-            // On charge les personnages
-            myCharacters = data.characters;
-            updateUI();
-            
-            scrollToBottom();
-        });
-
-        // --- 2. GESTION PERSOS ---
-        function createCharacter() {
-            const name = document.getElementById('newCharName').value.trim();
-            const color = document.getElementById('newCharColor').value;
-            let avatar = document.getElementById('newCharAvatar').value.trim();
-            if(!avatar) avatar = `https://ui-avatars.com/api/?name=${name}&background=random`;
-
-            if(!name) return;
-
-            // On envoie la demande au serveur
-            socket.emit('create_char', { name, color, avatar });
-            
-            document.getElementById('newCharName').value = '';
-            document.getElementById('newCharAvatar').value = '';
+        // --- PHASE 1 : GESTION DE L'ID UNIQUE DU JOUEUR ---
+        function generateUniqueId() {
+            return 'player_' + Math.random().toString(36).substring(2, 9);
         }
 
-        socket.on('new_char_created', (char) => {
-            myCharacters.push(char);
+        function getPlayerId() {
+            let id = localStorage.getItem('rp_player_id');
+            if (!id) {
+                id = generateUniqueId();
+                localStorage.setItem('rp_player_id', id);
+            }
+            PLAYER_ID = id;
+            document.getElementById('player-id-display').textContent = `ID Joueur: ${id.substring(7)}`;
+            return id;
+        }
+
+        // Appel au démarrage
+        getPlayerId();
+
+        // --- 2. GESTION DES PERSOS (Privé) ---
+        socket.on('connect', () => {
+            // Une fois connecté, on demande au serveur de nous envoyer UNIQUEMENT nos persos
+            socket.emit('request_my_chars', PLAYER_ID);
+        });
+
+        socket.on('my_chars_data', (chars) => {
+            myCharacters = chars;
             updateUI();
         });
+
+        function createCharacter() {
+            const name = document.getElementById('newCharName').value.trim();
+            const role = document.getElementById('newCharRole').value.trim(); // NOUVEAU : Récupération du rôle
+            const color = document.getElementById('newCharColor').value;
+            let avatar = document.getElementById('newCharAvatar').value.trim();
+            
+            if(!name || !role) return alert("Le nom et le rôle sont obligatoires.");
+
+            if(!avatar) avatar = `https://ui-avatars.com/api/?name=${name}&background=random&color=fff&size=50`;
+
+            const charData = { 
+                name, 
+                role, // Ajout du rôle
+                color, 
+                avatar, 
+                ownerId: PLAYER_ID // Ajout de l'ID propriétaire
+            };
+
+            // Envoi de la demande au serveur (qui va le sauvegarder dans la DB)
+            socket.emit('create_char', charData);
+            
+            document.getElementById('newCharName').value = '';
+            document.getElementById('newCharRole').value = '';
+            document.getElementById('newCharAvatar').value = '';
+        }
         
-        // Suppression
+        // Confirmation de création par le serveur
+        socket.on('char_created_success', (char) => {
+            myCharacters.push(char); // On l'ajoute à notre liste locale
+            updateUI();
+            alert(`Le personnage "${char.name}" a été créé !`);
+        });
+
         function deleteCharacter(name) {
-             if(confirm("Supprimer définitivement " + name + " pour tout le monde ?")) {
-                 socket.emit('delete_char', name);
+             if(confirm(`Supprimer définitivement "${name}" de votre liste ?`)) {
+                 // Le serveur va le supprimer de la DB
+                 socket.emit('delete_char', name); 
              }
         }
         
-        socket.on('char_deleted', (name) => {
+        // Confirmation de suppression par le serveur
+        socket.on('char_deleted_success', (name) => {
             myCharacters = myCharacters.filter(c => c.name !== name);
             updateUI();
         });
@@ -118,36 +157,40 @@
         function updateUI() {
             const list = document.getElementById('myCharList');
             const select = document.getElementById('charSelector');
-            const currentSelection = select.value; // On mémorise la sélection
+            const currentSelection = select.value;
 
             list.innerHTML = "";
-            select.innerHTML = '<option value="Narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png">Narrateur</option>';
+            select.innerHTML = '<option value="Narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
 
             myCharacters.forEach(char => {
                 // Sidebar
                 list.innerHTML += `
-                    <div class="char-item">
+                    <div class="char-item" title="Rôle : ${char.role}">
                         <img src="${char.avatar}" class="mini-avatar">
-                        <div style="flex:1; color:${char.color}; font-weight:bold;">${char.name}</div>
+                        <div style="flex:1;">
+                            <div style="color:${char.color}; font-weight:bold;">${char.name}</div>
+                            <div style="font-size:0.7em; color:#999;">${char.role}</div>
+                        </div>
                         <button style="background:none; border:none; color:#ff6b6b; cursor:pointer;" onclick="deleteCharacter('${char.name}')">✕</button>
                     </div>`;
                 
                 // Select
                 const option = document.createElement("option");
                 option.value = char.name;
-                option.text = char.name;
+                option.text = char.name + " (" + char.role + ")"; // Afficher le rôle dans le menu
                 option.dataset.color = char.color;
                 option.dataset.avatar = char.avatar;
+                option.dataset.role = char.role;
                 select.appendChild(option);
             });
             
-            // Si le perso sélectionné existe encore, on le remet
             if (currentSelection === "Narrateur" || myCharacters.some(c => c.name === currentSelection)) {
                 select.value = currentSelection;
             }
         }
 
-        // --- 3. ENVOI / RECEPTION ---
+        // --- 3. GESTION DU CHAT ---
+
         function sendMessage() {
             const textInput = document.getElementById('txtInput');
             const targetInput = document.getElementById('targetInput');
@@ -162,6 +205,7 @@
                 senderName: selectedOption.value,
                 senderColor: selectedOption.dataset.color || "#ffffff",
                 senderAvatar: selectedOption.dataset.avatar || "https://cdn-icons-png.flaticon.com/512/1144/1144760.png",
+                senderRole: selectedOption.dataset.role || "", // Ajout du rôle
                 targetName: targetInput.value.trim(),
                 date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
             };
@@ -180,6 +224,7 @@
                     senderName: selectedOption.value,
                     senderColor: selectedOption.dataset.color || "#ffffff",
                     senderAvatar: selectedOption.dataset.avatar,
+                    senderRole: selectedOption.dataset.role || "",
                     targetName: document.getElementById('targetInput').value.trim(),
                     date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
                 };
@@ -189,17 +234,14 @@
 
         document.getElementById("txtInput").addEventListener("keyup", function(e) { if (e.key === "Enter") sendMessage(); });
 
+        socket.on('init_data', (data) => {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = ""; 
+            data.messages.forEach(msg => displayMessage(msg));
+            scrollToBottom();
+        });
+
         socket.on('message_rp', function(msg) {
-            // Filtrage MP
-            const isPublic = !msg.targetName || msg.targetName === "";
-            // Est-ce pour moi (un de mes persos ?) -> ICI tous les persos sont partagés donc "Pour moi" veut dire "Est-ce que j'incarne ce perso ?"
-            // Pour simplifier dans cette version partagée : On affiche tout ce qui est public, 
-            // ET les MP si je suis l'expéditeur OU le destinataire (Nom exact).
-            
-            // Note : Comme on n'a pas de login, on ne peut pas savoir VRAIMENT qui est qui.
-            // Donc pour les MP, on affiche tout, mais on met le style visuel "Privé". 
-            // Pour un vrai système privé, il faudrait des comptes utilisateurs.
-            
             displayMessage(msg);
             scrollToBottom();
         });
@@ -222,6 +264,7 @@
                 <div class="message-content">
                     <div class="char-header">
                         <span class="char-name" style="color: ${msg.senderColor}">${msg.senderName}</span>
+                        <span class="char-role">${msg.senderRole || ""}</span>
                         <span class="timestamp">${msg.date}</span>
                         ${privateBadge}
                     </div>
