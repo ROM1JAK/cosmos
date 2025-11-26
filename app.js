@@ -11,49 +11,51 @@ let typingTimeout = null;
 // --- UI & LOGIN ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
 function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
-
 function openLoginModal() { document.getElementById('login-modal').classList.remove('hidden'); }
 function closeLoginModal() { document.getElementById('login-modal').classList.add('hidden'); }
 
 function submitLogin() {
     const pseudo = document.getElementById('loginPseudoInput').value.trim();
     const code = document.getElementById('loginCodeInput').value.trim();
-    if (pseudo && code) {
-        socket.emit('login_request', { username: pseudo, code: code });
-    }
+    if (pseudo && code) socket.emit('login_request', { username: pseudo, code: code });
 }
 
-// Réception de la connexion réussie
 socket.on('login_success', (data) => {
     USER_NAME = data.username;
     USER_CODE = data.userId;
     IS_ADMIN = data.isAdmin;
-    
-    // Sauvegarde
     localStorage.setItem('rp_username', USER_NAME);
     localStorage.setItem('rp_code', USER_CODE);
-    
     document.getElementById('player-id-display').textContent = `Compte : ${USER_NAME}`;
-    if(IS_ADMIN) document.getElementById('player-id-display').style.color = "#da373c"; // Rouge si admin
-    
+    if(IS_ADMIN) document.getElementById('player-id-display').style.color = "#da373c";
     closeLoginModal();
-    
-    // Charger les données après login
     socket.emit('request_initial_data', USER_CODE);
     joinRoom('global');
 });
 
-// Auto-login au démarrage
 function checkAutoLogin() {
     const savedUser = localStorage.getItem('rp_username');
     const savedCode = localStorage.getItem('rp_code');
-    if (savedUser && savedCode) {
-        socket.emit('login_request', { username: savedUser, code: savedCode });
-    } else {
-        openLoginModal();
-    }
+    if (savedUser && savedCode) socket.emit('login_request', { username: savedUser, code: savedCode });
+    else openLoginModal();
 }
 checkAutoLogin();
+
+// --- UTILISATEURS EN LIGNE (NOUVEAU) ---
+socket.on('update_user_list', (users) => {
+    const listDiv = document.getElementById('online-users-list');
+    const countSpan = document.getElementById('online-count');
+    listDiv.innerHTML = "";
+    countSpan.textContent = users.length;
+    
+    users.forEach(username => {
+        listDiv.innerHTML += `
+            <div class="online-user">
+                <span class="status-dot"></span>
+                <span>${username}</span>
+            </div>`;
+    });
+});
 
 // --- PROFIL ---
 function openProfile(charName) { socket.emit('get_char_profile', charName); }
@@ -63,12 +65,11 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileRole').textContent = char.role;
     document.getElementById('profileAvatar').src = char.avatar;
     document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
-    // Affichage du propriétaire
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
     document.getElementById('profile-modal').classList.remove('hidden');
 });
 
-// --- TYPING & SOCKET EVENTS ---
+// --- SOCKET EVENTS ---
 socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId) socket.emit('request_history', currentRoomId); });
 socket.on('force_room_exit', (roomId) => { if(currentRoomId === roomId) joinRoom('global'); });
 socket.on('history_cleared', () => { document.getElementById('messages').innerHTML = ""; });
@@ -91,9 +92,7 @@ function createRoomPrompt() {
     const name = prompt("Nom du salon :");
     if (name) socket.emit('create_room', { name, creatorId: USER_CODE, allowedCharacters: [] });
 }
-function deleteRoom(roomId) {
-    if(confirm("ADMIN : Supprimer ce salon définitivement ?")) socket.emit('delete_room', roomId);
-}
+function deleteRoom(roomId) { if(confirm("ADMIN : Supprimer ce salon ?")) socket.emit('delete_room', roomId); }
 
 function joinRoom(roomId) {
     if (currentRoomId && currentRoomId !== roomId) socket.emit('leave_room', currentRoomId);
@@ -109,12 +108,10 @@ function joinRoom(roomId) {
     updateRoomListUI();
 }
 socket.on('rooms_data', (rooms) => { allRooms = rooms; updateRoomListUI(); });
-
 function updateRoomListUI() {
     const list = document.getElementById('roomList');
     list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
     allRooms.forEach(room => {
-        // Bouton supprimer si admin
         const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>` : '';
         list.innerHTML += `<div class="room-item ${currentRoomId === room._id?'active':''}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
     });
@@ -129,12 +126,9 @@ function createCharacter() {
     let avatar = document.getElementById('newCharAvatar').value.trim();
     if(!name || !role) return alert("Nom et Rôle requis");
     if(!avatar) avatar = `https://ui-avatars.com/api/?name=${name}&background=random`;
-    
-    // On envoie aussi ownerUsername
     socket.emit('create_char', { name, role, color, avatar, description: desc, ownerId: USER_CODE, ownerUsername: USER_NAME });
     toggleCreateForm();
 }
-
 function editCharacter(name, role, avatar, color, desc) {
     document.getElementById('editCharOriginalName').value = name;
     document.getElementById('editCharName').value = name;
@@ -156,7 +150,6 @@ function submitEditCharacter() {
     socket.emit('edit_char', { originalName, newName, newRole, newAvatar, newColor, newDescription: newDesc, ownerId: USER_CODE, ownerUsername: USER_NAME, currentRoomId: currentRoomId });
     cancelEditCharacter();
 }
-
 socket.on('my_chars_data', (chars) => { myCharacters = chars; updateUI(); });
 socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(); });
 function deleteCharacter(name) { if(confirm('Supprimer ?')) socket.emit('delete_char', name); }
@@ -179,38 +172,7 @@ function updateUI() {
     if (prev && (prev === "Narrateur" || myCharacters.some(c => c.name === prev))) select.value = prev;
 }
 
-// --- ENVOI MESSAGE & COMMANDES ---
-function sendMessage() {
-    const txt = document.getElementById('txtInput');
-    const content = txt.value.trim();
-    if (!content) return;
-    
-    // Commande Admin /clear
-    if (content === "/clear") {
-        if(IS_ADMIN) socket.emit('admin_clear_room', currentRoomId);
-        else alert("Réservé à l'admin !");
-        txt.value = ''; return;
-    }
-
-    if (currentContext && currentContext.type === 'edit') {
-        socket.emit('edit_message', { id: currentContext.data.id, newContent: content });
-        txt.value = ''; cancelContext(); return;
-    }
-
-    const sel = document.getElementById('charSelector');
-    const opt = sel.options[sel.selectedIndex];
-    const msg = {
-        content, type: "text",
-        senderName: opt.value, senderColor: opt.dataset.color || "#fff", senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role,
-        ownerId: USER_CODE, targetName: "", roomId: currentRoomId,
-        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
-        replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null
-    };
-    socket.emit('message_rp', msg);
-    txt.value = ''; cancelContext();
-}
-
-// --- RESTE DES ACTIONS (Reply, Edit, etc.) ---
+// --- MESSAGE ACTIONS ---
 function setContext(type, data) {
     currentContext = { type, data };
     const bar = document.getElementById('context-bar');
@@ -228,6 +190,28 @@ function cancelContext() {
 function triggerReply(id, author, content) { setContext('reply', { id, author, content }); }
 function triggerEdit(id, content) { setContext('edit', { id, content }); }
 function triggerDelete(id) { if(confirm("Supprimer ?")) socket.emit('delete_message', id); }
+
+function sendMessage() {
+    const txt = document.getElementById('txtInput');
+    const content = txt.value.trim();
+    if (!content) return;
+    
+    if (content === "/clear") { if(IS_ADMIN) socket.emit('admin_clear_room', currentRoomId); else alert("Admin only!"); txt.value = ''; return; }
+    if (currentContext && currentContext.type === 'edit') { socket.emit('edit_message', { id: currentContext.data.id, newContent: content }); txt.value = ''; cancelContext(); return; }
+
+    const sel = document.getElementById('charSelector');
+    const opt = sel.options[sel.selectedIndex];
+    
+    const msg = {
+        content, type: "text",
+        senderName: opt.value, senderColor: opt.dataset.color || "#fff", senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role,
+        ownerId: USER_CODE, targetName: "", roomId: currentRoomId,
+        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+        replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null
+    };
+    socket.emit('message_rp', msg);
+    txt.value = ''; cancelContext();
+}
 function askForImage() {
     const url = prompt("URL de l'image :");
     if(url) {
@@ -236,6 +220,7 @@ function askForImage() {
     }
 }
 
+// --- DISPLAY ---
 socket.on('history_data', (msgs) => { document.getElementById('messages').innerHTML = ""; msgs.forEach(displayMessage); scrollToBottom(); });
 socket.on('message_rp', (msg) => { if(msg.roomId === currentRoomId) { displayMessage(msg); scrollToBottom(); } });
 socket.on('message_deleted', (msgId) => { const el = document.getElementById(`msg-${msgId}`); if(el) el.remove(); });
@@ -253,16 +238,15 @@ function displayMessage(msg) {
     const div = document.createElement('div');
     div.className = 'message-container';
     div.id = `msg-${msg._id}`;
-    
-    // DROIT DE SUPPRESSION : SI C'EST MOI OU SI JE SUIS ADMIN
     const canEdit = (msg.ownerId === USER_CODE);
     const canDelete = (msg.ownerId === USER_CODE) || IS_ADMIN;
 
     let actionsHTML = `<button class="action-btn" onclick="triggerReply('${msg._id}', '${msg.senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre">↩️</button>`;
-    
     if (msg.type === 'text') {
         if (canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button>`;
         if (canDelete) actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
+    } else if (canDelete) {
+        actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
     }
 
     let replyHTML = "", spacingStyle = "";
