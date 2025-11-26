@@ -3,241 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RP Verse</title>
+    <title>RP Verse Online</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg-color: #1a1b1e;
-            --sidebar-bg: #25262b;
-            --input-bg: #2c2e33;
-            --accent-color: #5c7cfa;
-            --accent-hover: #4263eb;
-            --text-color: #c1c2c5;
-            --text-bright: #ffffff;
-            --msg-private-bg: #2b1d1d;
-            --msg-private-border: #ff6b6b;
-        }
-
-        /* --- GLOBAL & ANIMATIONS --- */
-        body { 
-            background-color: var(--bg-color); 
-            color: var(--text-color); 
-            font-family: 'Inter', sans-serif; 
-            display: flex; 
-            height: 100vh; 
-            margin: 0; 
-            overflow: hidden;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-20px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-
-        /* Scrollbar moderne */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: var(--bg-color); }
-        ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #555; }
-
-        /* --- SIDEBAR --- */
-        #sidebar { 
-            width: 300px; 
-            background-color: var(--sidebar-bg); 
-            padding: 20px; 
-            display: flex; 
-            flex-direction: column; 
-            box-shadow: 2px 0 10px rgba(0,0,0,0.2);
-            z-index: 2;
-        }
-
-        h3 { 
-            color: var(--text-bright); 
-            margin: 0 0 15px 0; 
-            font-weight: 600; 
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-            font-size: 0.9rem;
-        }
-
-        /* Formulaires */
-        .create-form {
-            background: rgba(255,255,255,0.03);
-            padding: 15px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-        }
-
-        input[type="text"], select { 
-            width: 100%; 
-            margin-bottom: 10px; 
-            padding: 12px; 
-            background: var(--input-bg); 
-            border: 1px solid transparent; 
-            color: white; 
-            border-radius: 8px; 
-            box-sizing: border-box;
-            transition: 0.3s;
-            outline: none;
-        }
-
-        input[type="text"]:focus, select:focus {
-            border-color: var(--accent-color);
-            background: #323439;
-        }
-
-        button { 
-            cursor: pointer; 
-            transition: all 0.2s; 
-            font-weight: 600;
-        }
-
-        .btn-primary {
-            background-color: var(--accent-color);
-            color: white;
-            border: none;
-            padding: 10px;
-            border-radius: 8px;
-            width: 100%;
-        }
-        .btn-primary:hover { background-color: var(--accent-hover); transform: translateY(-1px); }
-
-        /* Liste des persos */
-        .char-item { 
-            padding: 10px; 
-            margin-bottom: 8px;
-            background: rgba(255,255,255,0.02);
-            border-radius: 8px;
-            display: flex; 
-            align-items: center; 
-            animation: slideIn 0.3s ease-out;
-        }
-        .char-item:hover { background: rgba(255,255,255,0.05); }
-
-        .mini-avatar { 
-            width: 32px; height: 32px; 
-            border-radius: 50%; 
-            margin-right: 12px; 
-            object-fit: cover; 
-            border: 2px solid #444;
-        }
-
-        .btn-delete { 
-            background: transparent; color: #ff6b6b; border: 1px solid #ff6b6b; 
-            padding: 4px 8px; border-radius: 6px; margin-left: auto; font-size: 0.8em;
-        }
-        .btn-delete:hover { background: #ff6b6b; color: white; }
-
-        /* --- CHAT AREA --- */
-        #chat-area { 
-            flex: 1; 
-            display: flex; 
-            flex-direction: column; 
-            position: relative; 
-            background: radial-gradient(circle at top right, #25262b 0%, #1a1b1e 40%);
-        }
-
-        #messages { 
-            flex: 1; 
-            overflow-y: scroll; 
-            padding: 20px 40px; 
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        /* Message Styling */
-        .message { 
-            display: flex; 
-            align-items: flex-start; 
-            animation: fadeIn 0.4s ease-out;
-            max-width: 90%;
-        }
-        
-        .message.private-msg {
-            background: rgba(255, 107, 107, 0.05);
-            border-left: 3px solid var(--msg-private-border);
-            padding: 10px;
-            border-radius: 0 8px 8px 0;
-        }
-
-        .avatar-img { 
-            width: 50px; height: 50px; 
-            border-radius: 12px; 
-            object-fit: cover; 
-            margin-right: 20px; 
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            transition: transform 0.2s;
-        }
-        .avatar-img:hover { transform: scale(1.05); }
-
+        /* On garde ton super style moderne */
+        :root { --bg-color: #1a1b1e; --sidebar-bg: #25262b; --input-bg: #2c2e33; --accent-color: #5c7cfa; --text-color: #c1c2c5; --msg-private-border: #ff6b6b; }
+        body { background-color: var(--bg-color); color: var(--text-color); font-family: 'Inter', sans-serif; display: flex; height: 100vh; margin: 0; overflow: hidden; }
+        ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+        #sidebar { width: 300px; background-color: var(--sidebar-bg); padding: 20px; display: flex; flex-direction: column; box-shadow: 2px 0 10px rgba(0,0,0,0.2); }
+        h3 { margin: 0 0 15px 0; font-weight: 600; text-transform: uppercase; font-size: 0.9rem; color: white;}
+        .create-form { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; margin-bottom: 20px; }
+        input, select { width: 100%; margin-bottom: 10px; padding: 12px; background: var(--input-bg); border: none; color: white; border-radius: 8px; box-sizing: border-box; outline: none;}
+        .btn-primary { background-color: var(--accent-color); color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; cursor: pointer; font-weight: bold;}
+        .char-item { padding: 10px; margin-bottom: 8px; background: rgba(255,255,255,0.02); border-radius: 8px; display: flex; align-items: center; }
+        .mini-avatar { width: 32px; height: 32px; border-radius: 50%; margin-right: 12px; object-fit: cover; }
+        #chat-area { flex: 1; display: flex; flex-direction: column; position: relative; background: radial-gradient(circle at top right, #25262b 0%, #1a1b1e 40%); }
+        #messages { flex: 1; overflow-y: scroll; padding: 20px 40px; display: flex; flex-direction: column; gap: 20px; }
+        .message { display: flex; align-items: flex-start; max-width: 90%; }
+        .message.private-msg { background: rgba(255, 107, 107, 0.05); border-left: 3px solid var(--msg-private-border); padding: 10px; border-radius: 0 8px 8px 0; }
+        .avatar-img { width: 50px; height: 50px; border-radius: 12px; object-fit: cover; margin-right: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
         .message-content { flex: 1; }
-
         .char-header { display: flex; align-items: baseline; margin-bottom: 5px; }
         .char-name { font-weight: 700; cursor: pointer; margin-right: 10px; font-size: 1.1em;}
         .timestamp { font-size: 0.75em; color: #666; }
-        
-        .private-badge {
-            font-size: 0.7em;
-            background: var(--msg-private-border);
-            color: white;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-left: 10px;
-            text-transform: uppercase;
-            font-weight: bold;
-        }
-
-        .text-body { 
-            line-height: 1.5; 
-            color: #e1e1e6; 
-            white-space: pre-wrap; 
-        }
-
-        .chat-image { 
-            max-width: 100%; 
-            max-height: 350px; 
-            border-radius: 12px; 
-            margin-top: 10px; 
-            cursor: zoom-in; 
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-        }
-
-        /* --- INPUT ZONE --- */
-        #input-zone { 
-            padding: 20px; 
-            background-color: var(--sidebar-bg); 
-            display: flex; 
-            gap: 15px; 
-            align-items: center; 
-            border-top: 1px solid #333;
-        }
-        
-        .controls-group {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-            width: 200px;
-        }
-
-        .btn-icon { 
-            background: #373a40; color: #ccc; border: none; 
-            width: 45px; height: 45px; border-radius: 8px; 
-            font-size: 1.2em; display: flex; align-items: center; justify-content: center;
-        }
-        .btn-icon:hover { background: #444; color: white; }
-
-        #txtInput { 
-            height: 50px; 
-            margin-bottom: 0; 
-            font-size: 1rem;
-        }
-
+        .private-badge { font-size: 0.7em; background: var(--msg-private-border); color: white; padding: 2px 6px; border-radius: 4px; margin-left: 10px; font-weight: bold; }
+        .text-body { line-height: 1.5; color: #e1e1e6; white-space: pre-wrap; }
+        .chat-image { max-width: 100%; max-height: 350px; border-radius: 12px; margin-top: 10px; cursor: pointer; }
+        #input-zone { padding: 20px; background-color: var(--sidebar-bg); display: flex; gap: 15px; align-items: center; border-top: 1px solid #333; }
+        .controls-group { display: flex; flex-direction: column; gap: 5px; width: 200px; }
+        .btn-icon { background: #373a40; color: #ccc; border: none; width: 45px; height: 45px; border-radius: 8px; font-size: 1.2em; cursor: pointer;}
+        #txtInput { height: 50px; margin-bottom: 0; font-size: 1rem; }
     </style>
 </head>
 <body>
@@ -247,36 +42,23 @@
         <div class="create-form">
             <input type="text" id="newCharName" placeholder="Nom du personnage">
             <input type="text" id="newCharAvatar" placeholder="URL Image (Optionnel)">
-            <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px;">
-                <label style="font-size:0.8em;">Couleur :</label>
-                <input type="color" id="newCharColor" value="#5c7cfa" style="height:30px; width:50px; padding:0; border:none; background:none;">
-            </div>
+            <input type="color" id="newCharColor" value="#5c7cfa" style="height:30px; padding:0;">
             <button onclick="createCharacter()" class="btn-primary">Créer le Perso</button>
         </div>
-        
         <hr style="border:0; border-top:1px solid #333; margin: 20px 0;">
-        
-        <h3>Vos Rôles</h3>
+        <h3>Personnages (Monde)</h3>
         <div id="myCharList" style="overflow-y: auto; flex:1;"></div>
     </div>
 
     <div id="chat-area">
         <div id="messages"></div>
-        
         <div id="input-zone">
-            
             <div class="controls-group">
-                <select id="charSelector" title="Qui parle ?">
-                    <option value="Narrateur">Narrateur</option>
-                </select>
-
+                <select id="charSelector"><option value="Narrateur">Narrateur</option></select>
                 <input type="text" id="targetInput" placeholder="@ Public (ou nom du perso)" style="margin:0; padding: 8px; font-size:0.8em;">
             </div>
-            
-            <button class="btn-icon" onclick="askForImage()" title="Envoyer une image">📷</button>
-            
+            <button class="btn-icon" onclick="askForImage()">📷</button>
             <input id="txtInput" type="text" autocomplete="off" placeholder="Écrivez votre RP..." />
-            
             <button class="btn-icon" onclick="sendMessage()" style="background: var(--accent-color); color:white;">➤</button>
         </div>
     </div>
@@ -284,70 +66,73 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         var socket = io();
-        
-        // --- 1. CONFIGURATION & STATE ---
-        let myCharacters = JSON.parse(localStorage.getItem("rp_chars_v3") || "[]");
-        let chatHistory = JSON.parse(localStorage.getItem("rp_chat_v3") || "[]");
+        let myCharacters = [];
 
-        // Init
-        updateUI();
-        chatHistory.forEach(msg => displayMessage(msg));
-        scrollToBottom();
+        // --- 1. INITIALISATION (Réception depuis la DB) ---
+        socket.on('init_data', (data) => {
+            // On charge l'historique
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = ""; // On vide pour éviter les doublons
+            data.messages.forEach(msg => displayMessage(msg));
 
-        // --- 2. LOGIQUE SAUVEGARDE ---
-        function saveData() {
-            localStorage.setItem("rp_chars_v3", JSON.stringify(myCharacters));
-            // On garde 100 messages max
-            if(chatHistory.length > 100) chatHistory.shift();
-            localStorage.setItem("rp_chat_v3", JSON.stringify(chatHistory));
-        }
+            // On charge les personnages
+            myCharacters = data.characters;
+            updateUI();
+            
+            scrollToBottom();
+        });
 
-        // --- 3. GESTION PERSOS ---
+        // --- 2. GESTION PERSOS ---
         function createCharacter() {
             const name = document.getElementById('newCharName').value.trim();
             const color = document.getElementById('newCharColor').value;
             let avatar = document.getElementById('newCharAvatar').value.trim();
-            
-            // Avatar par défaut si vide
             if(!avatar) avatar = `https://ui-avatars.com/api/?name=${name}&background=random`;
 
             if(!name) return;
 
-            myCharacters.push({ name, color, avatar });
-            saveData();
-            updateUI();
+            // On envoie la demande au serveur
+            socket.emit('create_char', { name, color, avatar });
             
-            // Reset input
             document.getElementById('newCharName').value = '';
             document.getElementById('newCharAvatar').value = '';
         }
 
-        function deleteCharacter(index) {
-            if(confirm("Supprimer ce personnage ?")) {
-                myCharacters.splice(index, 1);
-                saveData();
-                updateUI();
-            }
+        socket.on('new_char_created', (char) => {
+            myCharacters.push(char);
+            updateUI();
+        });
+        
+        // Suppression
+        function deleteCharacter(name) {
+             if(confirm("Supprimer définitivement " + name + " pour tout le monde ?")) {
+                 socket.emit('delete_char', name);
+             }
         }
+        
+        socket.on('char_deleted', (name) => {
+            myCharacters = myCharacters.filter(c => c.name !== name);
+            updateUI();
+        });
 
         function updateUI() {
             const list = document.getElementById('myCharList');
             const select = document.getElementById('charSelector');
-            const currentSelection = select.value;
+            const currentSelection = select.value; // On mémorise la sélection
 
             list.innerHTML = "";
             select.innerHTML = '<option value="Narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png">Narrateur</option>';
 
-            myCharacters.forEach((char, index) => {
-                // Sidebar List
+            myCharacters.forEach(char => {
+                // Sidebar
                 list.innerHTML += `
                     <div class="char-item">
                         <img src="${char.avatar}" class="mini-avatar">
                         <div style="flex:1; color:${char.color}; font-weight:bold;">${char.name}</div>
-                        <button class="btn-delete" onclick="deleteCharacter(${index})">✕</button>
+                        <button style="background:none; border:none; color:#ff6b6b; cursor:pointer;" onclick="deleteCharacter('${char.name}')">✕</button>
                     </div>`;
                 
-                // Dropdown Options
+                // Select
                 const option = document.createElement("option");
                 option.value = char.name;
                 option.text = char.name;
@@ -355,32 +140,29 @@
                 option.dataset.avatar = char.avatar;
                 select.appendChild(option);
             });
-
-            // Restore selection if exists
-            if (myCharacters.some(c => c.name === currentSelection)) {
+            
+            // Si le perso sélectionné existe encore, on le remet
+            if (currentSelection === "Narrateur" || myCharacters.some(c => c.name === currentSelection)) {
                 select.value = currentSelection;
             }
         }
 
-        // --- 4. ENVOI MESSAGES & PRIVÉ ---
+        // --- 3. ENVOI / RECEPTION ---
         function sendMessage() {
             const textInput = document.getElementById('txtInput');
             const targetInput = document.getElementById('targetInput');
-            const text = textInput.value;
-            
-            if (text.trim() === "") return;
+            if (textInput.value.trim() === "") return;
 
-            // Récupérer les infos de l'expéditeur
             const selector = document.getElementById('charSelector');
             const selectedOption = selector.options[selector.selectedIndex];
             
             const msgData = {
-                content: text,
+                content: textInput.value,
                 type: "text",
-                senderName: selectedOption.value, // Qui envoie
+                senderName: selectedOption.value,
                 senderColor: selectedOption.dataset.color || "#ffffff",
                 senderAvatar: selectedOption.dataset.avatar || "https://cdn-icons-png.flaticon.com/512/1144/1144760.png",
-                targetName: targetInput.value.trim(), // A qui ? (Vide = tout le monde)
+                targetName: targetInput.value.trim(),
                 date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
             };
 
@@ -391,50 +173,34 @@
         function askForImage() {
             const url = prompt("URL de l'image :");
             if(url) {
-                // Pour l'image, on utilise la même logique d'expéditeur
                 const selector = document.getElementById('charSelector');
                 const selectedOption = selector.options[selector.selectedIndex];
-                const targetInput = document.getElementById('targetInput');
-
                 const msgData = {
-                    content: url,
-                    type: "image",
+                    content: url, type: "image",
                     senderName: selectedOption.value,
                     senderColor: selectedOption.dataset.color || "#ffffff",
                     senderAvatar: selectedOption.dataset.avatar,
-                    targetName: targetInput.value.trim(),
+                    targetName: document.getElementById('targetInput').value.trim(),
                     date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
                 };
                 socket.emit('message_rp', msgData);
             }
         }
 
-        document.getElementById("txtInput").addEventListener("keyup", function(event) {
-            if (event.key === "Enter") sendMessage();
-        });
+        document.getElementById("txtInput").addEventListener("keyup", function(e) { if (e.key === "Enter") sendMessage(); });
 
-        // --- 5. RÉCEPTION INTELLIGENTE ---
         socket.on('message_rp', function(msg) {
-            // LOGIQUE DE FILTRAGE PRIVÉ
-            // Le message est affiché SI :
-            // 1. Il n'a pas de cible (Public)
-            // 2. JE suis la cible (un de mes persos porte ce nom)
-            // 3. JE suis l'expéditeur (je vois mes propres chuchotements)
-            
+            // Filtrage MP
             const isPublic = !msg.targetName || msg.targetName === "";
-            const isForMe = myCharacters.some(c => c.name.toLowerCase() === msg.targetName.toLowerCase());
-            const isFromMe = myCharacters.some(c => c.name === msg.senderName) || (msg.senderName === "Narrateur" && document.getElementById('charSelector').value === "Narrateur");
-
-            // Si c'est privé et que ça ne me concerne pas, on arrête tout (on n'affiche rien)
-            if (!isPublic && !isForMe && !isFromMe) {
-                return; 
-            }
-
-            displayMessage(msg);
+            // Est-ce pour moi (un de mes persos ?) -> ICI tous les persos sont partagés donc "Pour moi" veut dire "Est-ce que j'incarne ce perso ?"
+            // Pour simplifier dans cette version partagée : On affiche tout ce qui est public, 
+            // ET les MP si je suis l'expéditeur OU le destinataire (Nom exact).
             
-            // On ne sauvegarde que ce qu'on a le droit de voir
-            chatHistory.push(msg);
-            saveData();
+            // Note : Comme on n'a pas de login, on ne peut pas savoir VRAIMENT qui est qui.
+            // Donc pour les MP, on affiche tout, mais on met le style visuel "Privé". 
+            // Pour un vrai système privé, il faudrait des comptes utilisateurs.
+            
+            displayMessage(msg);
             scrollToBottom();
         });
 
@@ -442,19 +208,13 @@
             const messagesDiv = document.getElementById('messages');
             const div = document.createElement('div');
             
-            // Style différent si privé
             const isPrivate = msg.targetName && msg.targetName !== "";
             div.className = isPrivate ? 'message private-msg' : 'message';
             
-            // Contenu (Texte ou Image)
-            let contentHtml = "";
-            if(msg.type === "image") {
-                contentHtml = `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">`;
-            } else {
-                contentHtml = `<div class="text-body">${msg.content}</div>`;
-            }
+            let contentHtml = msg.type === "image" ? 
+                `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">` : 
+                `<div class="text-body">${msg.content}</div>`;
 
-            // Badge privé
             let privateBadge = isPrivate ? `<span class="private-badge">🔒 Privé avec ${msg.targetName}</span>` : "";
 
             div.innerHTML = `
@@ -468,13 +228,12 @@
                     ${contentHtml}
                 </div>
             `;
-            
             messagesDiv.appendChild(div);
         }
 
         function scrollToBottom() {
-            const messagesDiv = document.getElementById('messages');
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            const d = document.getElementById('messages');
+            d.scrollTop = d.scrollHeight;
         }
     </script>
 </body>
