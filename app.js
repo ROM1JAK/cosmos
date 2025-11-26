@@ -45,24 +45,25 @@ socket.on('connect', () => {
     joinRoom('global');
 });
 
+socket.on('update_user_list', (users) => {
+    const listDiv = document.getElementById('online-users-list');
+    const countSpan = document.getElementById('online-count');
+    listDiv.innerHTML = "";
+    countSpan.textContent = users.length;
+    users.forEach(u => listDiv.innerHTML += `<div class="online-user"><span class="status-dot"></span><span>${u}</span></div>`);
+});
+
 socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId) socket.emit('request_history', currentRoomId); });
 
-// --- GESTION IMAGES AVATAR (BASE64) ---
+// --- GESTION IMAGES (BASE64) ---
 function previewFile(type) {
     const fileInput = document.getElementById(type === 'new' ? 'newCharFile' : 'editCharFile');
     const hiddenInput = document.getElementById(type === 'new' ? 'newCharBase64' : 'editCharBase64');
     const file = fileInput.files[0];
-    
     if (file) {
-        if (file.size > 2 * 1024 * 1024) {
-            alert("L'image est trop lourde (Max 2 Mo)");
-            fileInput.value = "";
-            return;
-        }
+        if (file.size > 2 * 1024 * 1024) { alert("Max 2 Mo"); fileInput.value = ""; return; }
         const reader = new FileReader();
-        reader.onloadend = function() {
-            hiddenInput.value = reader.result;
-        }
+        reader.onloadend = function() { hiddenInput.value = reader.result; }
         reader.readAsDataURL(file);
     }
 }
@@ -80,8 +81,7 @@ function submitImageUrl() {
             ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, 
             date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: null 
         });
-        document.getElementById('urlInput').value = "";
-        closeUrlModal();
+        document.getElementById('urlInput').value = ""; closeUrlModal();
     }
 }
 
@@ -102,6 +102,7 @@ function createRoomPrompt() {
     const name = prompt("Nom du salon :");
     if (name) socket.emit('create_room', { name, creatorId: PLAYER_ID, allowedCharacters: [] });
 }
+function deleteRoom(roomId) { if(confirm("ADMIN : Supprimer ?")) socket.emit('delete_room', roomId); }
 function joinRoom(roomId) {
     if (currentRoomId && currentRoomId !== roomId) socket.emit('leave_room', currentRoomId);
     currentRoomId = roomId;
@@ -118,8 +119,11 @@ function joinRoom(roomId) {
 socket.on('rooms_data', (rooms) => { allRooms = rooms; updateRoomListUI(); });
 function updateRoomListUI() {
     const list = document.getElementById('roomList');
-    list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''}" onclick="joinRoom('global')">Salon Global</div>`;
-    allRooms.forEach(room => { list.innerHTML += `<div class="room-item ${currentRoomId === room._id?'active':''}" onclick="joinRoom('${room._id}')">${room.name}</div>`; });
+    list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
+    allRooms.forEach(room => {
+        const delBtn = `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>`;
+        list.innerHTML += `<div class="room-item ${currentRoomId === room._id?'active':''}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
+    });
 }
 
 // --- PERSONNAGES ---
@@ -128,26 +132,22 @@ function createCharacter() {
     const role = document.getElementById('newCharRole').value.trim();
     const desc = document.getElementById('newCharDesc').value.trim();
     const color = document.getElementById('newCharColor').value;
-    // Priorité à l'image uploadée (Base64), sinon URL par défaut
     let avatar = document.getElementById('newCharBase64').value;
     if(!avatar) avatar = `https://ui-avatars.com/api/?name=${name}&background=random`;
-
     if(!name || !role) return alert("Nom et Rôle requis");
     socket.emit('create_char', { name, role, color, avatar, description: desc, ownerId: PLAYER_ID });
     toggleCreateForm();
-    // Reset
     document.getElementById('newCharBase64').value = "";
 }
 
-// Modif : On utilise l'ID (_id) pour identifier le perso
 function editCharacter(id, name, role, avatar, color, desc) {
     document.getElementById('editCharId').value = id;
-    document.getElementById('editCharOriginalName').value = name; // Gardé pour mettre à jour les messages
+    document.getElementById('editCharOriginalName').value = name;
     document.getElementById('editCharName').value = name;
     document.getElementById('editCharRole').value = role;
     document.getElementById('editCharDesc').value = desc; 
     document.getElementById('editCharColor').value = color;
-    document.getElementById('editCharBase64').value = ""; // Reset image
+    document.getElementById('editCharBase64').value = "";
     document.getElementById('edit-char-form').classList.remove('hidden');
     document.getElementById('create-char-form').classList.add('hidden');
 }
@@ -159,24 +159,9 @@ function submitEditCharacter() {
     const newRole = document.getElementById('editCharRole').value.trim();
     const newColor = document.getElementById('editCharColor').value;
     const newDesc = document.getElementById('editCharDesc').value.trim();
-    
-    // Si une nouvelle image est uploadée, on l'utilise, sinon on garde l'ancienne (qui n'est pas stockée dans le DOM input file mais qu'on devra gérer si vide)
-    // Astuce: Pour simplifier, si Base64 vide, on suppose qu'on garde l'avatar actuel. 
-    // Mais ici on n'a pas l'avatar actuel sous la main. On va ruser : 
-    // Le serveur fera "Si newAvatar est vide, ne pas changer".
-    // Dans ce code client, on envoie ce qu'on a.
     let newAvatar = document.getElementById('editCharBase64').value;
-    // Si pas de nouvelle image, on récupère l'URL actuelle depuis la liste (un peu hacky mais marche) ou on envoie une string vide pour dire "pas de changement"
-    if(!newAvatar) {
-        // On va chercher l'avatar actuel dans la liste myCharacters
-        const char = myCharacters.find(c => c._id === charId);
-        if(char) newAvatar = char.avatar;
-    }
-
-    socket.emit('edit_char', { 
-        charId, originalName, newName, newRole, newAvatar, newColor, newDescription: newDesc,
-        ownerId: PLAYER_ID, currentRoomId: currentRoomId
-    });
+    if(!newAvatar) { const char = myCharacters.find(c => c._id === charId); if(char) newAvatar = char.avatar; }
+    socket.emit('edit_char', { charId, originalName, newName, newRole, newAvatar, newColor, newDescription: newDesc, ownerId: PLAYER_ID, currentRoomId: currentRoomId });
     cancelEditCharacter();
 }
 
@@ -193,7 +178,6 @@ function updateUI() {
     select.innerHTML = '<option value="Narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
     myCharacters.forEach(char => {
         const safeDesc = (char.description || "").replace(/'/g, "\\'");
-        // On passe char._id à editCharacter
         list.innerHTML += `
             <div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="editCharacter('${char._id}', '${char.name}', '${char.role}', '${char.avatar}', '${char.color}', '${safeDesc}')">⚙️</button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;">✕</button></div></div>`;
         const opt = document.createElement('option');
@@ -238,27 +222,15 @@ function sendMessage() {
     const txt = document.getElementById('txtInput');
     const content = txt.value.trim();
     if (!content) return;
-    
-    if (currentContext && currentContext.type === 'edit') {
-        socket.emit('edit_message', { id: currentContext.data.id, newContent: content });
-        txt.value = ''; cancelContext(); return;
-    }
+    if (content === "/clear") { socket.emit('admin_clear_room', currentRoomId); txt.value = ''; return; }
+    if (currentContext && currentContext.type === 'edit') { socket.emit('edit_message', { id: currentContext.data.id, newContent: content }); txt.value = ''; cancelContext(); return; }
 
-    const sel = document.getElementById('charSelector');
-    const opt = sel.options[sel.selectedIndex];
-    
-    const msg = {
-        content, type: "text",
-        senderName: opt.value, senderColor: opt.dataset.color || "#fff", senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role,
-        ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId,
-        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
-        replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null
-    };
+    const sel = document.getElementById('charSelector'); const opt = sel.options[sel.selectedIndex];
+    const msg = { content, type: "text", senderName: opt.value, senderColor: opt.dataset.color || "#fff", senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role, ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null };
     socket.emit('message_rp', msg);
     txt.value = ''; cancelContext();
 }
 
-// --- DISPLAY ---
 socket.on('history_data', (msgs) => { document.getElementById('messages').innerHTML = ""; msgs.forEach(displayMessage); scrollToBottom(); });
 socket.on('message_rp', (msg) => { if(msg.roomId === currentRoomId) { displayMessage(msg); scrollToBottom(); } });
 socket.on('message_deleted', (msgId) => { const el = document.getElementById(`msg-${msgId}`); if(el) el.remove(); });
@@ -267,36 +239,26 @@ socket.on('message_updated', (data) => {
     if(el) { el.innerHTML = formatText(data.newContent); const meta = el.parentElement.parentElement.querySelector('.timestamp'); if(!meta.textContent.includes('(modifié)')) meta.textContent += ' (modifié)'; }
 });
 
-function formatText(text) {
-    if(!text) return "";
-    return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\*(.*?)\*/g, '<i>$1</i>').replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
-}
+function formatText(text) { if(!text) return ""; return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\*(.*?)\*/g, '<i>$1</i>').replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>'); }
 
 function displayMessage(msg) {
     const div = document.createElement('div');
-    div.className = 'message-container';
-    div.id = `msg-${msg._id}`;
+    div.className = 'message-container'; div.id = `msg-${msg._id}`;
     const canEdit = (msg.ownerId === PLAYER_ID);
-
     let actionsHTML = `<button class="action-btn" onclick="triggerReply('${msg._id}', '${msg.senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre">↩️</button>`;
-    if (msg.type === 'text' && canEdit) {
-        actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button><button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
-    }
-
+    if (msg.type === 'text' && canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button><button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
+    
     let replyHTML = "", spacingStyle = "";
-    if (msg.replyTo && msg.replyTo.author) {
-        spacingStyle = "margin-top: 15px;";
-        replyHTML = `<div class="reply-spine"></div><div class="reply-context-line" style="margin-left: 55px;"><span class="reply-name">@${msg.replyTo.author}</span><span class="reply-text">${msg.replyTo.content}</span></div>`;
-    }
-
+    if (msg.replyTo && msg.replyTo.author) { spacingStyle = "margin-top: 15px;"; replyHTML = `<div class="reply-spine"></div><div class="reply-context-line" style="margin-left: 55px;"><span class="reply-name">@${msg.replyTo.author}</span><span class="reply-text">${msg.replyTo.content}</span></div>`; }
+    
     let contentHTML = msg.type === "image" ? `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">` : `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
     const editedTag = msg.edited ? '<span class="edited-tag">(modifié)</span>' : '';
-
-    // NOTE: J'ai retiré le onclick profile sur l'avatar/nom dans l'affichage message car on n'a pas facilement l'ID du perso ici (seulement le nom).
-    // Pour faire propre, il faudrait stocker characterId dans le MessageSchema.
-    // Pour l'instant, on laisse le click inactif ou on cherche par nom (moins précis).
-    // Je remets la recherche par NOM pour le profil depuis le chat (comme avant), mais attention si doublon de nom.
-    div.innerHTML = `${replyHTML}<div class="msg-actions">${actionsHTML}</div><div style="position:relative; ${spacingStyle}"><img src="${msg.senderAvatar}" class="avatar-img"><div style="margin-left: 55px;"><div class="char-header"><span class="char-name" style="color: ${msg.senderColor}">${msg.senderName}</span><span class="char-role">${msg.senderRole || ""}</span><span class="timestamp">${msg.date} ${editedTag}</span></div>${contentHTML}</div></div>`;
+    
+    // Le hack ici : comme on ne stocke pas l'ID dans le message pour le moment, on fait une recherche approximative par nom pour le profil (pas idéal mais rapide)
+    // Pour faire propre : il faut stocker charId dans MessageSchema. J'utilise openProfile qui attend un nom pour l'instant coté serveur.
+    // Correction : J'ai mis à jour get_char_profile pour accepter un ID ou un Nom. Mais dans le message on a pas l'ID du char.
+    // On va utiliser le nom pour l'instant.
+    div.innerHTML = `${replyHTML}<div class="msg-actions">${actionsHTML}</div><div style="position:relative; ${spacingStyle}"><img src="${msg.senderAvatar}" class="avatar-img" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')"><div style="margin-left: 55px;"><div class="char-header"><span class="char-name" style="color: ${msg.senderColor}" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')">${msg.senderName}</span><span class="char-role">${msg.senderRole || ""}</span><span class="timestamp">${msg.date} ${editedTag}</span></div>${contentHTML}</div></div>`;
     document.getElementById('messages').appendChild(div);
 }
 
