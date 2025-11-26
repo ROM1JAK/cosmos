@@ -15,10 +15,8 @@
         <div class="modal-box">
             <h2>Connexion</h2>
             <p style="color:#aaa; font-size:0.9em;">Créez un compte ou connectez-vous.</p>
-            
             <input type="text" id="loginPseudoInput" placeholder="Votre Pseudo" class="modal-input">
             <input type="password" id="loginCodeInput" placeholder="Code Secret" class="modal-input">
-            
             <div class="modal-buttons">
                 <button onclick="submitLogin()" class="btn-primary full-width">Valider</button>
                 <button onclick="closeLoginModal()" class="btn-text">Fermer</button>
@@ -49,6 +47,7 @@
     </button>
 
     <div id="app-container">
+        
         <div id="sidebar">
             <div class="sidebar-header">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -56,7 +55,7 @@
                     <button class="btn-close-sidebar" onclick="toggleSidebar()">✕</button>
                 </div>
                 <div id="player-id-display">Invité</div>
-                <button class="btn-login" onclick="openLoginModal()">Compte</button>
+                <button class="btn-login" onclick="openLoginModal()">🔑 Compte</button>
             </div>
 
             <div class="sidebar-section">
@@ -123,12 +122,21 @@
 
                 <div id="input-zone">
                     <select id="charSelector"></select>
-                    <input id="txtInput" type="text" autocomplete="off" placeholder="Message... (/clear pour vider)" />
+                    <input id="txtInput" type="text" autocomplete="off" placeholder="Message..." />
                     <button class="btn-icon" onclick="askForImage()">🖼️</button>
                     <button class="btn-send" onclick="sendMessage()">➤</button>
                 </div>
             </div>
         </div>
+
+        <div id="users-sidebar">
+            <div class="users-header">
+                <h3>EN LIGNE — <span id="online-count">0</span></h3>
+            </div>
+            <div id="online-users-list">
+                </div>
+        </div>
+
     </div>
     
     <script src="/socket.io/socket.io.js"></script>
