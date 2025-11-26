@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RP Verse Modulaire</title>
+    <title>RP Verse</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
-    
     <link rel="stylesheet" href="style.css"> 
 </head>
 <body>
@@ -15,16 +14,12 @@
     <div id="app-container">
         
         <div id="sidebar">
-            <h3 id="player-id-display">ID Joueur: Chargement...</h3>
-
-<button onclick="loginUser()" style="width:100%; background:#444; border:1px solid #666; color:#ccc; padding:5px; margin-bottom:10px; cursor:pointer; font-size:0.8em; border-radius:4px;">
-    🔑 Se connecter / Changer d'ID
-</button>
-
-<hr style="border:0; border-top:1px solid #333; margin: 20px 0;">
-            <h3 id="player-id-display">ID Joueur: Chargement...</h3>
+            <h3 id="player-id-display" style="font-size:0.8em; color:#888;">Chargement...</h3>
+            <button onclick="loginUser()" style="width:100%; background:#333; border:1px solid #555; color:#ddd; padding:8px; margin-bottom:15px; cursor:pointer; font-size:0.8em; border-radius:6px; font-weight:bold;">
+                🔑 Se connecter / Changer de compte
+            </button>
             
-            <hr style="border:0; border-top:1px solid #333; margin: 20px 0;">
+            <hr style="border:0; border-top:1px solid #333; margin: 10px 0 20px 0;">
 
             <h3>Création de Personnage</h3>
             <div class="create-form">
@@ -37,28 +32,28 @@
             
             <hr style="border:0; border-top:1px solid #333; margin: 20px 0;">
 
-            <h3>Mes Personnages Privés</h3>
+            <h3>Mes Personnages</h3>
             <div id="myCharList"></div>
 
             <hr style="border:0; border-top:1px solid #333; margin: 20px 0;">
 
             <div id="room-list-section">
-                <h3>Salons de Discussion</h3>
-                <div id="roomList">
-                    </div>
-                <button class="btn-primary" style="margin-top:15px; background:#3ba55c;" onclick="createRoomPrompt()">+ Créer un Salon</button>
+                <h3>Salons</h3>
+                <div id="roomList"></div>
+                <button class="btn-primary" style="margin-top:15px; background:#3ba55c;" onclick="createRoomPrompt()">+ Nouveau Salon</button>
             </div>
         </div>
 
         <div id="chat-area">
             <h3 id="currentRoomName" style="padding: 15px 40px; margin: 0; background:rgba(0,0,0,0.2);">Salon Global</h3>
             <div id="messages"></div>
+            
             <div id="input-zone">
                 <div class="controls-group">
                     <select id="charSelector"><option value="Narrateur">Narrateur</option></select>
                     <input type="text" id="targetInput" placeholder="@ Public (ou nom du perso)" style="margin:0; padding: 8px; font-size:0.8em;">
                 </div>
-                <button class="btn-icon" onclick="askForImage()">📷</button>
+                <button class="btn-icon" onclick="askForImage()" title="Envoyer une image par lien">📷</button>
                 <input id="txtInput" type="text" autocomplete="off" placeholder="Écrivez votre RP..." />
                 <button class="btn-icon" onclick="sendMessage()" style="background: var(--accent-color); color:white;">➤</button>
             </div>
@@ -66,8 +61,6 @@
     </div>
     
     <script src="/socket.io/socket.io.js"></script>
-    
     <script src="app.js"></script> 
 </body>
-
 </html>
