@@ -2,68 +2,85 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>RP Verse</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css"> 
 </head>
 <body>
 
-    <button id="menu-toggle-btn" onclick="toggleSidebar()">☰</button>
+    <button id="menu-toggle-btn" onclick="toggleSidebar()">
+        <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+    </button>
 
     <div id="app-container">
         
         <div id="sidebar">
-            <h3 id="player-id-display" style="font-size:0.8em; color:#888;">Chargement...</h3>
-            <button onclick="loginUser()" style="width:100%; background:#333; border:1px solid #555; color:#ddd; padding:8px; margin-bottom:15px; cursor:pointer; font-size:0.8em; border-radius:6px; font-weight:bold;">
-                🔑 Se connecter / Changer de compte
-            </button>
-            
-            <hr style="border:0; border-top:1px solid #333; margin: 10px 0 20px 0;">
-
-            <h3>Création de Personnage</h3>
-            <div class="create-form">
-                <input type="text" id="newCharName" placeholder="Nom du personnage" required>
-                <input type="text" id="newCharRole" placeholder="Rôle (Ex: Guerrier, Marchand)" required>
-                <input type="text" id="newCharAvatar" placeholder="URL Image (Optionnel)">
-                <input type="color" id="newCharColor" value="#5c7cfa" style="height:30px; padding:0;">
-                <button onclick="createCharacter()" class="btn-primary">Créer le Perso</button>
+            <div class="sidebar-header">
+                <h2 class="app-title">RP Verse</h2>
+                <div id="player-id-display">Chargement...</div>
+                <button class="btn-login" onclick="loginUser()">🔑 Changer de compte</button>
             </div>
-            
-            <hr style="border:0; border-top:1px solid #333; margin: 20px 0;">
 
-            <h3>Mes Personnages</h3>
-            <div id="myCharList"></div>
-
-            <hr style="border:0; border-top:1px solid #333; margin: 20px 0;">
-
-            <div id="room-list-section">
+            <div class="sidebar-section">
                 <h3>Salons</h3>
                 <div id="roomList"></div>
-                <button class="btn-primary" style="margin-top:15px; background:#3ba55c;" onclick="createRoomPrompt()">+ Nouveau Salon</button>
+                <button class="btn-add-room" onclick="createRoomPrompt()">+ Créer Salon</button>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Mes Personnages</h3>
+                <div id="myCharList"></div>
+                
+                <div class="create-form-toggle" onclick="toggleCreateForm()">+ Nouveau Personnage</div>
+                <div id="create-char-form" class="create-form hidden">
+                    <input type="text" id="newCharName" placeholder="Nom">
+                    <input type="text" id="newCharRole" placeholder="Rôle/Métier">
+                    <input type="text" id="newCharAvatar" placeholder="Lien Avatar (URL)">
+                    <div class="color-picker-wrapper">
+                        <span>Couleur :</span>
+                        <input type="color" id="newCharColor" value="#5c7cfa">
+                    </div>
+                    <button onclick="createCharacter()" class="btn-primary">Valider</button>
+                </div>
             </div>
         </div>
 
         <div id="chat-area">
-            <h3 id="currentRoomName" style="padding: 15px 40px; margin: 0; background:rgba(0,0,0,0.2);">Salon Global</h3>
-            <div id="messages"></div>
-            
-           <div id="reply-bar">
-                <div class="reply-bar-content">
-                    <span>Répondre à </span>
-                    <strong id="reply-target-name" style="color:white;">Quelqu'un</strong>
-                </div>
-                <button class="btn-close-reply" onclick="cancelReply()">✕</button>
+            <div class="chat-header">
+                <span class="header-hash">#</span>
+                <h3 id="currentRoomName">Salon Global</h3>
             </div>
 
-            <div id="input-zone">
-                <div class="controls-group">
-                    <select id="charSelector"><option value="Narrateur">Narrateur</option></select>
-                    <input type="text" id="targetInput" placeholder="@ Public (ou nom du perso)" style="margin:0; padding: 8px; font-size:0.8em;">
+            <div id="messages"></div>
+            
+            <div id="input-wrapper">
+                
+                <div id="reply-bar">
+                    <div class="reply-info">
+                        <span class="reply-icon">↩️</span>
+                        <span>Répondre à <strong id="reply-target-name">Pseudo</strong></span>
+                    </div>
+                    <button class="btn-close-reply" onclick="cancelReply()">✕</button>
                 </div>
-                <button class="btn-icon" onclick="askForImage()" title="Envoyer une image par lien">📷</button>
-                <input id="txtInput" type="text" autocomplete="off" placeholder="Écrivez votre RP..." />
-                <button class="btn-icon" onclick="sendMessage()" style="background: var(--accent-color); color:white;">➤</button>
+
+                <div id="input-zone">
+                    <div class="input-addon">
+                        <select id="charSelector"></select>
+                    </div>
+
+                    <div class="input-addon target-addon">
+                        <span class="at-symbol">@</span>
+                        <input type="text" id="targetInput" placeholder="Public">
+                    </div>
+
+                    <input id="txtInput" type="text" autocomplete="off" placeholder="Envoyer un message..." />
+                    
+                    <div class="input-actions">
+                        <button class="btn-icon" onclick="askForImage()" title="Image">🖼️</button>
+                        <button class="btn-send" onclick="sendMessage()">Envoyer</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -72,4 +89,3 @@
     <script src="app.js"></script> 
 </body>
 </html>
-
