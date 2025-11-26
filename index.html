@@ -48,6 +48,14 @@
             <h3 id="currentRoomName" style="padding: 15px 40px; margin: 0; background:rgba(0,0,0,0.2);">Salon Global</h3>
             <div id="messages"></div>
             
+           <div id="reply-bar">
+                <div class="reply-bar-content">
+                    <span>Répondre à </span>
+                    <strong id="reply-target-name" style="color:white;">Quelqu'un</strong>
+                </div>
+                <button class="btn-close-reply" onclick="cancelReply()">✕</button>
+            </div>
+
             <div id="input-zone">
                 <div class="controls-group">
                     <select id="charSelector"><option value="Narrateur">Narrateur</option></select>
@@ -64,3 +72,4 @@
     <script src="app.js"></script> 
 </body>
 </html>
+
