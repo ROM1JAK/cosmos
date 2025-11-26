@@ -10,7 +10,6 @@
 <body>
 
     <div id="mobile-overlay" onclick="toggleSidebar()"></div>
-
     <button id="menu-toggle-btn" onclick="toggleSidebar()">
         <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
     </button>
@@ -24,29 +23,43 @@
                     <button class="btn-close-sidebar" onclick="toggleSidebar()">✕</button>
                 </div>
                 <div id="player-id-display">Chargement...</div>
-                <button class="btn-login" onclick="loginUser()">🔑 Changer de compte</button>
+                <button class="btn-login" onclick="loginUser()">🔑 Compte</button>
             </div>
 
             <div class="sidebar-section">
                 <h3>Salons</h3>
                 <div id="roomList"></div>
-                <button class="btn-add-room" onclick="createRoomPrompt()">+ Créer Salon</button>
+                <button class="btn-add-room" onclick="createRoomPrompt()">+ Salon</button>
             </div>
 
             <div class="sidebar-section">
                 <h3>Mes Personnages</h3>
                 <div id="myCharList"></div>
-                
                 <div class="create-form-toggle" onclick="toggleCreateForm()">+ Nouveau Personnage</div>
+                
                 <div id="create-char-form" class="create-form hidden">
                     <input type="text" id="newCharName" placeholder="Nom">
-                    <input type="text" id="newCharRole" placeholder="Rôle/Métier">
-                    <input type="text" id="newCharAvatar" placeholder="Lien Avatar (URL)">
+                    <input type="text" id="newCharRole" placeholder="Rôle">
+                    <input type="text" id="newCharAvatar" placeholder="URL Avatar">
                     <div class="color-picker-wrapper">
-                        <span>Couleur :</span>
-                        <input type="color" id="newCharColor" value="#5c7cfa">
+                        <span>Couleur:</span> <input type="color" id="newCharColor" value="#5c7cfa">
                     </div>
-                    <button onclick="createCharacter()" class="btn-primary">Valider</button>
+                    <button onclick="createCharacter()" class="btn-primary">Créer</button>
+                </div>
+
+                <div id="edit-char-form" class="create-form hidden" style="border: 1px solid #eab308;">
+                    <h4 style="margin:0 0 5px 0; font-size:0.8em; color:#eab308;">Modifier Personnage</h4>
+                    <input type="hidden" id="editCharOriginalName">
+                    <input type="text" id="editCharName" placeholder="Nouveau Nom">
+                    <input type="text" id="editCharRole" placeholder="Nouveau Rôle">
+                    <input type="text" id="editCharAvatar" placeholder="Nouvel Avatar">
+                    <div class="color-picker-wrapper">
+                        <span>Couleur:</span> <input type="color" id="editCharColor">
+                    </div>
+                    <div style="display:flex; gap:5px;">
+                        <button onclick="submitEditCharacter()" class="btn-primary" style="background:#eab308; color:black;">Sauver</button>
+                        <button onclick="cancelEditCharacter()" class="btn-primary" style="background:#444;">Annuler</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -58,30 +71,28 @@
             </div>
 
             <div id="messages"></div>
+
+            <div id="typing-indicator"></div>
             
             <div id="input-wrapper">
-                <div id="reply-bar">
-                    <div class="reply-info">
-                        <span class="reply-icon">↩️</span>
-                        <span>Répondre à <strong id="reply-target-name">Pseudo</strong></span>
+                
+                <div id="context-bar" class="hidden">
+                    <div class="context-info">
+                        <span id="context-icon">↩️</span>
+                        <span id="context-text">Répondre à ...</span>
                     </div>
-                    <button class="btn-close-reply" onclick="cancelReply()">✕</button>
+                    <button class="btn-close-reply" onclick="cancelContext()">✕</button>
                 </div>
 
                 <div id="input-zone">
-                    <div class="input-top-row">
-                        <select id="charSelector"></select>
-                        <div class="target-addon">
-                            <span class="at-symbol">@</span>
-                            <input type="text" id="targetInput" placeholder="Public">
-                        </div>
-                    </div>
-
-                    <div class="input-bottom-row">
-                        <input id="txtInput" type="text" autocomplete="off" placeholder="Message..." />
-                        <button class="btn-icon" onclick="askForImage()">🖼️</button>
-                        <button class="btn-send" onclick="sendMessage()">➤</button>
-                    </div>
+                    <select id="charSelector"></select>
+                    
+                    <input id="txtInput" type="text" autocomplete="off" placeholder="Message..." />
+                    
+                    <button class="btn-icon" onclick="askForImage()" title="Image">🖼️</button>
+                    <button class="btn-send" onclick="sendMessage()">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+                    </button>
                 </div>
             </div>
         </div>
