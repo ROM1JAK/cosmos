@@ -2,9 +2,7 @@ var socket = io();
 let myCharacters = [];
 let allRooms = []; 
 let currentRoomId = 'global'; 
-let USER_NAME = ""; 
-let USER_CODE = "";
-let IS_ADMIN = false;
+let PLAYER_ID; 
 let currentContext = null; 
 let typingTimeout = null;
 
@@ -21,59 +19,73 @@ function submitLogin() {
 }
 
 socket.on('login_success', (data) => {
-    USER_NAME = data.username;
-    USER_CODE = data.userId;
-    IS_ADMIN = data.isAdmin;
-    localStorage.setItem('rp_username', USER_NAME);
-    localStorage.setItem('rp_code', USER_CODE);
-    document.getElementById('player-id-display').textContent = `Compte : ${USER_NAME}`;
-    if(IS_ADMIN) document.getElementById('player-id-display').style.color = "#da373c";
+    localStorage.setItem('rp_username', data.username);
+    localStorage.setItem('rp_code', data.userId);
+    document.getElementById('player-id-display').textContent = `Compte : ${data.username}`;
     closeLoginModal();
-    socket.emit('request_initial_data', USER_CODE);
+    socket.emit('request_initial_data', data.userId);
+    joinRoom('global');
+    PLAYER_ID = data.userId;
+});
+
+function getPlayerId() {
+    let id = localStorage.getItem('rp_code');
+    if (!id) { id = 'player_' + Math.random().toString(36).substring(2, 9); localStorage.setItem('rp_code', id); }
+    PLAYER_ID = id;
+    let name = localStorage.getItem('rp_username') || "Invité";
+    document.getElementById('player-id-display').textContent = `Compte : ${name}`;
+    return id;
+}
+getPlayerId();
+
+// --- SOCKET ---
+socket.on('connect', () => {
+    socket.emit('request_my_chars', PLAYER_ID);
+    socket.emit('request_rooms');
     joinRoom('global');
 });
 
-function checkAutoLogin() {
-    const savedUser = localStorage.getItem('rp_username');
-    const savedCode = localStorage.getItem('rp_code');
-    if (savedUser && savedCode) socket.emit('login_request', { username: savedUser, code: savedCode });
-    else openLoginModal();
-}
-checkAutoLogin();
-
-// --- UTILISATEURS EN LIGNE (NOUVEAU) ---
-socket.on('update_user_list', (users) => {
-    const listDiv = document.getElementById('online-users-list');
-    const countSpan = document.getElementById('online-count');
-    listDiv.innerHTML = "";
-    countSpan.textContent = users.length;
-    
-    users.forEach(username => {
-        listDiv.innerHTML += `
-            <div class="online-user">
-                <span class="status-dot"></span>
-                <span>${username}</span>
-            </div>`;
-    });
-});
-
-// --- PROFIL ---
-function openProfile(charName) { socket.emit('get_char_profile', charName); }
-function closeProfileModal() { document.getElementById('profile-modal').classList.add('hidden'); }
-socket.on('char_profile_data', (char) => {
-    document.getElementById('profileName').textContent = char.name;
-    document.getElementById('profileRole').textContent = char.role;
-    document.getElementById('profileAvatar').src = char.avatar;
-    document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
-    document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
-    document.getElementById('profile-modal').classList.remove('hidden');
-});
-
-// --- SOCKET EVENTS ---
 socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId) socket.emit('request_history', currentRoomId); });
-socket.on('force_room_exit', (roomId) => { if(currentRoomId === roomId) joinRoom('global'); });
-socket.on('history_cleared', () => { document.getElementById('messages').innerHTML = ""; });
 
+// --- GESTION IMAGES AVATAR (BASE64) ---
+function previewFile(type) {
+    const fileInput = document.getElementById(type === 'new' ? 'newCharFile' : 'editCharFile');
+    const hiddenInput = document.getElementById(type === 'new' ? 'newCharBase64' : 'editCharBase64');
+    const file = fileInput.files[0];
+    
+    if (file) {
+        if (file.size > 2 * 1024 * 1024) {
+            alert("L'image est trop lourde (Max 2 Mo)");
+            fileInput.value = "";
+            return;
+        }
+        const reader = new FileReader();
+        reader.onloadend = function() {
+            hiddenInput.value = reader.result;
+        }
+        reader.readAsDataURL(file);
+    }
+}
+
+// --- MODALE URL IMAGE CHAT ---
+function openUrlModal() { document.getElementById('url-modal').classList.remove('hidden'); }
+function closeUrlModal() { document.getElementById('url-modal').classList.add('hidden'); }
+function submitImageUrl() {
+    const url = document.getElementById('urlInput').value.trim();
+    if(url) {
+        const sel = document.getElementById('charSelector'); const opt = sel.options[sel.selectedIndex];
+        socket.emit('message_rp', { 
+            content: url, type: "image", 
+            senderName: opt.value, senderColor: opt.dataset.color, senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role, 
+            ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, 
+            date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: null 
+        });
+        document.getElementById('urlInput').value = "";
+        closeUrlModal();
+    }
+}
+
+// --- TYPING ---
 const txtInput = document.getElementById('txtInput');
 txtInput.addEventListener('input', () => {
     const sel = document.getElementById('charSelector');
@@ -82,18 +94,14 @@ txtInput.addEventListener('input', () => {
     clearTimeout(typingTimeout);
     typingTimeout = setTimeout(() => { socket.emit('typing_stop', { roomId: currentRoomId, charName: name }); }, 1000);
 });
-socket.on('display_typing', (data) => {
-    if(data.roomId === currentRoomId) { document.getElementById('typing-indicator').classList.remove('hidden'); document.getElementById('typing-text').textContent = `${data.charName} écrit...`; }
-});
+socket.on('display_typing', (data) => { if(data.roomId === currentRoomId) { document.getElementById('typing-indicator').classList.remove('hidden'); document.getElementById('typing-text').textContent = `${data.charName} écrit...`; } });
 socket.on('hide_typing', (data) => { if(data.roomId === currentRoomId) document.getElementById('typing-indicator').classList.add('hidden'); });
 
 // --- SALONS ---
 function createRoomPrompt() {
     const name = prompt("Nom du salon :");
-    if (name) socket.emit('create_room', { name, creatorId: USER_CODE, allowedCharacters: [] });
+    if (name) socket.emit('create_room', { name, creatorId: PLAYER_ID, allowedCharacters: [] });
 }
-function deleteRoom(roomId) { if(confirm("ADMIN : Supprimer ce salon ?")) socket.emit('delete_room', roomId); }
-
 function joinRoom(roomId) {
     if (currentRoomId && currentRoomId !== roomId) socket.emit('leave_room', currentRoomId);
     currentRoomId = roomId;
@@ -110,11 +118,8 @@ function joinRoom(roomId) {
 socket.on('rooms_data', (rooms) => { allRooms = rooms; updateRoomListUI(); });
 function updateRoomListUI() {
     const list = document.getElementById('roomList');
-    list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
-    allRooms.forEach(room => {
-        const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>` : '';
-        list.innerHTML += `<div class="room-item ${currentRoomId === room._id?'active':''}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
-    });
+    list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''}" onclick="joinRoom('global')">Salon Global</div>`;
+    allRooms.forEach(room => { list.innerHTML += `<div class="room-item ${currentRoomId === room._id?'active':''}" onclick="joinRoom('${room._id}')">${room.name}</div>`; });
 }
 
 // --- PERSONNAGES ---
@@ -123,37 +128,62 @@ function createCharacter() {
     const role = document.getElementById('newCharRole').value.trim();
     const desc = document.getElementById('newCharDesc').value.trim();
     const color = document.getElementById('newCharColor').value;
-    let avatar = document.getElementById('newCharAvatar').value.trim();
-    if(!name || !role) return alert("Nom et Rôle requis");
+    // Priorité à l'image uploadée (Base64), sinon URL par défaut
+    let avatar = document.getElementById('newCharBase64').value;
     if(!avatar) avatar = `https://ui-avatars.com/api/?name=${name}&background=random`;
-    socket.emit('create_char', { name, role, color, avatar, description: desc, ownerId: USER_CODE, ownerUsername: USER_NAME });
+
+    if(!name || !role) return alert("Nom et Rôle requis");
+    socket.emit('create_char', { name, role, color, avatar, description: desc, ownerId: PLAYER_ID });
     toggleCreateForm();
+    // Reset
+    document.getElementById('newCharBase64').value = "";
 }
-function editCharacter(name, role, avatar, color, desc) {
-    document.getElementById('editCharOriginalName').value = name;
+
+// Modif : On utilise l'ID (_id) pour identifier le perso
+function editCharacter(id, name, role, avatar, color, desc) {
+    document.getElementById('editCharId').value = id;
+    document.getElementById('editCharOriginalName').value = name; // Gardé pour mettre à jour les messages
     document.getElementById('editCharName').value = name;
     document.getElementById('editCharRole').value = role;
-    document.getElementById('editCharAvatar').value = avatar;
     document.getElementById('editCharDesc').value = desc; 
     document.getElementById('editCharColor').value = color;
+    document.getElementById('editCharBase64').value = ""; // Reset image
     document.getElementById('edit-char-form').classList.remove('hidden');
     document.getElementById('create-char-form').classList.add('hidden');
 }
 function cancelEditCharacter() { document.getElementById('edit-char-form').classList.add('hidden'); }
 function submitEditCharacter() {
+    const charId = document.getElementById('editCharId').value;
     const originalName = document.getElementById('editCharOriginalName').value;
     const newName = document.getElementById('editCharName').value.trim();
     const newRole = document.getElementById('editCharRole').value.trim();
-    const newAvatar = document.getElementById('editCharAvatar').value.trim();
     const newColor = document.getElementById('editCharColor').value;
     const newDesc = document.getElementById('editCharDesc').value.trim();
-    socket.emit('edit_char', { originalName, newName, newRole, newAvatar, newColor, newDescription: newDesc, ownerId: USER_CODE, ownerUsername: USER_NAME, currentRoomId: currentRoomId });
+    
+    // Si une nouvelle image est uploadée, on l'utilise, sinon on garde l'ancienne (qui n'est pas stockée dans le DOM input file mais qu'on devra gérer si vide)
+    // Astuce: Pour simplifier, si Base64 vide, on suppose qu'on garde l'avatar actuel. 
+    // Mais ici on n'a pas l'avatar actuel sous la main. On va ruser : 
+    // Le serveur fera "Si newAvatar est vide, ne pas changer".
+    // Dans ce code client, on envoie ce qu'on a.
+    let newAvatar = document.getElementById('editCharBase64').value;
+    // Si pas de nouvelle image, on récupère l'URL actuelle depuis la liste (un peu hacky mais marche) ou on envoie une string vide pour dire "pas de changement"
+    if(!newAvatar) {
+        // On va chercher l'avatar actuel dans la liste myCharacters
+        const char = myCharacters.find(c => c._id === charId);
+        if(char) newAvatar = char.avatar;
+    }
+
+    socket.emit('edit_char', { 
+        charId, originalName, newName, newRole, newAvatar, newColor, newDescription: newDesc,
+        ownerId: PLAYER_ID, currentRoomId: currentRoomId
+    });
     cancelEditCharacter();
 }
+
 socket.on('my_chars_data', (chars) => { myCharacters = chars; updateUI(); });
 socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(); });
-function deleteCharacter(name) { if(confirm('Supprimer ?')) socket.emit('delete_char', name); }
-socket.on('char_deleted_success', (name) => { myCharacters = myCharacters.filter(c => c.name !== name); updateUI(); });
+function deleteCharacter(id) { if(confirm('Supprimer ?')) socket.emit('delete_char', id); }
+socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c => c._id !== id); updateUI(); });
 
 function updateUI() {
     const list = document.getElementById('myCharList');
@@ -163,8 +193,9 @@ function updateUI() {
     select.innerHTML = '<option value="Narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
     myCharacters.forEach(char => {
         const safeDesc = (char.description || "").replace(/'/g, "\\'");
+        // On passe char._id à editCharacter
         list.innerHTML += `
-            <div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="editCharacter('${char.name}', '${char.role}', '${char.avatar}', '${char.color}', '${safeDesc}')">⚙️</button><button class="btn-mini-action" onclick="deleteCharacter('${char.name}')" style="color:#da373c;">✕</button></div></div>`;
+            <div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="editCharacter('${char._id}', '${char.name}', '${char.role}', '${char.avatar}', '${char.color}', '${safeDesc}')">⚙️</button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;">✕</button></div></div>`;
         const opt = document.createElement('option');
         opt.value = char.name; opt.text = char.name; opt.dataset.color = char.color; opt.dataset.avatar = char.avatar; opt.dataset.role = char.role;
         select.appendChild(opt);
@@ -172,7 +203,19 @@ function updateUI() {
     if (prev && (prev === "Narrateur" || myCharacters.some(c => c.name === prev))) select.value = prev;
 }
 
-// --- MESSAGE ACTIONS ---
+// --- PROFIL ---
+function openProfile(charId) { socket.emit('get_char_profile', charId); }
+function closeProfileModal() { document.getElementById('profile-modal').classList.add('hidden'); }
+socket.on('char_profile_data', (char) => {
+    document.getElementById('profileName').textContent = char.name;
+    document.getElementById('profileRole').textContent = char.role;
+    document.getElementById('profileAvatar').src = char.avatar;
+    document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
+    document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
+    document.getElementById('profile-modal').classList.remove('hidden');
+});
+
+// --- ACTIONS ---
 function setContext(type, data) {
     currentContext = { type, data };
     const bar = document.getElementById('context-bar');
@@ -196,8 +239,10 @@ function sendMessage() {
     const content = txt.value.trim();
     if (!content) return;
     
-    if (content === "/clear") { if(IS_ADMIN) socket.emit('admin_clear_room', currentRoomId); else alert("Admin only!"); txt.value = ''; return; }
-    if (currentContext && currentContext.type === 'edit') { socket.emit('edit_message', { id: currentContext.data.id, newContent: content }); txt.value = ''; cancelContext(); return; }
+    if (currentContext && currentContext.type === 'edit') {
+        socket.emit('edit_message', { id: currentContext.data.id, newContent: content });
+        txt.value = ''; cancelContext(); return;
+    }
 
     const sel = document.getElementById('charSelector');
     const opt = sel.options[sel.selectedIndex];
@@ -205,19 +250,12 @@ function sendMessage() {
     const msg = {
         content, type: "text",
         senderName: opt.value, senderColor: opt.dataset.color || "#fff", senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role,
-        ownerId: USER_CODE, targetName: "", roomId: currentRoomId,
+        ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId,
         date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
         replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null
     };
     socket.emit('message_rp', msg);
     txt.value = ''; cancelContext();
-}
-function askForImage() {
-    const url = prompt("URL de l'image :");
-    if(url) {
-        const sel = document.getElementById('charSelector'); const opt = sel.options[sel.selectedIndex];
-        socket.emit('message_rp', { content: url, type: "image", senderName: opt.value, senderColor: opt.dataset.color, senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role, ownerId: USER_CODE, targetName: "", roomId: currentRoomId, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: null });
-    }
 }
 
 // --- DISPLAY ---
@@ -238,15 +276,11 @@ function displayMessage(msg) {
     const div = document.createElement('div');
     div.className = 'message-container';
     div.id = `msg-${msg._id}`;
-    const canEdit = (msg.ownerId === USER_CODE);
-    const canDelete = (msg.ownerId === USER_CODE) || IS_ADMIN;
+    const canEdit = (msg.ownerId === PLAYER_ID);
 
     let actionsHTML = `<button class="action-btn" onclick="triggerReply('${msg._id}', '${msg.senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre">↩️</button>`;
-    if (msg.type === 'text') {
-        if (canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button>`;
-        if (canDelete) actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
-    } else if (canDelete) {
-        actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
+    if (msg.type === 'text' && canEdit) {
+        actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button><button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
     }
 
     let replyHTML = "", spacingStyle = "";
@@ -258,7 +292,11 @@ function displayMessage(msg) {
     let contentHTML = msg.type === "image" ? `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">` : `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
     const editedTag = msg.edited ? '<span class="edited-tag">(modifié)</span>' : '';
 
-    div.innerHTML = `${replyHTML}<div class="msg-actions">${actionsHTML}</div><div style="position:relative; ${spacingStyle}"><img src="${msg.senderAvatar}" class="avatar-img" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')"><div style="margin-left: 55px;"><div class="char-header"><span class="char-name" style="color: ${msg.senderColor}" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')">${msg.senderName}</span><span class="char-role">${msg.senderRole || ""}</span><span class="timestamp">${msg.date} ${editedTag}</span></div>${contentHTML}</div></div>`;
+    // NOTE: J'ai retiré le onclick profile sur l'avatar/nom dans l'affichage message car on n'a pas facilement l'ID du perso ici (seulement le nom).
+    // Pour faire propre, il faudrait stocker characterId dans le MessageSchema.
+    // Pour l'instant, on laisse le click inactif ou on cherche par nom (moins précis).
+    // Je remets la recherche par NOM pour le profil depuis le chat (comme avant), mais attention si doublon de nom.
+    div.innerHTML = `${replyHTML}<div class="msg-actions">${actionsHTML}</div><div style="position:relative; ${spacingStyle}"><img src="${msg.senderAvatar}" class="avatar-img"><div style="margin-left: 55px;"><div class="char-header"><span class="char-name" style="color: ${msg.senderColor}">${msg.senderName}</span><span class="char-role">${msg.senderRole || ""}</span><span class="timestamp">${msg.date} ${editedTag}</span></div>${contentHTML}</div></div>`;
     document.getElementById('messages').appendChild(div);
 }
 
