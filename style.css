@@ -30,8 +30,24 @@ input, select { width: 100%; margin-bottom: 10px; padding: 12px; background: var
 
 
 /* CHAT AREA */
-#chat-area { flex: 1; display: flex; flex-direction: column; position: relative; background: radial-gradient(circle at top right, #25262b 0%, #1a1b1e 40%); }
-#messages { flex: 1; overflow-y: scroll; padding: 20px 40px; display: flex; flex-direction: column; gap: 20px; }
+#chat-area { 
+    flex: 1; 
+    display: flex; 
+    flex-direction: column; 
+    position: relative; 
+    height: 100vh; /* Force la hauteur totale de l'écran */
+    overflow: hidden; /* Empêche la page entière de scroller */
+    background: radial-gradient(circle at top right, #25262b 0%, #1a1b1e 40%); 
+}
+#messages { 
+    flex: 1; /* Prend tout l'espace disponible */
+    overflow-y: auto; /* Active le scroll uniquement ici */
+    padding: 20px 40px; 
+    display: flex; 
+    flex-direction: column; 
+    gap: 20px;
+    min-height: 0; /* Astuce CSS cruciale pour que le scroll marche dans Flexbox */
+}
 #input-zone { padding: 15px; background-color: var(--sidebar-bg); display: flex; gap: 10px; align-items: center; border-top: 1px solid #333; }
 .controls-group { display: flex; flex-direction: column; gap: 5px; width: 180px; }
 .btn-icon { background: #373a40; color: #ccc; border: none; width: 45px; height: 45px; border-radius: 8px; font-size: 1.2em; cursor: pointer;}
@@ -62,4 +78,5 @@ input, select { width: 100%; margin-bottom: 10px; padding: 12px; background: var
     #menu-toggle-btn { display: block; }
     #input-zone { padding: 10px; flex-wrap: wrap; }
     .controls-group { order: 1; width: 100%; flex-direction: row; }
+
 }
