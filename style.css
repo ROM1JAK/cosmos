@@ -1,0 +1,65 @@
+:root { /* Couleurs et Variables */
+    --bg-color: #1a1b1e; --sidebar-bg: #25262b; --input-bg: #2c2e33; --accent-color: #5c7cfa; --text-color: #c1c2c5; --msg-private-border: #ff6b6b; --danger-color: #ff6b6b;
+}
+
+/* --- GLOBAL & STRUCTURE --- */
+body { background-color: var(--bg-color); color: var(--text-color); font-family: 'Inter', sans-serif; display: flex; height: 100vh; margin: 0; overflow: hidden; }
+
+/* Conteneur principal: 2 colonnes par défaut */
+#app-container { display: grid; grid-template-columns: 300px 1fr; width: 100%; }
+
+/* Bouton Hamburger (Visible sur mobile) */
+#menu-toggle-btn { display: none; position: fixed; top: 15px; left: 15px; z-index: 10; background: var(--sidebar-bg); color: var(--text-color); border: none; padding: 10px; border-radius: 8px; cursor: pointer; }
+
+/* SIDEBAR / PANNEAU DE CONTRÔLE */
+#sidebar { background-color: var(--sidebar-bg); padding: 20px; display: flex; flex-direction: column; box-shadow: 2px 0 10px rgba(0,0,0,0.2); overflow-y: auto; }
+
+#room-list-section { margin-top: 15px; padding-top: 15px; border-top: 1px solid #333; }
+.room-item { padding: 8px; border-radius: 4px; cursor: pointer; transition: 0.2s; font-weight: 600; margin-bottom: 5px; }
+.room-item:hover { background: rgba(255,255,255,0.05); }
+.room-item.active { background: var(--accent-color); color: white; }
+
+/* Les styles des personnages restent les mêmes */
+h3 { margin: 0 0 15px 0; font-weight: 600; text-transform: uppercase; font-size: 0.9rem; color: white;}
+.create-form { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; margin-bottom: 20px; }
+input, select { width: 100%; margin-bottom: 10px; padding: 12px; background: var(--input-bg); border: none; color: white; border-radius: 8px; box-sizing: border-box; outline: none;}
+.btn-primary { background-color: var(--accent-color); color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; cursor: pointer; font-weight: bold;}
+.char-item { padding: 10px; margin-bottom: 8px; background: rgba(255,255,255,0.02); border-radius: 8px; display: flex; align-items: center; }
+.mini-avatar { width: 32px; height: 32px; border-radius: 50%; margin-right: 12px; object-fit: cover; }
+.btn-delete { background: var(--danger-color); color: white; border: none; padding: 4px 8px; border-radius: 6px; margin-left: auto; font-size: 0.8em; }
+
+
+/* CHAT AREA */
+#chat-area { flex: 1; display: flex; flex-direction: column; position: relative; background: radial-gradient(circle at top right, #25262b 0%, #1a1b1e 40%); }
+#messages { flex: 1; overflow-y: scroll; padding: 20px 40px; display: flex; flex-direction: column; gap: 20px; }
+#input-zone { padding: 15px; background-color: var(--sidebar-bg); display: flex; gap: 10px; align-items: center; border-top: 1px solid #333; }
+.controls-group { display: flex; flex-direction: column; gap: 5px; width: 180px; }
+.btn-icon { background: #373a40; color: #ccc; border: none; width: 45px; height: 45px; border-radius: 8px; font-size: 1.2em; cursor: pointer;}
+#txtInput { flex: 1; height: 50px; margin-bottom: 0; font-size: 1rem; padding: 10px; background: var(--input-bg); border-radius: 8px; color: white; border: none;}
+.char-role { font-size: 0.85em; color: #999; margin-left: 5px;}
+.message { display: flex; align-items: flex-start; max-width: 90%; }
+.message.private-msg { background: rgba(255, 107, 107, 0.05); border-left: 3px solid var(--msg-private-border); padding: 10px; border-radius: 0 8px 8px 0; }
+.avatar-img { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; margin-right: 15px; }
+
+/* AJOUT DE L'ANIMATION LORS DU SCROLL (déjà présente, mais à garder) */
+@media (max-width: 768px) {
+    #app-container { grid-template-columns: 1fr; }
+    #messages { 
+        padding: 15px; 
+        height: calc(100vh - 150px); 
+        overflow-y: scroll;
+    }
+    #sidebar { 
+        position: fixed; 
+        top: 0; 
+        left: -300px; 
+        height: 100vh; 
+        transition: left 0.3s ease-in-out; 
+        z-index: 5;
+        width: 280px; 
+    }
+    #sidebar.open { left: 0; }
+    #menu-toggle-btn { display: block; }
+    #input-zone { padding: 10px; flex-wrap: wrap; }
+    .controls-group { order: 1; width: 100%; flex-direction: row; }
+}
