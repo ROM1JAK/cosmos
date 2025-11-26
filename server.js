@@ -21,24 +21,31 @@ if (!mongoURI) {
 
 // --- 3. MODÈLES DE DONNÉES (SCHEMAS) ---
 
-// A. Modèle des Messages (avec ID de salon)
+// A. Modèle des Messages
 const MessageSchema = new mongoose.Schema({
     content: String,
-    type: String, // 'text' ou 'image'
+    type: String, 
     
-    // Infos Expéditeur
+    // Expéditeur
     senderName: String,
     senderColor: String,
     senderAvatar: String,
     senderRole: String,
     
-    // Infos Cible
-    targetName: String, // Pour les MP
+    // Cible (MP)
+    targetName: String, 
     
-    // Infos Lieu
-    roomId: { type: String, required: true }, // ID du salon où le message est posté
+    // Lieu
+    roomId: { type: String, required: true },
     
-    // Infos Temps
+    // NOUVEAU : Informations de réponse (Citation)
+    replyTo: {
+        author: String,
+        content: String,
+        id: String
+    },
+
+    // Temps
     date: String,
     timestamp: { type: Date, default: Date.now }
 });
@@ -152,3 +159,4 @@ const port = process.env.PORT || 3000;
 http.listen(port, () => {
   console.log(`Serveur lancé sur le port ${port}`);
 });
+
