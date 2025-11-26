@@ -1,8 +1,8 @@
 :root {
-    --bg-primary: #313338;    /* Fond Chat */
-    --bg-secondary: #2b2d31;  /* Sidebar */
-    --bg-tertiary: #1e1f22;   /* Input Zone */
-    --accent: #5865F2;        /* Bleu */
+    --bg-primary: #313338;
+    --bg-secondary: #2b2d31;
+    --bg-tertiary: #383a40; /* Un peu plus clair pour l'input */
+    --accent: #5865F2;
     --text-normal: #dbdee1;
     --text-muted: #949ba4;
     --font-main: 'Inter', sans-serif;
@@ -20,16 +20,18 @@ body {
     display: flex;
 }
 
-/* --- LAYOUT GLOBAL --- */
 #app-container { display: flex; width: 100%; height: 100%; }
 
 /* --- SIDEBAR --- */
 #sidebar {
     width: 280px; background-color: var(--bg-secondary);
     display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0;
+    z-index: 100;
 }
 .sidebar-header { padding: 15px; background: #232428; border-bottom: 1px solid #1e1f22; }
 .app-title { margin: 0; font-size: 1.1rem; color: white; }
+.btn-close-sidebar { display: none; background: none; border: none; color: white; font-size: 1.2rem; cursor: pointer; } /* Caché sur PC */
+
 #player-id-display { font-size: 0.75rem; color: var(--text-muted); margin: 5px 0 10px; }
 .btn-login { background: #3f4147; border: none; color: white; padding: 6px; border-radius: 4px; width: 100%; cursor: pointer; }
 
@@ -40,9 +42,7 @@ body {
 .room-item:hover { background: #35373c; color: var(--text-normal); }
 .room-item.active { background: #404249; color: white; }
 .room-item::before { content: "#"; margin-right: 8px; font-size: 1.2em; color: #6d6f78; }
-
 .btn-add-room { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; padding: 0; }
-.btn-add-room:hover { color: white; }
 
 /* Liste Persos */
 .char-item { display: flex; align-items: center; padding: 6px; background: #35373c; border-radius: 4px; margin-bottom: 5px; }
@@ -51,9 +51,8 @@ body {
 .char-name-list { font-weight: 600; font-size: 0.9rem; }
 .char-role-list { font-size: 0.7rem; color: var(--text-muted); }
 .btn-delete { background: transparent; border: none; color: var(--text-muted); cursor: pointer; }
-.btn-delete:hover { color: #da373c; }
 
-/* Création Perso */
+/* Formulaire */
 .create-form-toggle { color: var(--accent); cursor: pointer; font-size: 0.85rem; margin-top: 10px; font-weight: 500; }
 .create-form { background: #1e1f22; padding: 10px; border-radius: 8px; margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .create-form.hidden { display: none; }
@@ -68,142 +67,83 @@ body {
 .header-hash { font-size: 1.5rem; color: #6d6f78; margin-right: 10px; }
 #currentRoomName { font-size: 1rem; font-weight: 700; color: white; margin: 0; }
 
-#messages { flex: 1; overflow-y: auto; padding: 20px 20px 0 20px; display: flex; flex-direction: column; }
-/* Scrollbar */
+#messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; }
 ::-webkit-scrollbar { width: 8px; background: var(--bg-secondary); }
 ::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 4px; }
 
-/* --- MESSAGES & RÉPONSES (DESIGN CORRIGÉ) --- */
 
-.message-container {
-    position: relative;
-    margin-top: 10px; /* Espace un peu plus grand entre les groupes */
-    padding: 2px 10px 2px 60px; /* Padding gauche pour l'avatar */
-}
-
+/* --- DESIGN MESSAGES --- */
+.message-container { position: relative; margin-top: 15px; padding: 2px 10px 2px 60px; }
 .message-container:hover { background: rgba(0,0,0,0.06); }
 
-/* BOUTONS ACTIONS (Flottants, Sombres et Jolis) */
-.msg-actions {
-    position: absolute;
-    top: -15px; /* On le remonte pour qu'il soit à cheval sur le message */
-    right: 15px;
-    background: var(--bg-primary);
-    border: 1px solid #26272d;
-    border-radius: 4px;
-    display: none; /* Caché par défaut */
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    z-index: 10;
-    padding: 2px;
-}
+/* Actions */
+.msg-actions { position: absolute; top: -15px; right: 15px; background: var(--bg-primary); border: 1px solid #26272d; border-radius: 4px; display: none; z-index: 10; padding: 2px; }
 .message-container:hover .msg-actions { display: flex; }
-
-.action-btn {
-    background: transparent;
-    border: none;
-    padding: 6px 8px;
-    cursor: pointer;
-    font-size: 1.1rem;
-    color: var(--text-muted);
-    transition: 0.2s;
-    border-radius: 3px;
-}
+.action-btn { background: transparent; border: none; padding: 6px 8px; cursor: pointer; font-size: 1.1rem; color: var(--text-muted); }
 .action-btn:hover { background: #404249; color: var(--text-normal); }
 
-
-/* LIGNE DE RÉPONSE (LA COURBE) */
-.reply-spine {
-    position: absolute;
-    top: 10px;
-    left: 28px; /* Alignement avec l'avatar */
-    width: 30px;
-    height: 12px;
-    border-top: 2px solid #4e5058;
-    border-left: 2px solid #4e5058;
-    border-top-left-radius: 6px;
-    opacity: 0.6;
-    margin-bottom: 4px;
-}
-
-/* CONTENU DE LA RÉPONSE (TEXTE) */
-.reply-context-line {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    margin-left: -5px; /* Petit ajustement pour coller à la ligne */
-    opacity: 0.9;
-    margin-bottom: 4px;
-    cursor: pointer;
-}
-
+/* Réponse */
+.reply-spine { position: absolute; top: 10px; left: 28px; width: 30px; height: 12px; border-top: 2px solid #4e5058; border-left: 2px solid #4e5058; border-top-left-radius: 6px; opacity: 0.6; margin-bottom: 4px; }
+.reply-context-line { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: var(--text-muted); margin-left: -5px; opacity: 0.9; margin-bottom: 4px; }
 .reply-name { font-weight: 600; color: #c0c0c0; }
-.reply-name:hover { text-decoration: underline; }
+.reply-text { font-style: italic; color: #949ba4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
 
-/* LE TEXTE EN ITALIQUE COMME DEMANDÉ */
-.reply-text {
-    font-style: italic;
-    color: #949ba4;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 400px;
-}
-
-/* LE MESSAGE PRINCIPAL */
-.avatar-img {
-    position: absolute; left: 10px; top: 4px; /* Calé en haut à gauche */
-    width: 40px; height: 40px; border-radius: 50%; object-fit: cover;
-    cursor: pointer; transition: 0.2s;
-}
-.avatar-img:hover { transform: scale(1.05); }
-
+/* Contenu */
+.avatar-img { position: absolute; left: 10px; top: 4px; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; cursor: pointer; }
 .char-header { display: flex; align-items: baseline; gap: 8px; }
-.char-name { font-weight: 600; font-size: 1rem; color: white; cursor: pointer; }
-.char-name:hover { text-decoration: underline; }
+.char-name { font-weight: 600; font-size: 1rem; color: white; }
 .char-role { font-size: 0.7rem; color: var(--text-muted); background: #2b2d31; padding: 1px 4px; border-radius: 3px; }
-.timestamp { font-size: 0.7rem; color: var(--text-muted); margin-left: auto; } /* Date à droite */
+.timestamp { font-size: 0.7rem; color: var(--text-muted); margin-left: auto; }
 .private-badge { background: #da373c; color: white; font-size: 0.65rem; padding: 1px 4px; border-radius: 3px; font-weight: 700; text-transform: uppercase; }
-
 .text-body { font-size: 0.95rem; line-height: 1.4; color: #dbdee1; white-space: pre-wrap; margin-top: 2px; }
 .chat-image { max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px; cursor: pointer; }
 
 
-/* --- INPUT ZONE --- */
+/* --- INPUT ZONE (REFONTE TOTALE) --- */
 #input-wrapper { background: var(--bg-primary); padding: 0 20px 20px; flex-shrink: 0; }
 
-#reply-bar {
-    background: #2b2d31; color: var(--text-muted);
-    padding: 8px 15px; border-radius: 8px 8px 0 0;
-    font-size: 0.85rem; display: none; justify-content: space-between; align-items: center;
-    border-bottom: 1px solid #383a40;
-}
+#reply-bar { background: #2b2d31; color: var(--text-muted); padding: 8px 15px; border-radius: 8px 8px 0 0; font-size: 0.85rem; display: none; justify-content: space-between; align-items: center; border-bottom: 1px solid #383a40; }
 .btn-close-reply { background: none; border: none; color: var(--text-muted); cursor: pointer; font-weight: bold; }
 
-#input-zone {
-    background: var(--bg-tertiary); border-radius: 8px; padding: 10px;
-    display: flex; align-items: center; gap: 10px;
-}
-.input-addon { display: flex; align-items: center; }
-select#charSelector { background: #2b2d31; color: white; border: none; padding: 8px; border-radius: 4px; font-weight: 600; cursor: pointer; max-width: 130px; }
-.target-addon { background: #2b2d31; padding: 0 8px; border-radius: 4px; display: flex; align-items: center; }
-#targetInput { background: transparent; border: none; color: white; width: 80px; padding: 8px 4px; font-size: 0.85rem; }
+#input-zone { background: var(--bg-tertiary); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+
+/* Ligne du haut : Sélecteurs */
+.input-top-row { display: flex; gap: 10px; }
+select#charSelector { background: #2b2d31; color: white; border: none; padding: 8px; border-radius: 4px; font-weight: 600; cursor: pointer; max-width: 150px; flex-grow: 1; }
+.target-addon { background: #2b2d31; padding: 0 8px; border-radius: 4px; display: flex; align-items: center; flex-grow: 1; }
+.at-symbol { color: var(--text-muted); font-weight: bold; font-size: 0.9rem; }
+#targetInput { background: transparent; border: none; color: white; width: 100%; padding: 8px 4px; font-size: 0.85rem; }
+
+/* Ligne du bas : Texte + Boutons */
+.input-bottom-row { display: flex; gap: 8px; align-items: center; }
 #txtInput { flex: 1; background: transparent; border: none; color: white; font-size: 1rem; padding: 5px; }
 #txtInput:focus { outline: none; }
 .btn-icon { background: none; border: none; font-size: 1.2rem; cursor: pointer; padding: 5px; opacity: 0.7; }
-.btn-icon:hover { opacity: 1; }
-.btn-send { display: none; } /* Bouton envoyer caché sur PC */
+.btn-send { background: var(--accent); color: white; border: none; padding: 8px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; }
 
-/* MOBILE */
+
+/* --- MOBILE RESPONSIVE --- */
 #menu-toggle-btn { display: none; }
+#mobile-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 90; }
+
 @media (max-width: 768px) {
-    #sidebar { position: fixed; left: -100%; top: 0; bottom: 0; z-index: 100; transition: left 0.3s; width: 85%; }
+    #sidebar { position: fixed; left: -100%; top: 0; bottom: 0; transition: left 0.3s; width: 85%; }
     #sidebar.open { left: 0; }
+    #mobile-overlay.open { display: block; }
+
     #menu-toggle-btn { display: block; position: fixed; top: 12px; left: 15px; z-index: 50; background: #2b2d31; border: none; color: white; padding: 8px; border-radius: 4px; }
-    .message-container { padding-left: 50px; }
+    .btn-close-sidebar { display: block; }
+    
+    .chat-header { padding-left: 60px; }
+    
+    /* Ajustement messages mobile */
+    .message-container { padding-left: 50px; padding-right: 5px; }
     .avatar-img { width: 35px; height: 35px; }
-    #input-zone { flex-wrap: wrap; }
-    #txtInput { width: 100%; }
-    .btn-send { display: block; background: var(--accent); color: white; border: none; padding: 8px 12px; border-radius: 4px; margin-left: auto; }
+    .msg-actions { opacity: 1; display: flex; position: relative; top: 0; right: 0; margin-bottom: 5px; border:none; background:none; justify-content: flex-end;} /* Afficher actions sous le msg sur mobile ? ou au click ? pour l'instant on laisse au survol mais c'est dur sur mobile. On pourrait les mettre en bas du message */
+    
+    /* Input mobile */
+    #input-wrapper { padding: 10px; }
+    .input-top-row { flex-wrap: wrap; }
+    select#charSelector { max-width: none; width: 100%; }
+    .target-addon { width: 100%; }
 }
