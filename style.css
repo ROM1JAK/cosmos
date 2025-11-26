@@ -37,7 +37,6 @@ body {
 .room-item::before { content: "#"; margin-right: 8px; font-size: 1.2em; color: #6d6f78; }
 .btn-add-room { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; padding: 0; }
 
-/* Liste Persos */
 .char-item { display: flex; align-items: center; padding: 6px; background: #35373c; border-radius: 4px; margin-bottom: 5px; }
 .mini-avatar { width: 32px; height: 32px; border-radius: 50%; margin-right: 10px; object-fit: cover; }
 .char-info { flex: 1; min-width: 0; }
@@ -47,14 +46,33 @@ body {
 .btn-mini-action { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1rem; padding: 2px; }
 .btn-mini-action:hover { color: white; }
 
-/* Formulaire */
 .create-form-toggle { color: var(--accent); cursor: pointer; font-size: 0.85rem; margin-top: 10px; font-weight: 500; }
 .create-form { background: #1e1f22; padding: 10px; border-radius: 8px; margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .create-form.hidden { display: none; }
 .create-form input { background: #383a40; border: none; color: white; padding: 8px; border-radius: 4px; }
 .btn-primary { background: var(--accent); color: white; border: none; padding: 8px; border-radius: 4px; font-weight: 600; cursor: pointer; }
 
-/* --- CHAT AREA --- */
+/* --- MODALE CONNEXION --- */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8); z-index: 200;
+    display: flex; align-items: center; justify-content: center;
+}
+.modal-overlay.hidden { display: none; }
+.modal-box {
+    background: #313338; padding: 25px; border-radius: 8px;
+    width: 90%; max-width: 400px; box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+    text-align: center;
+}
+.modal-input {
+    width: 100%; background: #1e1f22; border: 1px solid #26272d;
+    color: white; padding: 10px; border-radius: 4px; margin: 15px 0; font-size: 1rem;
+}
+.modal-buttons { display: flex; gap: 10px; justify-content: center; align-items: center; flex-direction: column;}
+.btn-text { background: none; border: none; color: var(--text-muted); cursor: pointer; margin-top: 10px; }
+.btn-text:hover { text-decoration: underline; }
+
+/* --- CHAT --- */
 #chat-area { flex: 1; display: flex; flex-direction: column; position: relative; background: var(--bg-primary); }
 .chat-header { height: 50px; border-bottom: 1px solid #26272d; display: flex; align-items: center; padding: 0 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
 .header-hash { font-size: 1.5rem; color: #6d6f78; margin-right: 10px; }
@@ -63,16 +81,27 @@ body {
 ::-webkit-scrollbar { width: 8px; background: var(--bg-secondary); }
 ::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 4px; }
 
-/* Indicateur de frappe */
+/* --- INDICATEUR TYPING (AMÉLIORÉ) --- */
 #typing-indicator {
-    height: 20px; padding: 0 20px; font-size: 0.75rem; color: var(--text-muted); font-weight: 600;
-    margin-bottom: 5px; min-height: 20px; /* Réserve l'espace */
+    padding: 0 20px; min-height: 25px; display: flex; align-items: center; gap: 8px;
+    font-size: 0.75rem; color: var(--text-normal); font-weight: 600; margin-bottom: 5px;
+}
+#typing-indicator.hidden { visibility: hidden; }
+.typing-dots { display: flex; gap: 3px; }
+.dot {
+    width: 6px; height: 6px; background: var(--text-normal); border-radius: 50%;
+    animation: typingBounce 1.4s infinite ease-in-out both;
+}
+.dot:nth-child(1) { animation-delay: -0.32s; }
+.dot:nth-child(2) { animation-delay: -0.16s; }
+@keyframes typingBounce {
+    0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+    40% { transform: scale(1); opacity: 1; }
 }
 
 /* --- MESSAGES --- */
 .message-container { position: relative; margin-top: 15px; padding: 2px 10px 2px 60px; }
 .message-container:hover { background: rgba(0,0,0,0.06); }
-
 .msg-actions { 
     position: absolute; top: -15px; right: 15px; 
     background: var(--bg-primary); border: 1px solid #26272d; border-radius: 4px; 
@@ -97,9 +126,8 @@ body {
 .text-body { font-size: 0.95rem; line-height: 1.4; color: #dbdee1; white-space: pre-wrap; margin-top: 2px; }
 .chat-image { max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px; cursor: pointer; }
 
-/* --- INPUT ZONE (STYLE PROCHE DU SCREENSHOT) --- */
+/* --- INPUT --- */
 #input-wrapper { background: var(--bg-primary); padding: 0 20px 20px; flex-shrink: 0; }
-
 #context-bar { 
     background: #2b2d31; color: var(--text-muted); padding: 8px 15px; 
     border-radius: 8px 8px 0 0; font-size: 0.85rem; 
@@ -111,35 +139,26 @@ body {
 #context-bar.visible { display: flex; }
 
 #input-zone { 
-    background: var(--bg-tertiary); border-radius: 8px; padding: 0 15px 0 0; /* Padding droit pour bouton */
+    background: var(--bg-tertiary); border-radius: 8px; padding: 0 15px 0 0;
     display: flex; align-items: center; min-height: 44px;
 }
-
 select#charSelector { 
     background: #2b2d31; color: white; border: none; padding: 12px 15px; 
     border-radius: 8px 0 0 8px; font-weight: 600; cursor: pointer; 
     border-right: 1px solid #313338; margin-right: 10px; max-width: 140px;
 }
-select#charSelector:focus { outline: none; background: #35373c; }
-
-#txtInput { 
-    flex: 1; background: transparent; border: none; color: white; 
-    font-size: 1rem; padding: 12px 5px; height: 100%;
-}
+#txtInput { flex: 1; background: transparent; border: none; color: white; font-size: 1rem; padding: 12px 5px; height: 100%; }
 #txtInput:focus { outline: none; }
-
 .btn-icon { background: none; border: none; font-size: 1.2rem; cursor: pointer; padding: 5px; opacity: 0.7; }
 .btn-send { 
     background: var(--accent); color: white; border: none; 
     padding: 8px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;
     margin-left: 5px;
 }
-.btn-send:hover { background: #4752c4; }
 
 /* MOBILE */
 #menu-toggle-btn { display: none; }
 #mobile-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 90; }
-
 @media (max-width: 768px) {
     #sidebar { position: fixed; left: -100%; top: 0; bottom: 0; transition: left 0.3s; width: 85%; }
     #sidebar.open { left: 0; }
