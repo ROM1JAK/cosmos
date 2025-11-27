@@ -3,15 +3,29 @@ let myCharacters = [];
 let allRooms = []; 
 let currentRoomId = 'global'; 
 let PLAYER_ID; 
+let USERNAME; // Stockage local du pseudo
 let IS_ADMIN = false;
 let currentContext = null; 
 let typingTimeout = null;
 let unreadRooms = new Set();
 let firstUnreadMap = {}; 
 
-// --- UI & LOGIN ---
+// --- UI & LOGIN / COMPTE ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
 function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
+
+// Gestion du bouton principal Sidebar (Login ou Compte)
+function openAccountUI() {
+    if (PLAYER_ID) {
+        // Connecté -> Ouvre "Mon Profil"
+        openUserSettingsModal();
+    } else {
+        // Pas connecté -> Ouvre "Login"
+        openLoginModal();
+    }
+}
+
+// LOGIN
 function openLoginModal() { document.getElementById('login-modal').classList.remove('hidden'); document.getElementById('login-error-msg').style.display = "none"; }
 function closeLoginModal() { document.getElementById('login-modal').classList.add('hidden'); }
 
@@ -21,6 +35,7 @@ function submitLogin() {
     if (pseudo && code) socket.emit('login_request', { username: pseudo, code: code });
 }
 
+// LOGOUT
 function logoutUser() {
     if(confirm("Déconnexion ?")) {
         localStorage.removeItem('rp_username');
@@ -29,23 +44,49 @@ function logoutUser() {
     }
 }
 
-function checkAutoLogin() {
-    const savedUser = localStorage.getItem('rp_username');
-    const savedCode = localStorage.getItem('rp_code');
-    if (savedUser && savedCode) {
-        socket.emit('login_request', { username: savedUser, code: savedCode });
+// MON PROFIL
+function openUserSettingsModal() {
+    document.getElementById('settingsUsernameInput').value = USERNAME || "";
+    document.getElementById('settingsCodeInput').value = PLAYER_ID || ""; // Le Code est l'ID
+    document.getElementById('settings-msg').textContent = "";
+    document.getElementById('settings-msg').style.color = "#aaa";
+    document.getElementById('user-settings-modal').classList.remove('hidden');
+}
+
+function closeUserSettingsModal() { document.getElementById('user-settings-modal').classList.add('hidden'); }
+
+function toggleSecretVisibility() {
+    const input = document.getElementById('settingsCodeInput');
+    input.type = (input.type === "password") ? "text" : "password";
+}
+
+function submitUsernameChange() {
+    const newName = document.getElementById('settingsUsernameInput').value.trim();
+    if (newName && newName !== USERNAME) {
+        socket.emit('change_username', { userId: PLAYER_ID, newUsername: newName });
     } else {
-        openLoginModal();
+        document.getElementById('settings-msg').textContent = "Pas de changement.";
+        document.getElementById('settings-msg').style.color = "#eab308";
     }
 }
 
+// Socket Events pour compte
 socket.on('login_success', (data) => {
     localStorage.setItem('rp_username', data.username);
     localStorage.setItem('rp_code', data.userId);
-    document.getElementById('player-id-display').textContent = `Compte : ${data.username}`;
-    IS_ADMIN = data.isAdmin;
-    if(IS_ADMIN) document.getElementById('player-id-display').style.color = "#da373c";
+    
+    USERNAME = data.username;
     PLAYER_ID = data.userId;
+    IS_ADMIN = data.isAdmin;
+    
+    // Mise à jour UI Sidebar
+    document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`;
+    document.getElementById('player-id-display').style.color = IS_ADMIN ? "#da373c" : "var(--accent)";
+    
+    const btn = document.getElementById('btn-account-main');
+    btn.textContent = "👤 Mon Profil";
+    btn.style.background = "#2b2d31"; // Style plus neutre une fois connecté
+    
     closeLoginModal();
     socket.emit('request_initial_data', PLAYER_ID);
     joinRoom('global');
@@ -57,7 +98,39 @@ socket.on('login_error', (msg) => {
     errorEl.style.display = 'block';
 });
 
-// --- SOCKET ---
+socket.on('username_change_success', (newName) => {
+    USERNAME = newName;
+    localStorage.setItem('rp_username', newName);
+    
+    // Mise à jour immédiate UI
+    document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`;
+    const msgEl = document.getElementById('settings-msg');
+    msgEl.textContent = "Pseudo mis à jour !";
+    msgEl.style.color = "#23a559";
+    
+    // On peut fermer ou laisser ouvert, ici on laisse pour voir la confirmation
+});
+
+socket.on('username_change_error', (msg) => {
+    const msgEl = document.getElementById('settings-msg');
+    msgEl.textContent = msg;
+    msgEl.style.color = "#da373c";
+});
+
+
+// AUTO-LOGIN
+function checkAutoLogin() {
+    const savedUser = localStorage.getItem('rp_username');
+    const savedCode = localStorage.getItem('rp_code');
+    if (savedUser && savedCode) {
+        socket.emit('login_request', { username: savedUser, code: savedCode });
+    } else {
+        // Pas connecté -> UI par défaut
+        openLoginModal();
+    }
+}
+
+// --- SOCKET CONNECT ---
 socket.on('connect', () => {
     checkAutoLogin();
 });
@@ -72,7 +145,7 @@ socket.on('update_user_list', (users) => {
 
 socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId) socket.emit('request_history', currentRoomId); });
 
-// --- MEDIAS (IMAGES & VIDEO) ---
+// --- MEDIAS ---
 function previewFile(type) {
     const fileInput = document.getElementById(type === 'new' ? 'newCharFile' : 'editCharFile');
     const hiddenInput = document.getElementById(type === 'new' ? 'newCharBase64' : 'editCharBase64');
@@ -85,7 +158,6 @@ function previewFile(type) {
     }
 }
 
-// IMAGES
 function openUrlModal() { document.getElementById('url-modal').classList.remove('hidden'); }
 function closeUrlModal() { document.getElementById('url-modal').classList.add('hidden'); }
 function submitImageUrl() {
@@ -96,7 +168,6 @@ function submitImageUrl() {
     }
 }
 
-// VIDEOS (NOUVEAU)
 function openVideoModal() { document.getElementById('video-modal').classList.remove('hidden'); }
 function closeVideoModal() { document.getElementById('video-modal').classList.add('hidden'); }
 function submitVideoUrl() {
@@ -181,12 +252,9 @@ function createCharacter() {
     document.getElementById('newCharBase64').value = "";
 }
 
-// CORRECTIF BUG : On n'utilise plus les arguments directs dans le HTML
-// On appelle une fonction qui prépare le form en cherchant le perso par ID
 function prepareEditCharacter(charId) {
     const char = myCharacters.find(c => c._id === charId);
     if (!char) return;
-
     document.getElementById('editCharId').value = char._id;
     document.getElementById('editCharOriginalName').value = char.name;
     document.getElementById('editCharName').value = char.name;
@@ -194,7 +262,6 @@ function prepareEditCharacter(charId) {
     document.getElementById('editCharDesc').value = char.description; 
     document.getElementById('editCharColor').value = char.color;
     document.getElementById('editCharBase64').value = "";
-    
     document.getElementById('edit-char-form').classList.remove('hidden');
     document.getElementById('create-char-form').classList.add('hidden');
 }
@@ -221,11 +288,8 @@ socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c
 function updateUI() {
     const list = document.getElementById('myCharList');
     const select = document.getElementById('charSelector');
-    
     let selectedCharId = null;
-    if (select.selectedIndex >= 0) {
-        selectedCharId = select.options[select.selectedIndex].dataset.id; 
-    }
+    if (select.selectedIndex >= 0) selectedCharId = select.options[select.selectedIndex].dataset.id; 
 
     list.innerHTML = "";
     select.innerHTML = ""; 
@@ -235,7 +299,6 @@ function updateUI() {
     }
 
     myCharacters.forEach(char => {
-        // ICI : On passe seulement l'ID à la fonction prepareEditCharacter
         list.innerHTML += `
             <div class="char-item">
                 <img src="${char.avatar}" class="mini-avatar">
@@ -248,14 +311,8 @@ function updateUI() {
                     <button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;">✕</button>
                 </div>
             </div>`;
-        
         const opt = document.createElement('option');
-        opt.value = char.name; 
-        opt.text = char.name; 
-        opt.dataset.id = char._id; 
-        opt.dataset.color = char.color; 
-        opt.dataset.avatar = char.avatar; 
-        opt.dataset.role = char.role;
+        opt.value = char.name; opt.text = char.name; opt.dataset.id = char._id; opt.dataset.color = char.color; opt.dataset.avatar = char.avatar; opt.dataset.role = char.role;
         select.appendChild(opt);
     });
     
@@ -358,7 +415,6 @@ function formatText(text) {
     return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\*(.*?)\*/g, '<i>$1</i>').replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
 }
 
-// FONCTION UTILITAIRE VIDEO
 function getYoutubeId(url) {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
     const match = url.match(regExp);
@@ -378,7 +434,6 @@ function displayMessage(msg) {
     let replyHTML = "", spacingStyle = "";
     if (msg.replyTo && msg.replyTo.author) { spacingStyle = "margin-top: 15px;"; replyHTML = `<div class="reply-spine"></div><div class="reply-context-line" style="margin-left: 55px;"><span class="reply-name">@${msg.replyTo.author}</span><span class="reply-text">${msg.replyTo.content}</span></div>`; }
     
-    // GESTION CONTENU (TEXTE, IMAGE, VIDEO)
     let contentHTML = "";
     if (msg.type === "image") {
         contentHTML = `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">`;
