@@ -1,16 +1,17 @@
 var socket = io();
+const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); // AJOUT : Son de notification
 let myCharacters = [];
 let allRooms = []; 
 let currentRoomId = 'global'; 
-let currentDmTarget = null; // Si non null, on est en MP avec ce pseudo
+let currentDmTarget = null; 
 let PLAYER_ID; 
 let USERNAME; 
 let IS_ADMIN = false;
 let currentContext = null; 
 let typingTimeout = null;
 let unreadRooms = new Set();
-let unreadDms = new Set(); // Set des usernames avec MPs non lus
-let dmContacts = []; // Liste des gens avec qui j'ai parlé
+let unreadDms = new Set(); 
+let dmContacts = []; 
 let firstUnreadMap = {}; 
 
 // --- UI & LOGIN / COMPTE ---
@@ -135,7 +136,6 @@ socket.on('update_user_list', (users) => {
     listDiv.innerHTML = "";
     countSpan.textContent = users.length;
     users.forEach(u => {
-        // Ajout du clic pour lancer un MP
         listDiv.innerHTML += `<div class="online-user" onclick="startDmFromList('${u}')"><span class="status-dot"></span><span>${u}</span></div>`
     });
 });
@@ -176,7 +176,6 @@ function submitVideoUrl() {
 }
 
 function sendMediaMessage(content, type) {
-    // Si en MP, pas besoin de sélecteur de perso
     if (currentDmTarget) {
          const msg = {
             sender: USERNAME,
@@ -204,7 +203,7 @@ function sendMediaMessage(content, type) {
 // --- TYPING ---
 const txtInput = document.getElementById('txtInput');
 txtInput.addEventListener('input', () => {
-    if(currentDmTarget) return; // Pas de typing en DM pour simplifier ici
+    if(currentDmTarget) return; 
     const sel = document.getElementById('charSelector');
     const name = sel.options[sel.selectedIndex]?.text || "Quelqu'un";
     socket.emit('typing_start', { roomId: currentRoomId, charName: name });
@@ -226,7 +225,7 @@ function joinRoom(roomId) {
     if (currentRoomId && currentRoomId !== roomId) socket.emit('leave_room', currentRoomId);
     
     currentRoomId = roomId;
-    currentDmTarget = null; // On quitte le mode MP
+    currentDmTarget = null; 
     
     socket.emit('join_room', currentRoomId);
     if (unreadRooms.has(currentRoomId)) unreadRooms.delete(currentRoomId);
@@ -236,7 +235,7 @@ function joinRoom(roomId) {
     document.getElementById('currentRoomName').style.color = "white";
     document.getElementById('messages').innerHTML = ""; 
     document.getElementById('typing-indicator').classList.add('hidden');
-    document.getElementById('charSelector').style.display = 'block'; // Afficher sélecteur perso
+    document.getElementById('charSelector').style.display = 'block'; 
     
     socket.emit('request_history', currentRoomId);
     cancelContext();
@@ -270,24 +269,22 @@ socket.on('open_dm_ui', (targetUsername) => {
 
 function openDm(targetUsername) {
     currentDmTarget = targetUsername;
-    currentRoomId = null; // On quitte visuellement le salon
+    currentRoomId = null; 
 
-    // Mise à jour de la liste de contacts si nouveau
     if (!dmContacts.includes(targetUsername)) dmContacts.push(targetUsername);
     if (unreadDms.has(targetUsername)) unreadDms.delete(targetUsername);
 
     document.getElementById('currentRoomName').textContent = `@${targetUsername}`;
-    document.getElementById('currentRoomName').style.color = "#7d5bc4"; // Couleur DM
+    document.getElementById('currentRoomName').style.color = "#7d5bc4"; 
     document.getElementById('messages').innerHTML = "";
     document.getElementById('typing-indicator').classList.add('hidden');
-    document.getElementById('charSelector').style.display = 'none'; // Cacher sélecteur perso en MP
+    document.getElementById('charSelector').style.display = 'none'; 
     
     cancelContext();
     
-    // Charger l'historique
     socket.emit('request_dm_history', { myUsername: USERNAME, targetUsername: targetUsername });
     
-    updateRoomListUI(); // Pour enlever le highlight des salons
+    updateRoomListUI(); 
     updateDmListUI();
     
     if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
@@ -316,12 +313,11 @@ function updateDmListUI() {
 }
 
 socket.on('dm_history_data', (data) => {
-    // data.history contient les messages
-    if (currentDmTarget !== data.target) return; // Sécurité si on a changé entre temps
+    if (currentDmTarget !== data.target) return; 
     const container = document.getElementById('messages');
     container.innerHTML = "";
     data.history.forEach(msg => {
-        displayMessage(msg, true); // true = isDM
+        displayMessage(msg, true); 
     });
     scrollToBottom();
 });
@@ -329,7 +325,6 @@ socket.on('dm_history_data', (data) => {
 socket.on('receive_dm', (msg) => {
     const otherUser = (msg.sender === USERNAME) ? msg.target : msg.sender;
     
-    // Si c'est un nouveau contact, on l'ajoute
     if (!dmContacts.includes(otherUser)) {
         dmContacts.push(otherUser);
         updateDmListUI();
@@ -339,7 +334,6 @@ socket.on('receive_dm', (msg) => {
         displayMessage(msg, true);
         scrollToBottom();
     } else {
-        // Notif
         unreadDms.add(otherUser);
         updateDmListUI();
     }
@@ -442,7 +436,6 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
     document.getElementById('profile-modal').classList.remove('hidden');
     
-    // Bouton MP depuis le profil
     const btnDm = document.getElementById('btn-dm-profile');
     btnDm.onclick = function() {
         closeProfileModal();
@@ -474,7 +467,6 @@ function sendMessage() {
     const content = txt.value.trim();
     if (!content) return;
 
-    // --- LOGIQUE MP ---
     if (currentDmTarget) {
         const msg = {
             sender: USERNAME,
@@ -488,7 +480,6 @@ function sendMessage() {
         cancelContext();
         return;
     }
-    // ------------------
 
     if (content === "/clear") { if(IS_ADMIN) socket.emit('admin_clear_room', currentRoomId); txt.value = ''; return; }
     if (currentContext && currentContext.type === 'edit') { socket.emit('edit_message', { id: currentContext.data.id, newContent: content }); txt.value = ''; cancelContext(); return; }
@@ -510,7 +501,7 @@ function sendMessage() {
 
 // --- DISPLAY ---
 socket.on('history_data', (msgs) => { 
-    if(currentDmTarget) return; // Si on est passé en MP entre temps
+    if(currentDmTarget) return; 
     const container = document.getElementById('messages');
     container.innerHTML = ""; 
     const splitId = firstUnreadMap[currentRoomId];
@@ -528,6 +519,11 @@ socket.on('history_data', (msgs) => {
 });
 
 socket.on('message_rp', (msg) => { 
+    // AJOUT : Condition Sonore
+    if (msg.ownerId !== PLAYER_ID) {
+        notifSound.play().catch(e => { /* Ignore autoplay errors if user hasn't interacted */ });
+    }
+
     if(msg.roomId === currentRoomId && !currentDmTarget) { 
         displayMessage(msg); scrollToBottom(); 
     } else {
@@ -560,7 +556,6 @@ function displayMessage(msg, isDm = false) {
     if(isDm) div.classList.add('dm-message');
     div.id = `msg-${msg._id}`;
     
-    // Config pour DM ou RP
     let senderName, senderAvatar, senderColor, senderRole;
     let canEdit = false;
     let canDelete = false;
@@ -568,9 +563,8 @@ function displayMessage(msg, isDm = false) {
     if (isDm) {
         senderName = msg.sender;
         senderAvatar = `https://ui-avatars.com/api/?name=${msg.sender}&background=random&color=fff&size=64`;
-        senderColor = "#dbdee1"; // Couleur neutre
+        senderColor = "#dbdee1"; 
         senderRole = "Utilisateur";
-        // Pas d'edit/delete en DM pour simplifier (ou seulement delete local si besoin, ici on désactive)
     } else {
         senderName = msg.senderName;
         senderAvatar = msg.senderAvatar;
@@ -607,7 +601,6 @@ function displayMessage(msg, isDm = false) {
     }
 
     const editedTag = msg.edited ? '<span class="edited-tag">(modifié)</span>' : '';
-    // Click avatar en DM ne fait rien, en RP ouvre profil
     const avatarClick = isDm ? "" : `onclick="openProfile('${senderName.replace(/'/g, "\\'")}')"`;
     const nameClick = isDm ? "" : `onclick="openProfile('${senderName.replace(/'/g, "\\'")}')"`;
 
