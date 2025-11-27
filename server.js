@@ -65,11 +65,19 @@ io.on('connection', async (socket) => {
               }
               if(isAdmin && !user.isAdmin) { user.isAdmin = true; await user.save(); }
           } else {
+              // Vérifier si le code est déjà pris par un autre pseudo (optionnel mais recommandé)
+              const existingCode = await User.findOne({ secretCode: code });
+              if(existingCode) {
+                   socket.emit('login_error', "Ce Code Secret est déjà lié à un autre pseudo (" + existingCode.username + ").");
+                   return;
+              }
               user = new User({ username, secretCode: code, isAdmin });
               await user.save();
           }
 
+          // Mise à jour rétroactive (au cas où)
           await Character.updateMany({ ownerId: code }, { ownerUsername: username });
+          
           onlineUsers[socket.id] = user.username;
           broadcastUserList();
 
@@ -80,6 +88,34 @@ io.on('connection', async (socket) => {
       } catch (e) {
           console.error("Erreur Login:", e);
           socket.emit('login_error', "Erreur serveur.");
+      }
+  });
+
+  // --- GESTION COMPTE (NOUVEAU) ---
+  socket.on('change_username', async ({ userId, newUsername }) => {
+      try {
+          // 1. Vérifier si le pseudo est libre
+          const existing = await User.findOne({ username: newUsername });
+          if (existing) {
+              socket.emit('username_change_error', "Ce pseudo est déjà pris.");
+              return;
+          }
+
+          // 2. Mettre à jour l'utilisateur
+          await User.findOneAndUpdate({ secretCode: userId }, { username: newUsername });
+
+          // 3. Mettre à jour les personnages
+          await Character.updateMany({ ownerId: userId }, { ownerUsername: newUsername });
+
+          // 4. Mettre à jour la liste des connectés
+          onlineUsers[socket.id] = newUsername;
+          broadcastUserList();
+
+          socket.emit('username_change_success', newUsername);
+
+      } catch (e) {
+          console.error(e);
+          socket.emit('username_change_error', "Erreur lors du changement de pseudo.");
       }
   });
 
