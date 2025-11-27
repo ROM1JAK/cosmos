@@ -49,28 +49,40 @@ function broadcastUserList() {
 // --- SOCKET ---
 io.on('connection', async (socket) => {
   
-  // LOGIN
+// --- LOGIN SÉCURISÉ ---
   socket.on('login_request', async ({ username, code }) => {
-      let user = await User.findOne({ secretCode: code });
-      const isAdmin = (code === ADMIN_CODE);
+      // 1. On cherche si ce CODE existe déjà
+      let userByCode = await User.findOne({ secretCode: code });
+      
+      // 2. On cherche si ce PSEUDO est déjà pris par un AUTRE code
+      let userByName = await User.findOne({ username: username });
 
-      if (!user) {
-          user = new User({ username, secretCode: code, isAdmin });
-          await user.save();
-      } else {
-          user.username = username;
-          user.isAdmin = isAdmin;
-          await user.save();
+      if (userByName && userByName.secretCode !== code) {
+          // Le pseudo est pris par quelqu'un d'autre !
+          socket.emit('login_error', "Ce pseudo est déjà utilisé par un autre joueur.");
+          return;
       }
 
-      // Mise à jour ownerUsername sur les persos
+      const isAdmin = (code === ADMIN_CODE);
+
+      if (!userByCode) {
+          // Nouveau compte
+          userByCode = new User({ username, secretCode: code, isAdmin });
+          await userByCode.save();
+      } else {
+          // Mise à jour (le joueur revient)
+          userByCode.username = username;
+          userByCode.isAdmin = isAdmin;
+          await userByCode.save();
+      }
+
+      // Mise à jour des persos liés
       await Character.updateMany({ ownerId: code }, { ownerUsername: username });
 
-      // ENREGISTREMENT EN LIGNE
-      onlineUsers[socket.id] = user.username;
+      onlineUsers[socket.id] = userByCode.username;
       broadcastUserList();
 
-      socket.emit('login_success', { username: user.username, userId: user.secretCode, isAdmin: user.isAdmin });
+      socket.emit('login_success', { username: userByCode.username, userId: userByCode.secretCode, isAdmin: userByCode.isAdmin });
   });
 
   // DECONNEXION
@@ -168,3 +180,4 @@ io.on('connection', async (socket) => {
 
 const port = process.env.PORT || 3000;
 http.listen(port, () => { console.log(`Serveur prêt : ${port}`); });
+
