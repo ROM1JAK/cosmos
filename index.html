@@ -11,122 +11,195 @@
 
     <div id="mobile-overlay" onclick="toggleSidebar()"></div>
 
-    <!-- Modale Connexion -->
+    <!-- MODALES -->
+    
+    <!-- Connexion -->
     <div id="login-modal" class="modal-overlay hidden">
         <div class="modal-box">
-            <h2>Bienvenue</h2>
-            <p style="color:#aaa;">Connectez-vous pour accéder au RP et aux MP.</p>
-            <input type="text" id="loginPseudoInput" placeholder="Pseudo" class="modal-input">
-            <input type="password" id="loginCodeInput" placeholder="Code Secret" class="modal-input">
-            <button onclick="submitLogin()" class="btn-primary full-width">Entrer</button>
-            <p id="login-error-msg" style="color: #da373c; margin-top: 10px;"></p>
+            <button class="btn-close-modal" onclick="closeLoginModal()">✕</button>
+            <h2>Connexion</h2>
+            <p class="modal-subtitle">Pseudo unique + Code secret.</p>
+            <input type="text" id="loginPseudoInput" placeholder="Votre Pseudo (Ex: Pedro)" class="modal-input">
+            <input type="password" id="loginCodeInput" placeholder="Votre Code Secret" class="modal-input">
+            <button onclick="submitLogin()" class="btn-primary full-width">Se connecter / Créer</button>
+            <p id="login-error-msg" class="error-msg"></p>
         </div>
     </div>
 
-    <!-- Modales Médias -->
+    <!-- Mon Profil -->
+    <div id="user-settings-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <button class="btn-close-modal" onclick="closeUserSettingsModal()">✕</button>
+            <h2>Mon Profil</h2>
+            
+            <label class="modal-label">PSEUDO</label>
+            <div class="input-group">
+                <input type="text" id="settingsUsernameInput" class="modal-input">
+                <button onclick="submitUsernameChange()" class="btn-primary btn-small">Sauver</button>
+            </div>
+
+            <label class="modal-label">CODE SECRET</label>
+            <div class="password-wrapper">
+                <input type="password" id="settingsCodeInput" class="modal-input" readonly>
+                <button onclick="toggleSecretVisibility()" class="btn-eye" title="Voir">👁️</button>
+            </div>
+            
+            <p id="settings-msg" class="info-msg"></p>
+            <button onclick="logoutUser()" class="btn-logout full-width mt-10">Déconnexion</button>
+        </div>
+    </div>
+
+    <!-- Médias -->
     <div id="url-modal" class="modal-overlay hidden">
         <div class="modal-box">
-            <h3>Image</h3>
+            <h3>Insérer une image</h3>
             <input type="text" id="urlInput" placeholder="https://..." class="modal-input">
-            <div class="modal-buttons"><button onclick="submitImageUrl()" class="btn-primary">Envoyer</button><button onclick="closeUrlModal()" class="btn-text">Annuler</button></div>
+            <div class="modal-buttons">
+                <button onclick="submitImageUrl()" class="btn-primary">Envoyer</button>
+                <button onclick="closeUrlModal()" class="btn-text">Annuler</button>
+            </div>
         </div>
     </div>
 
-    <button id="menu-toggle-btn" onclick="toggleSidebar()">☰</button>
+    <div id="video-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h3>Insérer une vidéo</h3>
+            <p class="modal-subtitle">YouTube ou lien .mp4 direct</p>
+            <input type="text" id="videoInput" placeholder="https://youtube.com/..." class="modal-input">
+            <div class="modal-buttons">
+                <button onclick="submitVideoUrl()" class="btn-primary">Envoyer</button>
+                <button onclick="closeVideoModal()" class="btn-text">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profil Personnage -->
+    <div id="profile-modal" class="modal-overlay hidden" onclick="closeProfileModal()">
+        <div class="modal-box profile-box" onclick="event.stopPropagation()">
+            <div class="profile-header">
+                <img id="profileAvatar" src="" class="profile-avatar-large">
+                <div class="profile-title">
+                    <h2 id="profileName">Nom</h2>
+                    <span id="profileRole" class="profile-role-tag">Rôle</span>
+                    <div id="profileOwner" class="profile-owner"></div>
+                </div>
+            </div>
+            <div class="profile-body">
+                <p id="profileDesc" class="profile-desc-text">...</p>
+            </div>
+            <button id="btn-dm-profile" class="btn-dm full-width mt-10">✉️ Envoyer un MP</button>
+            <button onclick="closeProfileModal()" class="btn-secondary full-width mt-5">Fermer</button>
+        </div>
+    </div>
+
+    <!-- UI PRINCIPALE -->
+    <button id="menu-toggle-btn" onclick="toggleSidebar()">
+        <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+    </button>
 
     <div id="app-container">
         
-        <!-- COLONNE GAUCHE : NAVIGATION -->
+        <!-- SIDEBAR GAUCHE -->
         <div id="sidebar">
             <div class="sidebar-header">
                 <h2 class="app-title">RP Verse</h2>
-                <div id="player-id-display">Invité</div>
-                <button class="btn-logout" onclick="logoutUser()">✕</button>
+                <button class="btn-close-sidebar" onclick="toggleSidebar()">✕</button>
+            </div>
+            
+            <div class="account-section">
+                <div id="player-id-display">Non connecté</div>
+                <button id="btn-account-main" class="btn-account full-width" onclick="openAccountUI()">🔑 Connexion</button>
             </div>
 
-            <!-- 1. SECTION SALONS (PUBLIC) -->
-            <div class="sidebar-section">
-                <h3 class="section-title">SALONS TEXTUELS</h3>
-                <div id="roomList"></div>
-                <button class="btn-add-room" onclick="createRoomPrompt()">+ Créer Salon</button>
-            </div>
-
-            <!-- 2. SECTION MESSAGES PRIVÉS (DISCORD STYLE) -->
-            <div class="sidebar-section mt-4">
-                <h3 class="section-title">MESSAGES PRIVÉS</h3>
-                <div id="dmList">
-                    <!-- Liste générée par JS -->
+            <div class="sidebar-scroll">
+                <div class="sidebar-section">
+                    <h3>Salons</h3>
+                    <div id="roomList"></div>
+                    <button class="btn-add-room" onclick="createRoomPrompt()">+ Salon</button>
                 </div>
-            </div>
 
-            <!-- 3. SECTION PERSONNAGES -->
-            <div class="sidebar-section mt-4" id="chars-section" style="border-top: 1px solid #222; padding-top:10px;">
-                <h3 class="section-title">MES PERSONNAGES</h3>
-                <div id="myCharList"></div>
-                <div class="create-form-toggle" onclick="toggleCreateForm()">+ Créer Personnage</div>
-                
-                <!-- Forms simplifiés pour lisibilité -->
-                <div id="create-char-form" class="create-form hidden">
-                    <input type="text" id="newCharName" placeholder="Nom">
-                    <input type="text" id="newCharRole" placeholder="Rôle">
-                    <label class="file-upload-label">Image <input type="file" id="newCharFile" onchange="previewFile('new')"></label>
-                    <input type="hidden" id="newCharBase64">
-                    <textarea id="newCharDesc" placeholder="Bio..."></textarea>
-                    <input type="color" id="newCharColor" value="#5c7cfa">
-                    <button onclick="createCharacter()" class="btn-primary">Créer</button>
-                </div>
-                <div id="edit-char-form" class="create-form hidden">
-                    <h4 style="color:#eab308;">Modifier</h4>
-                    <input type="hidden" id="editCharId"> <input type="hidden" id="editCharOriginalName">
-                    <input type="text" id="editCharName"> <input type="text" id="editCharRole">
-                    <label class="file-upload-label">Image <input type="file" id="editCharFile" onchange="previewFile('edit')"></label>
-                    <input type="hidden" id="editCharBase64">
-                    <textarea id="editCharDesc"></textarea>
-                    <input type="color" id="editCharColor">
-                    <button onclick="submitEditCharacter()" class="btn-primary">Sauver</button>
-                    <button onclick="cancelEditCharacter()" class="btn-secondary">Annuler</button>
+                <div class="sidebar-section">
+                    <h3>Mes Personnages</h3>
+                    <div id="myCharList"></div>
+                    <div class="create-form-toggle" onclick="toggleCreateForm()">+ Nouveau Personnage</div>
+                    
+                    <div id="create-char-form" class="create-form hidden">
+                        <input type="text" id="newCharName" placeholder="Nom">
+                        <input type="text" id="newCharRole" placeholder="Rôle">
+                        <label class="file-upload-label">
+                            <span>📷 Image (Max 2Mo)</span>
+                            <input type="file" id="newCharFile" accept="image/*" onchange="previewFile('new')">
+                        </label>
+                        <input type="hidden" id="newCharBase64">
+                        <textarea id="newCharDesc" placeholder="Histoire..." rows="3"></textarea>
+                        <div class="color-picker-wrapper">
+                            <span>Couleur:</span> <input type="color" id="newCharColor" value="#5c7cfa">
+                        </div>
+                        <button onclick="createCharacter()" class="btn-primary">Créer</button>
+                    </div>
+
+                    <div id="edit-char-form" class="create-form hidden edit-mode">
+                        <h4 style="margin:0 0 5px 0; color:#eab308;">Modifier</h4>
+                        <input type="hidden" id="editCharId">
+                        <input type="hidden" id="editCharOriginalName">
+                        <input type="text" id="editCharName" placeholder="Nom">
+                        <input type="text" id="editCharRole" placeholder="Rôle">
+                        <label class="file-upload-label">
+                            <span>📷 Changer Image</span>
+                            <input type="file" id="editCharFile" accept="image/*" onchange="previewFile('edit')">
+                        </label>
+                        <input type="hidden" id="editCharBase64">
+                        <textarea id="editCharDesc" placeholder="Description..." rows="3"></textarea>
+                        <div class="color-picker-wrapper">
+                            <span>Couleur:</span> <input type="color" id="editCharColor">
+                        </div>
+                        <div style="display:flex; gap:5px;">
+                            <button onclick="submitEditCharacter()" class="btn-primary btn-warning">Sauver</button>
+                            <button onclick="cancelEditCharacter()" class="btn-secondary">Annuler</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- COLONNE CENTRALE : CHAT -->
+        <!-- ZONE CHAT (CENTRE) -->
         <div id="chat-area">
-            
-            <!-- HEADER DYNAMIQUE -->
             <div class="chat-header">
-                <div id="header-icon" class="header-hash">#</div>
-                <div class="header-info">
-                    <h3 id="currentContextName">Salon Global</h3>
-                    <span id="currentContextDesc">Salon Public</span>
-                </div>
+                <span class="header-hash">#</span>
+                <h3 id="currentRoomName">Salon Global</h3>
             </div>
 
-            <!-- ZONE MESSAGES -->
             <div id="messages"></div>
-            
-            <!-- INDICATEUR -->
-            <div id="typing-indicator" class="hidden">Quelqu'un écrit...</div>
 
-            <!-- ZONE INPUT -->
+            <div id="typing-indicator" class="hidden">
+                <span class="typing-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
+                <span id="typing-text">...</span>
+            </div>
+            
             <div id="input-wrapper">
                 <div id="context-bar" class="hidden">
-                    <span id="context-text"></span>
+                    <div class="context-info">
+                        <span id="context-icon">↩️</span>
+                        <span id="context-text">...</span>
+                    </div>
                     <button class="btn-close-reply" onclick="cancelContext()">✕</button>
                 </div>
+
                 <div id="input-zone">
-                    <!-- Selecteur Perso (Visible uniquement en mode Salon) -->
                     <select id="charSelector"></select>
-                    
-                    <input id="txtInput" type="text" autocomplete="off" placeholder="Envoyer un message..." />
-                    <button class="btn-icon" onclick="openUrlModal()">📷</button>
+                    <input id="txtInput" type="text" autocomplete="off" placeholder="Message..." />
+                    <button class="btn-icon" onclick="openUrlModal()" title="Image">📷</button>
+                    <button class="btn-icon" onclick="openVideoModal()" title="Vidéo">🎥</button>
                     <button class="btn-send" onclick="sendMessage()">➤</button>
                 </div>
             </div>
         </div>
 
-        <!-- COLONNE DROITE : UTILISATEURS -->
+        <!-- SIDEBAR DROITE -->
         <div id="users-sidebar">
-            <div class="users-header"><h3>MEMBRES — <span id="online-count">0</span></h3></div>
+            <div class="users-header">
+                <h3>EN LIGNE — <span id="online-count">0</span></h3>
+            </div>
             <div id="online-users-list"></div>
         </div>
     </div>
