@@ -19,8 +19,11 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .room-item { padding: 8px; border-radius: 4px; cursor: pointer; color: var(--text-muted); font-weight: 500; display: flex; align-items: center; justify-content: space-between; transition: 0.2s; }
 .room-item:hover { background: #35373c; color: var(--text-normal); }
 .room-item.active { background: #404249; color: white; }
+
+/* NOTIFICATIONS */
 .room-item.unread { color: #ff6b6b !important; font-weight: bold; background: rgba(255, 107, 107, 0.1); }
 .room-item.unread::after { content: "●"; font-size: 0.8em; margin-left: 5px; }
+
 .room-name::before { content: "#"; margin-right: 8px; font-size: 1.2em; color: #6d6f78; }
 .btn-del-room { background: none; border: none; color: #666; cursor: pointer; display: none; font-size: 0.9em;}
 .btn-del-room:hover { color: var(--danger); }
