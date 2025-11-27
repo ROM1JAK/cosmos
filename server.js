@@ -1,195 +1,379 @@
-const express = require('express');
-const app = express();
-const http = require('http').createServer(app);
-const io = require('socket.io')(http, { maxHttpBufferSize: 5e6 });
-const mongoose = require('mongoose');
+var socket = io();
+let myCharacters = [];
+let allRooms = []; 
+let currentRoomId = 'global'; 
+let PLAYER_ID; 
+let IS_ADMIN = false;
+let currentContext = null; 
+let typingTimeout = null;
+let unreadRooms = new Set();
+// CORRECTIF REQ 4 : Map pour stocker l'ID du premier message non-lu par salon
+let firstUnreadMap = {}; 
 
-app.use(express.static(__dirname));
+// --- UI & LOGIN ---
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
+function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
+function openLoginModal() { document.getElementById('login-modal').classList.remove('hidden'); document.getElementById('login-error-msg').textContent = ""; }
+function closeLoginModal() { document.getElementById('login-modal').classList.add('hidden'); }
 
-const ADMIN_CODE = "ADMIN"; 
-const mongoURI = process.env.MONGO_URI; 
-
-if (!mongoURI) console.error("ERREUR : Variable MONGO_URI manquante.");
-else mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true }).then(() => console.log('Connecté à MongoDB.'));
-
-// --- SCHEMAS ---
-const UserSchema = new mongoose.Schema({
-    username: { type: String, unique: true },
-    secretCode: String, 
-    isAdmin: { type: Boolean, default: false }
-});
-const User = mongoose.model('User', UserSchema);
-
-const CharacterSchema = new mongoose.Schema({
-    name: String, color: String, avatar: String, role: String, ownerId: String, ownerUsername: String, description: String 
-});
-const Character = mongoose.model('Character', CharacterSchema);
-
-const MessageSchema = new mongoose.Schema({
-    content: String, type: String,
-    senderName: String, senderColor: String, senderAvatar: String, senderRole: String, ownerId: String,
-    targetName: String, roomId: { type: String, required: true },
-    replyTo: { id: String, author: String, content: String },
-    edited: { type: Boolean, default: false },
-    date: String, timestamp: { type: Date, default: Date.now }
-});
-const Message = mongoose.model('Message', MessageSchema);
-
-const RoomSchema = new mongoose.Schema({
-    name: { type: String, required: true }, creatorId: String, allowedCharacters: [String]
-});
-const Room = mongoose.model('Room', RoomSchema);
-
-let onlineUsers = {}; 
-
-function broadcastUserList() {
-    const uniqueNames = [...new Set(Object.values(onlineUsers))];
-    io.emit('update_user_list', uniqueNames);
+function submitLogin() {
+    const pseudo = document.getElementById('loginPseudoInput').value.trim();
+    const code = document.getElementById('loginCodeInput').value.trim();
+    if (pseudo && code) socket.emit('login_request', { username: pseudo, code: code });
 }
 
-io.on('connection', async (socket) => {
-  
-  // --- LOGIN ---
-  socket.on('login_request', async ({ username, code }) => {
-      try {
-          let user = await User.findOne({ username: username });
-          const isAdmin = (code === ADMIN_CODE);
-
-          if (user) {
-              if (user.secretCode !== code && !isAdmin) {
-                  socket.emit('login_error', "Mot de passe incorrect pour ce pseudo !");
-                  return;
-              }
-              if(isAdmin && !user.isAdmin) { user.isAdmin = true; await user.save(); }
-          } else {
-              user = new User({ username, secretCode: code, isAdmin });
-              await user.save();
-          }
-
-          // Mise à jour du pseudo propriétaire sur tous les persos existants (rétroactif)
-          await Character.updateMany({ ownerId: code }, { ownerUsername: username });
-
-          onlineUsers[socket.id] = user.username;
-          broadcastUserList();
-
-          socket.emit('login_success', { 
-              username: user.username, 
-              userId: user.secretCode, 
-              isAdmin: user.isAdmin 
-          });
-
-      } catch (e) {
-          console.error(e);
-      }
-  });
-
-  socket.on('disconnect', () => {
-      delete onlineUsers[socket.id];
-      broadcastUserList();
-  });
-
-  // --- INIT ---
-  socket.on('request_initial_data', async (userId) => {
-      socket.emit('rooms_data', await Room.find());
-      if(userId) {
-          const myChars = await Character.find({ ownerId: userId });
-          socket.emit('my_chars_data', myChars);
-      }
-  });
-
-  // --- PERSONNAGES ---
-  socket.on('get_char_profile', async (charName) => {
-      const char = await Character.findOne({ name: charName }).sort({_id: -1});
-      if(char) socket.emit('char_profile_data', char);
-  });
-
-  socket.on('create_char', async (data) => {
-    // CORRECTIF REQ 3 : On récupère le username du créateur
-    const user = await User.findOne({ secretCode: data.ownerId });
-    if (user) data.ownerUsername = user.username;
-    
-    const newChar = new Character(data);
-    await newChar.save();
-    socket.emit('char_created_success', newChar);
-  });
-  
-  socket.on('edit_char', async (data) => {
-      // 1. Update Perso
-      await Character.findByIdAndUpdate(data.charId, { 
-          name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor, description: data.newDescription 
-      });
-      
-      // 2. Update Anciens Messages
-      await Message.updateMany(
-          { senderName: data.originalName, ownerId: data.ownerId },
-          { $set: { 
-              senderName: data.newName, 
-              senderRole: data.newRole, 
-              senderAvatar: data.newAvatar, 
-              senderColor: data.newColor 
-          }}
-      );
-
-      // 3. Update Client
-      const myChars = await Character.find({ ownerId: data.ownerId });
-      socket.emit('my_chars_data', myChars);
-      io.emit('force_history_refresh', { roomId: data.currentRoomId });
-  });
-
-  socket.on('delete_char', async (charId) => {
-      await Character.findByIdAndDelete(charId);
-      socket.emit('char_deleted_success', charId);
-  });
-
-  // --- ROOMS ---
-  socket.on('create_room', async (roomData) => {
-      await new Room(roomData).save();
-      io.emit('rooms_data', await Room.find());
-  });
-  socket.on('delete_room', async (roomId) => {
-      if (roomId === "global") return; 
-      await Room.findByIdAndDelete(roomId);
-      await Message.deleteMany({ roomId: roomId });
-      io.emit('rooms_data', await Room.find());
-      io.emit('force_room_exit', roomId);
-  });
-  socket.on('join_room', (roomId) => { socket.join(roomId); });
-  socket.on('leave_room', (roomId) => { socket.leave(roomId); });
-  
-  socket.on('request_history', async (roomId) => {
-      const history = await Message.find({ roomId: roomId }).sort({ timestamp: 1 }).limit(200);
-      socket.emit('history_data', history);
-  });
-
-  // --- MESSAGES ---
-  socket.on('message_rp', async (msgData) => {
-    if (!msgData.roomId) return; 
-    if (msgData.senderName === "Narrateur") {
-        const user = await User.findOne({ secretCode: msgData.ownerId });
-        if (!user || !user.isAdmin) return;
+function logoutUser() {
+    if(confirm("Déconnexion ?")) {
+        localStorage.removeItem('rp_username');
+        localStorage.removeItem('rp_code');
+        location.reload();
     }
-    const newMessage = new Message(msgData);
-    const savedMsg = await newMessage.save();
-    io.to(msgData.roomId).emit('message_rp', savedMsg);
-  });
+}
 
-  socket.on('delete_message', async (msgId) => {
-      await Message.findByIdAndDelete(msgId);
-      io.emit('message_deleted', msgId);
-  });
-  socket.on('edit_message', async (data) => {
-      await Message.findByIdAndUpdate(data.id, { content: data.newContent, edited: true });
-      io.emit('message_updated', { id: data.id, newContent: data.newContent });
-  });
-  socket.on('admin_clear_room', async (roomId) => {
-      await Message.deleteMany({ roomId: roomId });
-      io.to(roomId).emit('history_cleared');
-  });
+// CORRECTIF REQ 1 : Auto-login robuste au chargement
+function checkAutoLogin() {
+    const savedUser = localStorage.getItem('rp_username');
+    const savedCode = localStorage.getItem('rp_code');
+    
+    if (savedUser && savedCode) {
+        // Tentative de connexion silencieuse
+        socket.emit('login_request', { username: savedUser, code: savedCode });
+    } else {
+        // Pas de sauvegarde, on affiche la modale
+        openLoginModal();
+    }
+}
 
-  // --- TYPING ---
-  socket.on('typing_start', (data) => { socket.to(data.roomId).emit('display_typing', data); });
-  socket.on('typing_stop', (data) => { socket.to(data.roomId).emit('hide_typing', data); });
+socket.on('login_success', (data) => {
+    localStorage.setItem('rp_username', data.username);
+    localStorage.setItem('rp_code', data.userId);
+    document.getElementById('player-id-display').textContent = `Compte : ${data.username}`;
+    IS_ADMIN = data.isAdmin;
+    if(IS_ADMIN) document.getElementById('player-id-display').style.color = "#da373c";
+    PLAYER_ID = data.userId;
+    
+    // Ferme la modale si elle est ouverte
+    closeLoginModal();
+    
+    socket.emit('request_initial_data', PLAYER_ID);
+    
+    // On ne force le join global que si on n'est pas déjà dans un état stable
+    // Mais pour simplifier, on reset sur Global au login
+    joinRoom('global');
 });
 
-const port = process.env.PORT || 3000;
-http.listen(port, () => { console.log(`Serveur prêt : ${port}`); });
+socket.on('login_error', (msg) => {
+    // Si l'auto-login échoue, on affiche l'erreur et la modale
+    document.getElementById('login-error-msg').textContent = msg;
+    openLoginModal();
+});
+
+// --- SOCKET ---
+socket.on('connect', () => {
+    // Une fois le socket connecté, on lance la procédure de login
+    checkAutoLogin();
+});
+
+socket.on('update_user_list', (users) => {
+    const listDiv = document.getElementById('online-users-list');
+    const countSpan = document.getElementById('online-count');
+    listDiv.innerHTML = "";
+    countSpan.textContent = users.length;
+    users.forEach(u => listDiv.innerHTML += `<div class="online-user"><span class="status-dot"></span><span>${u}</span></div>`);
+});
+
+socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId) socket.emit('request_history', currentRoomId); });
+
+// --- IMAGES ---
+function previewFile(type) {
+    const fileInput = document.getElementById(type === 'new' ? 'newCharFile' : 'editCharFile');
+    const hiddenInput = document.getElementById(type === 'new' ? 'newCharBase64' : 'editCharBase64');
+    const file = fileInput.files[0];
+    if (file) {
+        if (file.size > 2 * 1024 * 1024) { alert("Max 2 Mo"); fileInput.value = ""; return; }
+        const reader = new FileReader();
+        reader.onloadend = function() { hiddenInput.value = reader.result; }
+        reader.readAsDataURL(file);
+    }
+}
+function openUrlModal() { document.getElementById('url-modal').classList.remove('hidden'); }
+function closeUrlModal() { document.getElementById('url-modal').classList.add('hidden'); }
+function submitImageUrl() {
+    const url = document.getElementById('urlInput').value.trim();
+    if(url) {
+        const sel = document.getElementById('charSelector'); const opt = sel.options[sel.selectedIndex];
+        socket.emit('message_rp', { 
+            content: url, type: "image", 
+            senderName: opt.value, senderColor: opt.dataset.color, senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role, 
+            ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, 
+            date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: null 
+        });
+        document.getElementById('urlInput').value = ""; closeUrlModal();
+    }
+}
+
+// --- TYPING ---
+const txtInput = document.getElementById('txtInput');
+txtInput.addEventListener('input', () => {
+    const sel = document.getElementById('charSelector');
+    const name = sel.options[sel.selectedIndex]?.text || "Quelqu'un";
+    socket.emit('typing_start', { roomId: currentRoomId, charName: name });
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => { socket.emit('typing_stop', { roomId: currentRoomId, charName: name }); }, 1000);
+});
+socket.on('display_typing', (data) => { if(data.roomId === currentRoomId) { document.getElementById('typing-indicator').classList.remove('hidden'); document.getElementById('typing-text').textContent = `${data.charName} écrit...`; } });
+socket.on('hide_typing', (data) => { if(data.roomId === currentRoomId) document.getElementById('typing-indicator').classList.add('hidden'); });
+
+// --- SALONS ---
+function createRoomPrompt() {
+    const name = prompt("Nom du salon :");
+    if (name) socket.emit('create_room', { name, creatorId: PLAYER_ID, allowedCharacters: [] });
+}
+function deleteRoom(roomId) { if(confirm("ADMIN : Supprimer ?")) socket.emit('delete_room', roomId); }
+
+function joinRoom(roomId) {
+    if (currentRoomId && currentRoomId !== roomId) socket.emit('leave_room', currentRoomId);
+    currentRoomId = roomId;
+    socket.emit('join_room', currentRoomId);
+    
+    // On conserve firstUnreadMap pour le rendu de l'historique, on ne le supprime qu'après affichage
+    if (unreadRooms.has(currentRoomId)) {
+        unreadRooms.delete(currentRoomId);
+    }
+
+    const room = allRooms.find(r => r._id === roomId);
+    document.getElementById('currentRoomName').textContent = room ? room.name : 'Salon Global';
+    document.getElementById('messages').innerHTML = ""; 
+    document.getElementById('typing-indicator').classList.add('hidden');
+    socket.emit('request_history', currentRoomId);
+    cancelContext();
+    if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
+    updateRoomListUI();
+}
+socket.on('rooms_data', (rooms) => { allRooms = rooms; updateRoomListUI(); });
+
+function updateRoomListUI() {
+    const list = document.getElementById('roomList');
+    list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''} ${unreadRooms.has('global')?'unread':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
+    allRooms.forEach(room => {
+        const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>` : '';
+        const isUnread = unreadRooms.has(room._id) ? 'unread' : '';
+        const isActive = currentRoomId === room._id ? 'active' : '';
+        list.innerHTML += `<div class="room-item ${isActive} ${isUnread}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
+    });
+}
+
+// --- PERSONNAGES ---
+function createCharacter() {
+    const name = document.getElementById('newCharName').value.trim();
+    const role = document.getElementById('newCharRole').value.trim();
+    const desc = document.getElementById('newCharDesc').value.trim();
+    const color = document.getElementById('newCharColor').value;
+    let avatar = document.getElementById('newCharBase64').value;
+    if(!avatar) avatar = `https://ui-avatars.com/api/?name=${name}&background=random`;
+    if(!name || !role) return alert("Nom et Rôle requis");
+    socket.emit('create_char', { name, role, color, avatar, description: desc, ownerId: PLAYER_ID });
+    toggleCreateForm();
+    document.getElementById('newCharBase64').value = "";
+}
+
+function editCharacter(id, name, role, avatar, color, desc) {
+    document.getElementById('editCharId').value = id;
+    document.getElementById('editCharOriginalName').value = name;
+    document.getElementById('editCharName').value = name;
+    document.getElementById('editCharRole').value = role;
+    document.getElementById('editCharDesc').value = desc; 
+    document.getElementById('editCharColor').value = color;
+    document.getElementById('editCharBase64').value = "";
+    document.getElementById('edit-char-form').classList.remove('hidden');
+    document.getElementById('create-char-form').classList.add('hidden');
+}
+function cancelEditCharacter() { document.getElementById('edit-char-form').classList.add('hidden'); }
+function submitEditCharacter() {
+    const charId = document.getElementById('editCharId').value;
+    const originalName = document.getElementById('editCharOriginalName').value;
+    const newName = document.getElementById('editCharName').value.trim();
+    const newRole = document.getElementById('editCharRole').value.trim();
+    const newColor = document.getElementById('editCharColor').value;
+    const newDesc = document.getElementById('editCharDesc').value.trim();
+    let newAvatar = document.getElementById('editCharBase64').value;
+    if(!newAvatar) { const char = myCharacters.find(c => c._id === charId); if(char) newAvatar = char.avatar; }
+    socket.emit('edit_char', { charId, originalName, newName, newRole, newAvatar, newColor, newDescription: newDesc, ownerId: PLAYER_ID, currentRoomId: currentRoomId });
+    cancelEditCharacter();
+}
+
+socket.on('my_chars_data', (chars) => { myCharacters = chars; updateUI(); });
+socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(); });
+function deleteCharacter(id) { if(confirm('Supprimer ?')) socket.emit('delete_char', id); }
+socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c => c._id !== id); updateUI(); });
+
+// CORRECTIF REQ 2 : updateUI amélioré pour maintenir la sélection par ID
+function updateUI() {
+    const list = document.getElementById('myCharList');
+    const select = document.getElementById('charSelector');
+    
+    // On essaie de récupérer l'ID du perso actuellement sélectionné
+    let selectedCharId = null;
+    if (select.selectedIndex >= 0) {
+        const currentOpt = select.options[select.selectedIndex];
+        selectedCharId = currentOpt.dataset.id; // On utilisera un dataset ID
+    }
+
+    list.innerHTML = "";
+    select.innerHTML = ""; 
+    
+    if(IS_ADMIN) {
+        select.innerHTML = '<option value="Narrateur" data-id="narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
+    }
+
+    myCharacters.forEach(char => {
+        const safeDesc = (char.description || "").replace(/'/g, "\\'");
+        list.innerHTML += `
+            <div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="editCharacter('${char._id}', '${char.name}', '${char.role}', '${char.avatar}', '${char.color}', '${safeDesc}')">⚙️</button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;">✕</button></div></div>`;
+        
+        const opt = document.createElement('option');
+        opt.value = char.name; 
+        opt.text = char.name; 
+        opt.dataset.id = char._id; // Important pour retrouver le perso
+        opt.dataset.color = char.color; 
+        opt.dataset.avatar = char.avatar; 
+        opt.dataset.role = char.role;
+        select.appendChild(opt);
+    });
+    
+    // Restauration intelligente de la sélection
+    if(selectedCharId) {
+        // On cherche l'option qui a cet ID
+        const optionToSelect = Array.from(select.options).find(o => o.dataset.id === selectedCharId);
+        if(optionToSelect) {
+            optionToSelect.selected = true;
+        } else if (select.options.length > 0) {
+            select.selectedIndex = 0;
+        }
+    }
+}
+
+// --- PROFIL ---
+function openProfile(charName) { socket.emit('get_char_profile', charName); }
+function closeProfileModal() { document.getElementById('profile-modal').classList.add('hidden'); }
+socket.on('char_profile_data', (char) => {
+    document.getElementById('profileName').textContent = char.name;
+    document.getElementById('profileRole').textContent = char.role;
+    document.getElementById('profileAvatar').src = char.avatar;
+    document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
+    // CORRECTIF REQ 3 : Affichage du ownerUsername récupéré du serveur
+    document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
+    document.getElementById('profile-modal').classList.remove('hidden');
+});
+
+// --- ACTIONS ---
+function setContext(type, data) {
+    currentContext = { type, data };
+    const bar = document.getElementById('context-bar');
+    const icon = document.getElementById('context-icon');
+    const text = document.getElementById('context-text');
+    bar.className = 'visible';
+    document.getElementById('txtInput').focus();
+    if (type === 'reply') { icon.textContent = "↩️"; text.innerHTML = `Répondre à <strong>${data.author}</strong>`; }
+    else if (type === 'edit') { icon.textContent = "✏️"; text.innerHTML = `Modifier message`; document.getElementById('txtInput').value = data.content; }
+}
+function cancelContext() {
+    currentContext = null; document.getElementById('context-bar').className = 'hidden';
+    if(document.getElementById('txtInput').value !== "") document.getElementById('txtInput').value = "";
+}
+function triggerReply(id, author, content) { setContext('reply', { id, author, content }); }
+function triggerEdit(id, content) { setContext('edit', { id, content }); }
+function triggerDelete(id) { if(confirm("Supprimer ?")) socket.emit('delete_message', id); }
+
+function sendMessage() {
+    const txt = document.getElementById('txtInput');
+    const content = txt.value.trim();
+    if (!content) return;
+    if (content === "/clear") { if(IS_ADMIN) socket.emit('admin_clear_room', currentRoomId); txt.value = ''; return; }
+    if (currentContext && currentContext.type === 'edit') { socket.emit('edit_message', { id: currentContext.data.id, newContent: content }); txt.value = ''; cancelContext(); return; }
+
+    const sel = document.getElementById('charSelector');
+    if (sel.options.length === 0) { alert("Créez un personnage d'abord !"); return; }
+    const opt = sel.options[sel.selectedIndex];
+    
+    const msg = {
+        content, type: "text",
+        senderName: opt.value, senderColor: opt.dataset.color || "#fff", senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role,
+        ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId,
+        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+        replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null
+    };
+    socket.emit('message_rp', msg);
+    txt.value = ''; cancelContext();
+}
+
+// --- DISPLAY ---
+socket.on('history_data', (msgs) => { 
+    const container = document.getElementById('messages');
+    container.innerHTML = ""; 
+    // CORRECTIF REQ 4 : On récupère l'ID où insérer la barre
+    const splitId = firstUnreadMap[currentRoomId];
+    
+    msgs.forEach(msg => {
+        // Insertion barre si match
+        if(splitId && msg._id === splitId) {
+            const separator = document.createElement('div');
+            separator.className = 'new-msg-separator';
+            separator.textContent = "-- Nouveaux messages --";
+            container.appendChild(separator);
+        }
+        displayMessage(msg); 
+    });
+    
+    // Nettoyage notification une fois lus
+    if(firstUnreadMap[currentRoomId]) {
+        delete firstUnreadMap[currentRoomId];
+    }
+    
+    scrollToBottom(); 
+});
+
+socket.on('message_rp', (msg) => { 
+    if(msg.roomId === currentRoomId) { 
+        displayMessage(msg); scrollToBottom(); 
+    } else {
+        // CORRECTIF REQ 4 : On enregistre le premier message non lu
+        if (!firstUnreadMap[msg.roomId]) firstUnreadMap[msg.roomId] = msg._id;
+        unreadRooms.add(msg.roomId);
+        updateRoomListUI();
+    }
+});
+
+socket.on('message_deleted', (msgId) => { const el = document.getElementById(`msg-${msgId}`); if(el) el.remove(); });
+socket.on('message_updated', (data) => {
+    const el = document.getElementById(`content-${data.id}`);
+    if(el) { el.innerHTML = formatText(data.newContent); const meta = el.parentElement.parentElement.querySelector('.timestamp'); if(!meta.textContent.includes('(modifié)')) meta.textContent += ' (modifié)'; }
+});
+
+function formatText(text) {
+    if(!text) return "";
+    return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\*(.*?)\*/g, '<i>$1</i>').replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
+}
+
+function displayMessage(msg) {
+    const div = document.createElement('div');
+    div.className = 'message-container'; div.id = `msg-${msg._id}`;
+    const canEdit = (msg.ownerId === PLAYER_ID);
+    const canDelete = (msg.ownerId === PLAYER_ID) || IS_ADMIN;
+
+    let actionsHTML = `<button class="action-btn" onclick="triggerReply('${msg._id}', '${msg.senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre">↩️</button>`;
+    if (msg.type === 'text' && canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button>`;
+    if (canDelete) actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
+
+    let replyHTML = "", spacingStyle = "";
+    if (msg.replyTo && msg.replyTo.author) { spacingStyle = "margin-top: 15px;"; replyHTML = `<div class="reply-spine"></div><div class="reply-context-line" style="margin-left: 55px;"><span class="reply-name">@${msg.replyTo.author}</span><span class="reply-text">${msg.replyTo.content}</span></div>`; }
+    
+    let contentHTML = msg.type === "image" ? `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">` : `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
+    const editedTag = msg.edited ? '<span class="edited-tag">(modifié)</span>' : '';
+
+    div.innerHTML = `${replyHTML}<div class="msg-actions">${actionsHTML}</div><div style="position:relative; ${spacingStyle}"><img src="${msg.senderAvatar}" class="avatar-img" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')"><div style="margin-left: 55px;"><div class="char-header"><span class="char-name" style="color: ${msg.senderColor}" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')">${msg.senderName}</span><span class="char-role">${msg.senderRole || ""}</span><span class="timestamp">${msg.date} ${editedTag}</span></div>${contentHTML}</div></div>`;
+    document.getElementById('messages').appendChild(div);
+}
+
+function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
+document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
