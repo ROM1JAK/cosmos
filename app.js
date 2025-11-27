@@ -270,7 +270,33 @@ function sendMessage() {
     txt.value = ''; cancelContext();
 }
 
-socket.on('history_data', (msgs) => { document.getElementById('messages').innerHTML = ""; msgs.forEach(displayMessage); scrollToBottom(); });
+socket.on('history_data', (msgs) => {
+    const container = document.getElementById('messages');
+    container.innerHTML = "";
+    
+    // On récupère l'ID du message où on doit couper (s'il existe)
+    const splitId = firstUnreadMap[currentRoomId];
+
+    msgs.forEach(msg => {
+        // Si c'est le message marquant le début du non-lu, on insère la ligne AVANT
+        if (splitId && msg._id === splitId) {
+            const separator = document.createElement('div');
+            separator.className = 'new-msg-separator';
+            separator.textContent = "Nouveaux messages";
+            container.appendChild(separator);
+        }
+        displayMessage(msg);
+    });
+    
+    scrollToBottom();
+
+    // Maintenant qu'on a vu les messages, on nettoie les notifications pour ce salon
+    if (unreadRooms.has(currentRoomId)) {
+        unreadRooms.delete(currentRoomId);
+        delete firstUnreadMap[currentRoomId];
+        updateRoomListUI(); // On retire le rouge de la sidebar
+    }
+});
 socket.on('message_rp', (msg) => {
     // Cas 1 : Je suis dans le salon du message
     if (msg.roomId === currentRoomId) {
@@ -322,6 +348,7 @@ function displayMessage(msg) {
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
+
 
 
 
