@@ -2,34 +2,25 @@
 * { box-sizing: border-box; }
 body { background-color: var(--bg-primary); color: var(--text-normal); font-family: var(--font-main); margin: 0; height: 100dvh; overflow: hidden; display: flex; }
 
-/* GRILLE 3 COLONNES */
 #app-container { display: grid; grid-template-columns: 260px 1fr 220px; width: 100%; height: 100%; }
 
-/* GAUCHE */
+/* SIDEBAR */
 #sidebar { background-color: var(--bg-secondary); display: flex; flex-direction: column; overflow-y: auto; border-right: 1px solid #222; }
 .sidebar-header { padding: 15px; background: #232428; border-bottom: 1px solid #1e1f22; }
 .app-title { margin: 0; font-size: 1.1rem; color: white; }
 .btn-close-sidebar { display: none; background: none; border: none; color: white; cursor: pointer; }
-/* Style du bouton déconnexion */
-.btn-logout {
-    background: #da373c; /* Rouge */
-    border: none;
-    color: white;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-}
-.btn-logout:hover {
-    background: #a1282c;
-}
 #player-id-display { font-size: 0.8rem; color: var(--accent); font-weight:bold; margin: 5px 0 10px; }
-.btn-login { background: #3f4147; border: none; color: white; padding: 6px; border-radius: 4px; width: 100%; cursor: pointer; }
+.btn-login { background: #3f4147; border: none; color: white; padding: 6px; border-radius: 4px; cursor: pointer; }
+.btn-logout { background: var(--danger); border: none; color: white; padding: 6px; border-radius: 4px; cursor: pointer; font-weight:bold; }
+
 .sidebar-section { padding: 15px; }
 .sidebar-section h3 { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; font-weight: 700; }
+
 .room-item { padding: 8px; border-radius: 4px; cursor: pointer; color: var(--text-muted); font-weight: 500; display: flex; align-items: center; justify-content: space-between; transition: 0.2s; }
 .room-item:hover { background: #35373c; color: var(--text-normal); }
 .room-item.active { background: #404249; color: white; }
+.room-item.unread { color: #ff6b6b !important; font-weight: bold; background: rgba(255, 107, 107, 0.1); }
+.room-item.unread::after { content: "●"; font-size: 0.8em; }
 .room-name::before { content: "#"; margin-right: 8px; font-size: 1.2em; color: #6d6f78; }
 .btn-del-room { background: none; border: none; color: #666; cursor: pointer; display: none; font-size: 0.9em;}
 .btn-del-room:hover { color: var(--danger); }
@@ -56,7 +47,7 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .btn-secondary { background: #444; color: white; border:none; padding: 8px; border-radius: 4px; cursor: pointer;}
 .full-width { width: 100%; }
 
-/* DROITE (USERS) */
+/* SIDEBAR DROITE */
 #users-sidebar { background-color: var(--bg-secondary); display: flex; flex-direction: column; border-left: 1px solid #222; }
 .users-header { padding: 15px; border-bottom: 1px solid #26272d; height: 50px; display: flex; align-items: center;}
 .users-header h3 { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin: 0; }
@@ -108,6 +99,10 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .reply-name { font-weight: 600; color: #c0c0c0; }
 .reply-text { font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
 
+/* SEPARATEUR NOUVEAUX MESSAGES */
+.new-msg-separator { display: flex; align-items: center; color: #ff6b6b; margin: 20px 0; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+.new-msg-separator::before, .new-msg-separator::after { content: ""; flex: 1; height: 1px; background: #ff6b6b; opacity: 0.5; margin: 0 10px; }
+
 /* INPUT */
 #input-wrapper { background: var(--bg-primary); padding: 0 20px 20px; flex-shrink: 0; }
 #context-bar { background: #2b2d31; color: var(--text-muted); padding: 8px 15px; border-radius: 8px 8px 0 0; font-size: 0.85rem; display: none; justify-content: space-between; align-items: center; border-bottom: 1px solid #383a40; margin-bottom: -5px; z-index: 2; position: relative; }
@@ -132,48 +127,5 @@ select#charSelector { background: #2b2d31; color: white; border: none; padding: 
 #mobile-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 90; }
 @media (max-width: 768px) {
     #app-container { grid-template-columns: 1fr; }
-    #users-sidebar { display: none; } /* Cache liste users sur mobile */
-    #sidebar { position: fixed; left: -100%; top: 0; bottom: 0; transition: left 0.3s; width: 85%; }
-    #sidebar.open { left: 0; }
-    #mobile-overlay.open { display: block; }
-    #menu-toggle-btn { display: block; position: fixed; top: 12px; left: 15px; z-index: 50; background: #2b2d31; border: none; color: white; padding: 8px; border-radius: 4px; }
-    .btn-close-sidebar { display: block; }
-    .chat-header { padding-left: 60px; }
-    #input-zone { padding-right: 5px; }
-    select#charSelector { padding: 12px 5px; max-width: 90px; font-size: 0.85em; }
-    .msg-actions { opacity: 1; top: -25px; }
-}
-
-/* --- NOUVEAUTÉS : NOTIFICATIONS & SÉPARATEUR --- */
-
-/* Salon avec messages non lus */
-.room-item.unread {
-    color: #ff6b6b !important; /* Rouge clair */
-    font-weight: bold;
-    background: rgba(255, 107, 107, 0.1);
-}
-.room-item.unread::after {
-    content: "●"; /* Petit point */
-    margin-left: auto;
-    font-size: 0.8em;
-}
-
-/* La ligne rouge dans le chat */
-.new-msg-separator {
-    display: flex;
-    align-items: center;
-    color: #ff6b6b;
-    margin: 20px 0;
-    font-size: 0.75rem;
-    font-weight: bold;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-.new-msg-separator::before, .new-msg-separator::after {
-    content: "";
-    flex: 1;
-    height: 1px;
-    background: #ff6b6b;
-    opacity: 0.5;
-    margin: 0 10px;
-}
+    #users-sidebar { display: none; }
+    #sidebar { position: fixed; left: -100%; top: 0; bottom:
