@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 
 app.use(express.static(__dirname));
 
-const ADMIN_CODE = "ADMIN"; // Change ce code !
+const ADMIN_CODE = "ADMIN"; 
 const mongoURI = process.env.MONGO_URI; 
 
 if (!mongoURI) console.error("ERREUR : Variable MONGO_URI manquante.");
@@ -14,7 +14,7 @@ else mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: tru
 
 // --- SCHEMAS ---
 const UserSchema = new mongoose.Schema({
-    username: { type: String, unique: true }, // Pseudo UNIQUE
+    username: { type: String, unique: true },
     secretCode: String, 
     isAdmin: { type: Boolean, default: false }
 });
@@ -40,7 +40,6 @@ const RoomSchema = new mongoose.Schema({
 });
 const Room = mongoose.model('Room', RoomSchema);
 
-// --- GESTION UTILISATEURS EN LIGNE ---
 let onlineUsers = {}; 
 
 function broadcastUserList() {
@@ -48,35 +47,31 @@ function broadcastUserList() {
     io.emit('update_user_list', uniqueNames);
 }
 
-// --- SOCKET ---
 io.on('connection', async (socket) => {
   
-  // --- LOGIN STRICT ---
+  // --- LOGIN ---
   socket.on('login_request', async ({ username, code }) => {
       try {
-          // 1. On cherche si le PSEUDO existe déjà
           let user = await User.findOne({ username: username });
           const isAdmin = (code === ADMIN_CODE);
 
           if (user) {
-              // LE COMPTE EXISTE : VÉRIFICATION DU CODE
-              if (user.secretCode !== code && !isAdmin) { // L'admin peut bypasser (optionnel)
+              if (user.secretCode !== code && !isAdmin) {
                   socket.emit('login_error', "Mot de passe incorrect pour ce pseudo !");
                   return;
               }
-              // Si c'est le bon code, on met à jour le statut admin au cas où
               if(isAdmin && !user.isAdmin) { user.isAdmin = true; await user.save(); }
           } else {
-              // LE COMPTE N'EXISTE PAS : CRÉATION
               user = new User({ username, secretCode: code, isAdmin });
               await user.save();
           }
 
-          // Succès
+          // Mise à jour du pseudo propriétaire sur tous les persos existants
+          await Character.updateMany({ ownerId: code }, { ownerUsername: username });
+
           onlineUsers[socket.id] = user.username;
           broadcastUserList();
 
-          // On renvoie le secretCode (qui sert d'ID utilisateur interne)
           socket.emit('login_success', { 
               username: user.username, 
               userId: user.secretCode, 
@@ -85,7 +80,6 @@ io.on('connection', async (socket) => {
 
       } catch (e) {
           console.error(e);
-          socket.emit('login_error', "Erreur serveur lors de la connexion.");
       }
   });
 
@@ -94,21 +88,19 @@ io.on('connection', async (socket) => {
       broadcastUserList();
   });
 
-  // --- INIT DATA ---
+  // --- INIT ---
   socket.on('request_initial_data', async (userId) => {
       socket.emit('rooms_data', await Room.find());
       if(userId) {
-          // Récupération des persos liés au code secret (ownerId)
           const myChars = await Character.find({ ownerId: userId });
           socket.emit('my_chars_data', myChars);
       }
   });
 
   // --- PERSONNAGES ---
-  socket.on('get_char_profile', async (charId) => {
-      let char;
-      if(mongoose.Types.ObjectId.isValid(charId)) char = await Character.findById(charId);
-      else char = await Character.findOne({ name: charId }).sort({_id: -1});
+  socket.on('get_char_profile', async (charName) => {
+      // Recherche le perso le plus récent avec ce nom
+      const char = await Character.findOne({ name: charName }).sort({_id: -1});
       if(char) socket.emit('char_profile_data', char);
   });
 
@@ -119,14 +111,25 @@ io.on('connection', async (socket) => {
   });
   
   socket.on('edit_char', async (data) => {
+      // 1. Update Perso
       await Character.findByIdAndUpdate(data.charId, { 
           name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor, description: data.newDescription 
       });
+      
+      // 2. Update Anciens Messages
       await Message.updateMany(
           { senderName: data.originalName, ownerId: data.ownerId },
-          { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }}
+          { $set: { 
+              senderName: data.newName, 
+              senderRole: data.newRole, 
+              senderAvatar: data.newAvatar, 
+              senderColor: data.newColor 
+          }}
       );
-      socket.emit('my_chars_data', await Character.find({ ownerId: data.ownerId }));
+
+      // 3. Update Client
+      const myChars = await Character.find({ ownerId: data.ownerId });
+      socket.emit('my_chars_data', myChars);
       io.emit('force_history_refresh', { roomId: data.currentRoomId });
   });
 
@@ -135,7 +138,7 @@ io.on('connection', async (socket) => {
       socket.emit('char_deleted_success', charId);
   });
 
-  // --- SALONS ---
+  // --- ROOMS ---
   socket.on('create_room', async (roomData) => {
       await new Room(roomData).save();
       io.emit('rooms_data', await Room.find());
@@ -149,6 +152,7 @@ io.on('connection', async (socket) => {
   });
   socket.on('join_room', (roomId) => { socket.join(roomId); });
   socket.on('leave_room', (roomId) => { socket.leave(roomId); });
+  
   socket.on('request_history', async (roomId) => {
       const history = await Message.find({ roomId: roomId }).sort({ timestamp: 1 }).limit(200);
       socket.emit('history_data', history);
@@ -157,17 +161,15 @@ io.on('connection', async (socket) => {
   // --- MESSAGES ---
   socket.on('message_rp', async (msgData) => {
     if (!msgData.roomId) return; 
-    // Sécurité Narrateur
     if (msgData.senderName === "Narrateur") {
-        // On vérifie si l'user est admin via son code
         const user = await User.findOne({ secretCode: msgData.ownerId });
-        if (!user || !user.isAdmin) return; // Bloqué
+        if (!user || !user.isAdmin) return;
     }
-
     const newMessage = new Message(msgData);
     const savedMsg = await newMessage.save();
     io.to(msgData.roomId).emit('message_rp', savedMsg);
   });
+
   socket.on('delete_message', async (msgId) => {
       await Message.findByIdAndDelete(msgId);
       io.emit('message_deleted', msgId);
