@@ -19,12 +19,10 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .room-item { padding: 8px; border-radius: 4px; cursor: pointer; color: var(--text-muted); font-weight: 500; display: flex; align-items: center; justify-content: space-between; transition: 0.2s; }
 .room-item:hover { background: #35373c; color: var(--text-normal); }
 .room-item.active { background: #404249; color: white; }
-
-/* NOTIFICATIONS */
 .room-item.unread { color: #ff6b6b !important; font-weight: bold; background: rgba(255, 107, 107, 0.1); }
 .room-item.unread::after { content: "●"; font-size: 0.8em; margin-left: 5px; }
-
 .room-name::before { content: "#"; margin-right: 8px; font-size: 1.2em; color: #6d6f78; }
+
 .btn-del-room { background: none; border: none; color: #666; cursor: pointer; display: none; font-size: 0.9em;}
 .btn-del-room:hover { color: var(--danger); }
 .room-item:hover .btn-del-room { display: block; }
@@ -94,15 +92,18 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .char-role { font-size: 0.7rem; color: var(--text-muted); background: #2b2d31; padding: 1px 4px; border-radius: 3px; }
 .timestamp { font-size: 0.7rem; color: var(--text-muted); margin-left: auto; }
 .edited-tag { font-size: 0.65rem; color: var(--text-muted); margin-left: 4px; }
-.private-badge { background: #da373c; color: white; font-size: 0.65rem; padding: 1px 4px; border-radius: 3px; font-weight: 700; text-transform: uppercase; }
 .text-body { font-size: 0.95rem; line-height: 1.4; color: #dbdee1; white-space: pre-wrap; margin-top: 2px; word-wrap: break-word;}
 .chat-image { max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px; cursor: pointer; }
+
+/* Styles Video */
+.video-frame { width: 100%; max-width: 480px; height: 270px; border-radius: 8px; margin-top: 8px; border: none; background: #000; }
+.video-direct { max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px; }
+
 .reply-spine { position: absolute; top: 12px; left: 29px; width: 30px; height: 10px; border-top: 2px solid #4e5058; border-left: 2px solid #4e5058; border-top-left-radius: 6px; opacity: 0.6; }
 .reply-context-line { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: var(--text-muted); margin-left: -5px; opacity: 0.9; margin-bottom: 4px; }
 .reply-name { font-weight: 600; color: #c0c0c0; }
 .reply-text { font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
 
-/* SEPARATEUR NOUVEAUX MESSAGES */
 .new-msg-separator { display: flex; align-items: center; color: #ff6b6b; margin: 20px 0; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
 .new-msg-separator::before, .new-msg-separator::after { content: ""; flex: 1; height: 1px; background: #ff6b6b; opacity: 0.5; margin: 0 10px; }
 
