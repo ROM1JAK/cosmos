@@ -31,6 +31,7 @@ const Character = mongoose.model('Character', CharacterSchema);
 const MessageSchema = new mongoose.Schema({
     content: String, type: String,
     senderName: String, senderColor: String, senderAvatar: String, senderRole: String, ownerId: String,
+    targetName: String, targetOwnerId: String, // Pour les MP
     roomId: { type: String, required: true },
     replyTo: { id: String, author: String, content: String },
     edited: { type: Boolean, default: false },
@@ -43,18 +44,7 @@ const RoomSchema = new mongoose.Schema({
 });
 const Room = mongoose.model('Room', RoomSchema);
 
-// NOUVEAU SCHEMA MP
-const DirectMessageSchema = new mongoose.Schema({
-    senderUsername: String,
-    targetUsername: String,
-    content: String,
-    timestamp: { type: Date, default: Date.now },
-    read: { type: Boolean, default: false }
-});
-const DirectMessage = mongoose.model('DirectMessage', DirectMessageSchema);
-
-let onlineUsers = {}; // Map: socket.id -> username
-let userSockets = {}; // Map: username -> socket.id (Pour envoyer des MP ciblés)
+let onlineUsers = {}; 
 
 function broadcastUserList() {
     const uniqueNames = [...new Set(Object.values(onlineUsers))];
@@ -71,156 +61,170 @@ io.on('connection', async (socket) => {
 
           if (user) {
               if (user.secretCode !== code && !isAdmin) {
-                  socket.emit('login_error', "Mot de passe incorrect !");
+                  socket.emit('login_error', "Mot de passe incorrect pour ce pseudo !");
                   return;
               }
               if(isAdmin && !user.isAdmin) { user.isAdmin = true; await user.save(); }
           } else {
-              const existing = await User.findOne({ secretCode: code });
-              if(existing) { socket.emit('login_error', "Code déjà utilisé."); return; }
+              const existingCode = await User.findOne({ secretCode: code });
+              if(existingCode) {
+                   socket.emit('login_error', "Ce Code Secret est déjà lié à un autre pseudo (" + existingCode.username + ").");
+                   return;
+              }
               user = new User({ username, secretCode: code, isAdmin });
               await user.save();
           }
 
-          // Mise à jour maps
+          await Character.updateMany({ ownerId: code }, { ownerUsername: username });
           onlineUsers[socket.id] = user.username;
-          userSockets[user.username] = socket.id;
-
-          // Compter les MP non lus
-          const unreadCount = await DirectMessage.countDocuments({ targetUsername: user.username, read: false });
-
-          socket.emit('login_success', { 
-              username: user.username, 
-              userId: user.secretCode, 
-              isAdmin: user.isAdmin,
-              unreadCount: unreadCount
-          });
-          
           broadcastUserList();
 
+          socket.emit('login_success', { 
+              username: user.username, userId: user.secretCode, isAdmin: user.isAdmin 
+          });
+
       } catch (e) {
-          console.error(e);
+          console.error("Erreur Login:", e);
           socket.emit('login_error', "Erreur serveur.");
       }
   });
 
+  socket.on('change_username', async ({ userId, newUsername }) => {
+      try {
+          const existing = await User.findOne({ username: newUsername });
+          if (existing) {
+              socket.emit('username_change_error', "Ce pseudo est déjà pris.");
+              return;
+          }
+          await User.findOneAndUpdate({ secretCode: userId }, { username: newUsername });
+          await Character.updateMany({ ownerId: userId }, { ownerUsername: newUsername });
+          onlineUsers[socket.id] = newUsername;
+          broadcastUserList();
+          socket.emit('username_change_success', newUsername);
+      } catch (e) {
+          socket.emit('username_change_error', "Erreur lors du changement de pseudo.");
+      }
+  });
+
   socket.on('disconnect', () => {
-      const user = onlineUsers[socket.id];
-      if (user) delete userSockets[user];
       delete onlineUsers[socket.id];
       broadcastUserList();
   });
 
-  // --- ROOMS & RP ---
   socket.on('request_initial_data', async (userId) => {
       socket.emit('rooms_data', await Room.find());
-      if(userId) socket.emit('my_chars_data', await Character.find({ ownerId: userId }));
-  });
-
-  socket.on('join_room', (roomId) => { socket.join(roomId); });
-  socket.on('leave_room', (roomId) => { socket.leave(roomId); });
-  
-  socket.on('request_history', async (roomId) => {
-      const history = await Message.find({ roomId }).sort({ timestamp: 1 }).limit(200);
-      socket.emit('history_data', history);
-  });
-
-  socket.on('message_rp', async (msgData) => {
-      if(!msgData.roomId) return;
-      const savedMsg = await new Message(msgData).save();
-      io.to(msgData.roomId).emit('message_rp', savedMsg);
-  });
-
-  // --- SYSTÈME MESSAGERIE PRIVÉE (NOUVEAU) ---
-
-  // 1. Envoyer un MP
-  socket.on('send_dm', async (data) => {
-      const { senderUsername, targetUsername, content } = data;
-      
-      const newDM = new DirectMessage({ senderUsername, targetUsername, content, read: false });
-      await newDM.save();
-
-      // Envoyer à l'expéditeur (pour affichage immédiat)
-      socket.emit('dm_sent_confirmation', newDM);
-
-      // Envoyer au destinataire s'il est connecté
-      const targetSocketId = userSockets[targetUsername];
-      if (targetSocketId) {
-          io.to(targetSocketId).emit('receive_dm', newDM);
+      if(userId) {
+          const myChars = await Character.find({ ownerId: userId });
+          socket.emit('my_chars_data', myChars);
       }
   });
 
-  // 2. Charger la liste des conversations (Inbox)
-  socket.on('get_conversations', async (myUsername) => {
-      // On cherche tous les messages où je suis impliqué
-      const rawMsgs = await DirectMessage.find({ 
-          $or: [{ senderUsername: myUsername }, { targetUsername: myUsername }] 
-      }).sort({ timestamp: -1 });
-
-      const conversations = {};
-      
-      rawMsgs.forEach(msg => {
-          const otherUser = msg.senderUsername === myUsername ? msg.targetUsername : msg.senderUsername;
-          // On ne garde que le dernier message pour l'aperçu
-          if (!conversations[otherUser]) {
-              conversations[otherUser] = {
-                  with: otherUser,
-                  lastMessage: msg.content,
-                  date: msg.timestamp,
-                  unread: 0
-              };
-          }
-          // Compter les non-lus venant de cet utilisateur
-          if (msg.targetUsername === myUsername && !msg.read) {
-              conversations[otherUser].unread++;
-          }
-      });
-
-      socket.emit('conversations_list', Object.values(conversations));
+  // --- PERSONNAGES ---
+  socket.on('get_char_profile', async (charName) => {
+      const char = await Character.findOne({ name: charName }).sort({_id: -1});
+      if(char) socket.emit('char_profile_data', char);
   });
 
-  // 3. Charger l'historique d'une conversation spécifique
-  socket.on('get_dm_history', async ({ myUsername, otherUsername }) => {
-      const history = await DirectMessage.find({
-          $or: [
-              { senderUsername: myUsername, targetUsername: otherUsername },
-              { senderUsername: otherUsername, targetUsername: myUsername }
-          ]
-      }).sort({ timestamp: 1 }).limit(100);
-      
-      socket.emit('dm_history_data', history);
-  });
-
-  // 4. Marquer comme lu
-  socket.on('mark_dm_read', async ({ myUsername, senderUsername }) => {
-      await DirectMessage.updateMany(
-          { targetUsername: myUsername, senderUsername: senderUsername, read: false },
-          { $set: { read: true } }
-      );
-  });
-
-  // --- FONCTIONS CLASSIQUES (Create Char, Edit, etc...) ---
   socket.on('create_char', async (data) => {
-      const user = await User.findOne({ secretCode: data.ownerId });
-      if (user) data.ownerUsername = user.username;
-      const newChar = new Character(data);
-      await newChar.save();
-      socket.emit('char_created_success', newChar);
+    const user = await User.findOne({ secretCode: data.ownerId });
+    if (user) data.ownerUsername = user.username;
+    const newChar = new Character(data);
+    await newChar.save();
+    socket.emit('char_created_success', newChar);
   });
   
   socket.on('edit_char', async (data) => {
       await Character.findByIdAndUpdate(data.charId, { 
           name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor, description: data.newDescription 
       });
-      await Message.updateMany({ senderName: data.originalName, ownerId: data.ownerId }, { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }});
+      await Message.updateMany(
+          { senderName: data.originalName, ownerId: data.ownerId },
+          { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }}
+      );
       const myChars = await Character.find({ ownerId: data.ownerId });
       socket.emit('my_chars_data', myChars);
       io.emit('force_history_refresh', { roomId: data.currentRoomId });
   });
 
-  socket.on('delete_char', async (charId) => { await Character.findByIdAndDelete(charId); socket.emit('char_deleted_success', charId); });
-  socket.on('create_room', async (roomData) => { await new Room(roomData).save(); io.emit('rooms_data', await Room.find()); });
-  socket.on('delete_room', async (roomId) => { await Room.findByIdAndDelete(roomId); await Message.deleteMany({ roomId }); io.emit('rooms_data', await Room.find()); io.emit('force_room_exit', roomId); });
+  socket.on('delete_char', async (charId) => {
+      await Character.findByIdAndDelete(charId);
+      socket.emit('char_deleted_success', charId);
+  });
+
+  // --- ROOMS ---
+  socket.on('create_room', async (roomData) => {
+      await new Room(roomData).save();
+      io.emit('rooms_data', await Room.find());
+  });
+  socket.on('delete_room', async (roomId) => {
+      if (roomId === "global") return; 
+      await Room.findByIdAndDelete(roomId);
+      await Message.deleteMany({ roomId: roomId });
+      io.emit('rooms_data', await Room.find());
+      io.emit('force_room_exit', roomId);
+  });
+  socket.on('join_room', (roomId) => { socket.join(roomId); });
+  socket.on('leave_room', (roomId) => { socket.leave(roomId); });
+  
+  // --- HISTORIQUE (Avec Filtrage MP) ---
+  socket.on('request_history', async (data) => {
+      const roomId = (typeof data === 'object') ? data.roomId : data;
+      const requesterId = (typeof data === 'object') ? data.userId : null;
+
+      const query = { roomId: roomId };
+      
+      if (requesterId) {
+          // Public OU (MP envoyé par moi) OU (MP reçu par moi)
+          query.$or = [
+              { targetName: { $exists: false } }, 
+              { targetName: "" },                 
+              { ownerId: requesterId },           
+              { targetOwnerId: requesterId }      
+          ];
+      } else {
+          query.$or = [{ targetName: { $exists: false } }, { targetName: "" }];
+      }
+
+      const history = await Message.find(query).sort({ timestamp: 1 }).limit(200);
+      socket.emit('history_data', history);
+  });
+
+  // --- MESSAGES ---
+  socket.on('message_rp', async (msgData) => {
+    if (!msgData.roomId) return; 
+    
+    if (msgData.senderName === "Narrateur") {
+        const user = await User.findOne({ secretCode: msgData.ownerId });
+        if (!user || !user.isAdmin) return;
+    }
+
+    // Gestion MP : Récupérer le ownerId du destinataire
+    if (msgData.targetName) {
+        const targetChar = await Character.findOne({ name: msgData.targetName }).sort({_id: -1});
+        if (targetChar) {
+            msgData.targetOwnerId = targetChar.ownerId;
+        }
+    }
+
+    const newMessage = new Message(msgData);
+    const savedMsg = await newMessage.save();
+    io.to(msgData.roomId).emit('message_rp', savedMsg); 
+  });
+
+  socket.on('delete_message', async (msgId) => {
+      await Message.findByIdAndDelete(msgId);
+      io.emit('message_deleted', msgId);
+  });
+  socket.on('edit_message', async (data) => {
+      await Message.findByIdAndUpdate(data.id, { content: data.newContent, edited: true });
+      io.emit('message_updated', { id: data.id, newContent: data.newContent });
+  });
+  socket.on('admin_clear_room', async (roomId) => {
+      await Message.deleteMany({ roomId: roomId });
+      io.to(roomId).emit('history_cleared');
+  });
+
+  // --- TYPING ---
   socket.on('typing_start', (data) => { socket.to(data.roomId).emit('display_typing', data); });
   socket.on('typing_stop', (data) => { socket.to(data.roomId).emit('hide_typing', data); });
 });
