@@ -6,21 +6,23 @@ const mongoose = require('mongoose');
 
 app.use(express.static(__dirname));
 
-// CONFIGURATION
+// --- CONFIGURATION ---
 const ADMIN_CODE = "ADMIN"; 
 const mongoURI = process.env.MONGO_URI; 
 
-if (!mongoURI) console.error("ERREUR : Variable MONGO_URI manquante.");
-else mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
-    .then(() => console.log('Connecté à MongoDB.'))
-    .catch(err => console.error("Erreur MongoDB:", err));
+if (!mongoURI) {
+    console.error("ERREUR CRITIQUE : Variable MONGO_URI manquante.");
+} else {
+    mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
+        .then(() => console.log('✅ Connecté à MongoDB.'))
+        .catch(err => console.error("❌ Erreur MongoDB:", err));
+}
 
 // --- SCHEMAS ---
 const UserSchema = new mongoose.Schema({
     username: { type: String, unique: true },
     secretCode: String, 
-    isAdmin: { type: Boolean, default: false },
-    avatar: { type: String, default: "" } // Ajout pour l'avatar utilisateur
+    isAdmin: { type: Boolean, default: false }
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -32,6 +34,7 @@ const Character = mongoose.model('Character', CharacterSchema);
 const MessageSchema = new mongoose.Schema({
     content: String, type: String,
     senderName: String, senderColor: String, senderAvatar: String, senderRole: String, ownerId: String,
+    targetName: String, targetOwnerId: String, // Pour les MP
     roomId: { type: String, required: true },
     replyTo: { id: String, author: String, content: String },
     edited: { type: Boolean, default: false },
@@ -44,22 +47,16 @@ const RoomSchema = new mongoose.Schema({
 });
 const Room = mongoose.model('Room', RoomSchema);
 
-// NOUVEAU SCHEMA MP (Style Discord)
-const DirectMessageSchema = new mongoose.Schema({
-    from: String, // Username expéditeur
-    to: String,   // Username destinataire
-    content: String,
-    read: { type: Boolean, default: false },
-    timestamp: { type: Date, default: Date.now }
-});
-const DirectMessage = mongoose.model('DirectMessage', DirectMessageSchema);
+let onlineUsers = {}; 
 
-// Gestion des sockets utilisateurs
-let userSockets = {}; // Map: username -> socket.id
+function broadcastUserList() {
+    const uniqueNames = [...new Set(Object.values(onlineUsers))];
+    io.emit('update_user_list', uniqueNames);
+}
 
 io.on('connection', async (socket) => {
   
-  // --- LOGIN ---
+  // --- LOGIN & COMPTE ---
   socket.on('login_request', async ({ username, code }) => {
       try {
           let user = await User.findOne({ username: username });
@@ -67,31 +64,29 @@ io.on('connection', async (socket) => {
 
           if (user) {
               if (user.secretCode !== code && !isAdmin) {
-                  socket.emit('login_error', "Mot de passe incorrect !");
+                  socket.emit('login_error', "Mot de passe incorrect pour ce pseudo !");
                   return;
               }
               if(isAdmin && !user.isAdmin) { user.isAdmin = true; await user.save(); }
           } else {
-              const existing = await User.findOne({ secretCode: code });
-              if(existing) { socket.emit('login_error', "Code déjà utilisé."); return; }
-              // Avatar par défaut généré
-              const defaultAvatar = `https://ui-avatars.com/api/?name=${username}&background=random&color=fff`;
-              user = new User({ username, secretCode: code, isAdmin, avatar: defaultAvatar });
+              const existingCode = await User.findOne({ secretCode: code });
+              if(existingCode) {
+                   socket.emit('login_error', "Ce code est déjà utilisé par " + existingCode.username);
+                   return;
+              }
+              user = new User({ username, secretCode: code, isAdmin });
               await user.save();
           }
 
-          // Enregistrement socket
-          userSockets[user.username] = socket.id;
-          socket.username = user.username; // Stockage dans l'objet socket pour déconnexion facile
+          // Mise à jour rétroactive des persos
+          await Character.updateMany({ ownerId: code }, { ownerUsername: username });
+
+          onlineUsers[socket.id] = user.username;
+          broadcastUserList();
 
           socket.emit('login_success', { 
-              username: user.username, 
-              userId: user.secretCode, 
-              isAdmin: user.isAdmin,
-              avatar: user.avatar || `https://ui-avatars.com/api/?name=${user.username}`
+              username: user.username, userId: user.secretCode, isAdmin: user.isAdmin 
           });
-          
-          broadcastUserList();
 
       } catch (e) {
           console.error(e);
@@ -99,137 +94,158 @@ io.on('connection', async (socket) => {
       }
   });
 
-  socket.on('disconnect', () => {
-      if (socket.username) {
-          delete userSockets[socket.username];
-          broadcastUserList();
-      }
-  });
-
-  // --- MP SYSTEM (Discord Style) ---
-  
-  // 1. Récupérer la liste des conversations (Sidebar Gauche)
-  socket.on('request_dm_list', async (myUsername) => {
-      // Trouver tous les messages où je suis impliqué
-      const messages = await DirectMessage.find({ 
-          $or: [{ from: myUsername }, { to: myUsername }] 
-      }).sort({ timestamp: -1 });
-
-      const contactSet = new Set();
-      const contacts = [];
-
-      for (const msg of messages) {
-          const otherUser = msg.from === myUsername ? msg.to : msg.from;
-          if (!contactSet.has(otherUser)) {
-              contactSet.add(otherUser);
-              
-              // Récupérer infos utilisateur (pour l'avatar)
-              const userProfile = await User.findOne({ username: otherUser });
-              const avatar = userProfile ? (userProfile.avatar || `https://ui-avatars.com/api/?name=${otherUser}`) : `https://ui-avatars.com/api/?name=${otherUser}`;
-              
-              // Compter non-lus
-              const unread = await DirectMessage.countDocuments({ from: otherUser, to: myUsername, read: false });
-
-              contacts.push({
-                  username: otherUser,
-                  avatar: avatar,
-                  lastMessage: msg.content,
-                  unreadCount: unread,
-                  timestamp: msg.timestamp
-              });
+  socket.on('change_username', async ({ userId, newUsername }) => {
+      try {
+          const existing = await User.findOne({ username: newUsername });
+          if (existing) {
+              socket.emit('username_change_error', "Ce pseudo est déjà pris.");
+              return;
           }
-      }
-      socket.emit('dm_list_data', contacts);
-  });
-
-  // 2. Ouvrir une conversation (Historique)
-  socket.on('join_dm', async ({ myUsername, targetUsername }) => {
-      const history = await DirectMessage.find({
-          $or: [
-              { from: myUsername, to: targetUsername },
-              { from: targetUsername, to: myUsername }
-          ]
-      }).sort({ timestamp: 1 }).limit(100);
-
-      // Marquer comme lus
-      await DirectMessage.updateMany({ from: targetUsername, to: myUsername, read: false }, { $set: { read: true } });
-
-      socket.emit('dm_history', { target: targetUsername, history });
-  });
-
-  // 3. Envoyer un MP
-  socket.on('send_dm', async ({ from, to, content }) => {
-      const dm = new DirectMessage({ from, to, content, read: false });
-      await dm.save();
-
-      const msgData = {
-          from, to, content, timestamp: dm.timestamp,
-          avatar: `https://ui-avatars.com/api/?name=${from}` // Simplifié pour l'exemple
-      };
-
-      // Envoyer à l'expéditeur (update immédiat)
-      socket.emit('receive_dm', msgData);
-
-      // Envoyer au destinataire s'il est là
-      const targetSocket = userSockets[to];
-      if (targetSocket) {
-          io.to(targetSocket).emit('receive_dm', msgData);
-          // Trigger aussi un refresh de la liste des convos pour le destinataire
-          io.to(targetSocket).emit('refresh_dm_list_trigger'); 
+          await User.findOneAndUpdate({ secretCode: userId }, { username: newUsername });
+          await Character.updateMany({ ownerId: userId }, { ownerUsername: newUsername });
+          
+          // Mise à jour socket si connecté
+          const sockId = Object.keys(onlineUsers).find(key => onlineUsers[key] === onlineUsers[socket.id]);
+          if(sockId) onlineUsers[sockId] = newUsername;
+          
+          broadcastUserList();
+          socket.emit('username_change_success', newUsername);
+      } catch (e) {
+          socket.emit('username_change_error', "Erreur changement pseudo.");
       }
   });
 
+  socket.on('disconnect', () => {
+      delete onlineUsers[socket.id];
+      broadcastUserList();
+  });
 
-  // --- SALONS & RP ---
+  // --- DONNÉES INITIALES ---
   socket.on('request_initial_data', async (userId) => {
       socket.emit('rooms_data', await Room.find());
-      if(userId) socket.emit('my_chars_data', await Character.find({ ownerId: userId }));
+      if(userId) {
+          const myChars = await Character.find({ ownerId: userId });
+          socket.emit('my_chars_data', myChars);
+      }
   });
 
-  socket.on('join_room', (roomId) => { socket.join(roomId); });
-  socket.on('leave_room', (roomId) => { socket.leave(roomId); });
-  
-  socket.on('request_history', async (roomId) => {
-      const history = await Message.find({ roomId }).sort({ timestamp: 1 }).limit(200);
-      socket.emit('history_data', history);
+  // --- PERSONNAGES ---
+  socket.on('get_char_profile', async (charName) => {
+      const char = await Character.findOne({ name: charName }).sort({_id: -1});
+      if(char) socket.emit('char_profile_data', char);
   });
 
-  socket.on('message_rp', async (msgData) => {
-      if(!msgData.roomId) return;
-      const savedMsg = await new Message(msgData).save();
-      io.to(msgData.roomId).emit('message_rp', savedMsg);
-  });
-
-  // --- FONCTIONS ADMIN & PERSOS ---
   socket.on('create_char', async (data) => {
-      const user = await User.findOne({ secretCode: data.ownerId });
-      if (user) data.ownerUsername = user.username;
-      await new Character(data).save();
-      socket.emit('char_created_success', await Character.findOne(data));
+    const user = await User.findOne({ secretCode: data.ownerId });
+    if (user) data.ownerUsername = user.username;
+    const newChar = new Character(data);
+    await newChar.save();
+    socket.emit('char_created_success', newChar);
   });
+  
   socket.on('edit_char', async (data) => {
       await Character.findByIdAndUpdate(data.charId, { 
           name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor, description: data.newDescription 
       });
-      await Message.updateMany({ senderName: data.originalName, ownerId: data.ownerId }, { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }});
-      socket.emit('my_chars_data', await Character.find({ ownerId: data.ownerId }));
+      // Met à jour l'historique pour la cohérence
+      await Message.updateMany(
+          { senderName: data.originalName, ownerId: data.ownerId },
+          { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }}
+      );
+      const myChars = await Character.find({ ownerId: data.ownerId });
+      socket.emit('my_chars_data', myChars);
       io.emit('force_history_refresh', { roomId: data.currentRoomId });
   });
-  socket.on('delete_char', async (charId) => { await Character.findByIdAndDelete(charId); socket.emit('char_deleted_success', charId); });
-  socket.on('create_room', async (roomData) => { await new Room(roomData).save(); io.emit('rooms_data', await Room.find()); });
-  socket.on('delete_room', async (roomId) => { await Room.findByIdAndDelete(roomId); await Message.deleteMany({ roomId }); io.emit('rooms_data', await Room.find()); io.emit('force_room_exit', roomId); });
+
+  socket.on('delete_char', async (charId) => {
+      await Character.findByIdAndDelete(charId);
+      socket.emit('char_deleted_success', charId);
+  });
+
+  // --- SALONS ---
+  socket.on('create_room', async (roomData) => {
+      await new Room(roomData).save();
+      io.emit('rooms_data', await Room.find());
+  });
+  socket.on('delete_room', async (roomId) => {
+      if (roomId === "global") return; 
+      await Room.findByIdAndDelete(roomId);
+      await Message.deleteMany({ roomId: roomId });
+      io.emit('rooms_data', await Room.find());
+      io.emit('force_room_exit', roomId);
+  });
+  socket.on('join_room', (roomId) => { socket.join(roomId); });
+  socket.on('leave_room', (roomId) => { socket.leave(roomId); });
+  
+  // --- HISTORIQUE & SÉCURITÉ MP ---
+  socket.on('request_history', async (data) => {
+      const roomId = (typeof data === 'object') ? data.roomId : data;
+      const requesterId = (typeof data === 'object') ? data.userId : null;
+
+      const query = { roomId: roomId };
+      
+      if (requesterId) {
+          // Un utilisateur connecté voit : Public + Ses MPs (envoyés ou reçus)
+          query.$or = [
+              { targetName: { $exists: false } }, 
+              { targetName: "" },
+              { targetName: null },
+              { ownerId: requesterId },           
+              { targetOwnerId: requesterId }      
+          ];
+      } else {
+          // Un invité ne voit que le public
+          query.$or = [{ targetName: { $exists: false } }, { targetName: "" }, { targetName: null }];
+      }
+
+      const history = await Message.find(query).sort({ timestamp: 1 }).limit(200);
+      socket.emit('history_data', history);
+  });
+
+  // --- MESSAGERIE ---
+  socket.on('message_rp', async (msgData) => {
+    if (!msgData.roomId) return; 
+    
+    // Narrateur Admin Check
+    if (msgData.senderName === "Narrateur") {
+        const user = await User.findOne({ secretCode: msgData.ownerId });
+        if (!user || !user.isAdmin) return;
+    }
+
+    // Gestion MP : Trouver l'ID du propriétaire du perso cible
+    if (msgData.targetName) {
+        const targetChar = await Character.findOne({ name: msgData.targetName }).sort({_id: -1});
+        if (targetChar) {
+            msgData.targetOwnerId = targetChar.ownerId;
+        }
+    }
+
+    const newMessage = new Message(msgData);
+    const savedMsg = await newMessage.save();
+    
+    // On envoie à tout le monde dans la room
+    // Le filtrage visuel se fait côté client pour le temps réel,
+    // Le filtrage de sécurité se fait côté serveur pour l'historique.
+    io.to(msgData.roomId).emit('message_rp', savedMsg); 
+  });
+
+  socket.on('delete_message', async (msgId) => {
+      await Message.findByIdAndDelete(msgId);
+      io.emit('message_deleted', msgId);
+  });
+  socket.on('edit_message', async (data) => {
+      await Message.findByIdAndUpdate(data.id, { content: data.newContent, edited: true });
+      io.emit('message_updated', { id: data.id, newContent: data.newContent });
+  });
+  socket.on('admin_clear_room', async (roomId) => {
+      await Message.deleteMany({ roomId: roomId });
+      io.to(roomId).emit('history_cleared');
+  });
+
+  // --- TYPING ---
   socket.on('typing_start', (data) => { socket.to(data.roomId).emit('display_typing', data); });
   socket.on('typing_stop', (data) => { socket.to(data.roomId).emit('hide_typing', data); });
 });
 
-function broadcastUserList() {
-    const uniqueNames = [...new Set(Object.values(userSockets).map(id => {
-        // Retrouver le username via le socket (un peu hacky mais rapide pour l'exemple)
-        const entry = Object.entries(userSockets).find(([u, s]) => s === id);
-        return entry ? entry[0] : null;
-    }).filter(x => x))];
-    io.emit('update_user_list', uniqueNames);
-}
-
 const port = process.env.PORT || 3000;
-http.listen(port, () => { console.log(`Serveur prêt : ${port}`); });
+http.listen(port, () => { console.log(`Serveur prêt sur le port ${port}`); });
