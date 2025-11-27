@@ -6,6 +6,8 @@ let PLAYER_ID;
 let IS_ADMIN = false;
 let currentContext = null; 
 let typingTimeout = null;
+let unreadRooms = new Set(); // Stocke les ID des salons non lus
+let firstUnreadMap = {};     // Stocke l'ID du premier message non lu par salon
 
 // --- UI & LOGIN ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
@@ -298,3 +300,4 @@ function displayMessage(msg) {
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
+
