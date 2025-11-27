@@ -31,7 +31,8 @@ const Character = mongoose.model('Character', CharacterSchema);
 const MessageSchema = new mongoose.Schema({
     content: String, type: String,
     senderName: String, senderColor: String, senderAvatar: String, senderRole: String, ownerId: String,
-    targetName: String, roomId: { type: String, required: true },
+    targetName: String, targetOwnerId: String, // Ajout pour identifier le destinataire réel
+    roomId: { type: String, required: true },
     replyTo: { id: String, author: String, content: String },
     edited: { type: Boolean, default: false },
     date: String, timestamp: { type: Date, default: Date.now }
@@ -65,7 +66,6 @@ io.on('connection', async (socket) => {
               }
               if(isAdmin && !user.isAdmin) { user.isAdmin = true; await user.save(); }
           } else {
-              // Vérifier si le code est déjà pris par un autre pseudo (optionnel mais recommandé)
               const existingCode = await User.findOne({ secretCode: code });
               if(existingCode) {
                    socket.emit('login_error', "Ce Code Secret est déjà lié à un autre pseudo (" + existingCode.username + ").");
@@ -75,9 +75,7 @@ io.on('connection', async (socket) => {
               await user.save();
           }
 
-          // Mise à jour rétroactive (au cas où)
           await Character.updateMany({ ownerId: code }, { ownerUsername: username });
-          
           onlineUsers[socket.id] = user.username;
           broadcastUserList();
 
@@ -91,30 +89,19 @@ io.on('connection', async (socket) => {
       }
   });
 
-  // --- GESTION COMPTE (NOUVEAU) ---
   socket.on('change_username', async ({ userId, newUsername }) => {
       try {
-          // 1. Vérifier si le pseudo est libre
           const existing = await User.findOne({ username: newUsername });
           if (existing) {
               socket.emit('username_change_error', "Ce pseudo est déjà pris.");
               return;
           }
-
-          // 2. Mettre à jour l'utilisateur
           await User.findOneAndUpdate({ secretCode: userId }, { username: newUsername });
-
-          // 3. Mettre à jour les personnages
           await Character.updateMany({ ownerId: userId }, { ownerUsername: newUsername });
-
-          // 4. Mettre à jour la liste des connectés
           onlineUsers[socket.id] = newUsername;
           broadcastUserList();
-
           socket.emit('username_change_success', newUsername);
-
       } catch (e) {
-          console.error(e);
           socket.emit('username_change_error', "Erreur lors du changement de pseudo.");
       }
   });
@@ -124,7 +111,6 @@ io.on('connection', async (socket) => {
       broadcastUserList();
   });
 
-  // --- INIT ---
   socket.on('request_initial_data', async (userId) => {
       socket.emit('rooms_data', await Room.find());
       if(userId) {
@@ -180,21 +166,56 @@ io.on('connection', async (socket) => {
   socket.on('join_room', (roomId) => { socket.join(roomId); });
   socket.on('leave_room', (roomId) => { socket.leave(roomId); });
   
-  socket.on('request_history', async (roomId) => {
-      const history = await Message.find({ roomId: roomId }).sort({ timestamp: 1 }).limit(200);
+  // --- HISTORIQUE (Avec Filtrage MP) ---
+  socket.on('request_history', async (data) => {
+      // Data peut être un string (roomId) ou un objet {roomId, userId}
+      const roomId = (typeof data === 'object') ? data.roomId : data;
+      const requesterId = (typeof data === 'object') ? data.userId : null;
+
+      const query = { roomId: roomId };
+      
+      if (requesterId) {
+          // Si on est connecté, on veut : Messages Publics OU (MP envoyé par moi) OU (MP reçu par moi)
+          query.$or = [
+              { targetName: { $exists: false } }, // Public
+              { targetName: "" },                 // Public
+              { ownerId: requesterId },           // Mon MP envoyé
+              { targetOwnerId: requesterId }      // MP reçu
+          ];
+      } else {
+          // Invité : Seulement messages publics
+          query.$or = [{ targetName: { $exists: false } }, { targetName: "" }];
+      }
+
+      const history = await Message.find(query).sort({ timestamp: 1 }).limit(200);
       socket.emit('history_data', history);
   });
 
   // --- MESSAGES ---
   socket.on('message_rp', async (msgData) => {
     if (!msgData.roomId) return; 
+    
+    // Check Narrateur Admin
     if (msgData.senderName === "Narrateur") {
         const user = await User.findOne({ secretCode: msgData.ownerId });
         if (!user || !user.isAdmin) return;
     }
+
+    // Gestion MP : Récupérer le ownerId du destinataire
+    if (msgData.targetName) {
+        const targetChar = await Character.findOne({ name: msgData.targetName }).sort({_id: -1});
+        if (targetChar) {
+            msgData.targetOwnerId = targetChar.ownerId;
+        } else {
+            // Perso introuvable ? On traite comme public ou on annule. Ici on laisse filer mais sans ownerId (donc invisible destinataire)
+        }
+    }
+
     const newMessage = new Message(msgData);
     const savedMsg = await newMessage.save();
-    io.emit('message_rp', savedMsg); 
+    
+    // On broadcast à la room, le filtrage visuel se fera côté client pour le temps réel
+    io.to(msgData.roomId).emit('message_rp', savedMsg); 
   });
 
   socket.on('delete_message', async (msgId) => {
