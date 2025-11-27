@@ -12,14 +12,19 @@
     <div id="mobile-overlay" onclick="toggleSidebar()"></div>
 
     <div id="login-modal" class="modal-overlay hidden">
-        <div class="modal-box">
+        <div class="modal-box" style="position: relative;">
+            <button onclick="closeLoginModal()" style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: #aaa; cursor: pointer; font-size: 1.2rem;">✕</button>
+            
             <h2>Connexion</h2>
-            <p style="color:#aaa; font-size:0.9em;">Créez un compte ou connectez-vous.</p>
-            <input type="text" id="loginPseudoInput" placeholder="Votre Pseudo" class="modal-input">
+            <p style="color:#aaa; font-size:0.9em;">Pseudo unique + Code secret.</p>
+            
+            <input type="text" id="loginPseudoInput" placeholder="Pseudo (Ex: Pedro)" class="modal-input">
             <input type="password" id="loginCodeInput" placeholder="Code Secret" class="modal-input">
+            
             <div class="modal-buttons">
-                <button onclick="submitLogin()" class="btn-primary full-width">Valider</button>
+                <button onclick="submitLogin()" class="btn-primary full-width">Se connecter / Créer</button>
             </div>
+            <p id="login-error-msg" style="color: #da373c; font-size: 0.8em; margin-top: 10px;"></p>
         </div>
     </div>
 
@@ -56,7 +61,6 @@
     </button>
 
     <div id="app-container">
-        
         <div id="sidebar">
             <div class="sidebar-header">
                 <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
@@ -65,9 +69,7 @@
                 </div>
                 <div id="player-id-display">Invité</div>
                 <button class="btn-login" onclick="openLoginModal()">🔑 Compte</button>
-                <button class="btn-logout" onclick="logoutUser()" title="Se déconnecter">❌</button>
             </div>
-
 
             <div class="sidebar-section">
                 <h3>Salons</h3>
@@ -84,7 +86,7 @@
                     <input type="text" id="newCharName" placeholder="Nom">
                     <input type="text" id="newCharRole" placeholder="Rôle">
                     <label class="file-upload-label">
-                        <span>📷 Image Profil (Max 2Mo)</span>
+                        <span>📷 Image (Max 2Mo)</span>
                         <input type="file" id="newCharFile" accept="image/*" onchange="previewFile('new')">
                     </label>
                     <input type="hidden" id="newCharBase64">
@@ -155,12 +157,9 @@
             </div>
             <div id="online-users-list"></div>
         </div>
-
     </div>
     
     <script src="/socket.io/socket.io.js"></script>
     <script src="app.js"></script> 
 </body>
 </html>
-
-
