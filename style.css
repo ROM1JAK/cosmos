@@ -23,6 +23,14 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .room-item.unread::after { content: "●"; font-size: 0.8em; margin-left: 5px; }
 .room-name::before { content: "#"; margin-right: 8px; font-size: 1.2em; color: #6d6f78; }
 
+/* Styles MP */
+.dm-item { padding: 8px; border-radius: 4px; cursor: pointer; color: var(--text-muted); font-weight: 500; display: flex; align-items: center; transition: 0.2s; margin-bottom: 2px; }
+.dm-item:hover { background: #35373c; color: var(--text-normal); }
+.dm-item.active { background: #404249; color: white; }
+.dm-item.unread { color: white; font-weight: bold; }
+.dm-item.unread::after { content: "1"; background: #da373c; color: white; font-size: 0.7em; padding: 1px 5px; border-radius: 10px; margin-left: auto; }
+.dm-avatar { width: 24px; height: 24px; border-radius: 50%; margin-right: 10px; object-fit: cover; }
+
 .btn-del-room { background: none; border: none; color: #666; cursor: pointer; display: none; font-size: 0.9em;}
 .btn-del-room:hover { color: var(--danger); }
 .room-item:hover .btn-del-room { display: block; }
@@ -53,7 +61,8 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .users-header { padding: 15px; border-bottom: 1px solid #26272d; height: 50px; display: flex; align-items: center;}
 .users-header h3 { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin: 0; }
 #online-users-list { padding: 15px; overflow-y: auto; }
-.online-user { display: flex; align-items: center; padding: 8px; border-radius: 4px; color: var(--text-normal); font-weight: 500; gap: 10px; }
+.online-user { display: flex; align-items: center; padding: 8px; border-radius: 4px; color: var(--text-normal); font-weight: 500; gap: 10px; cursor: pointer; }
+.online-user:hover { background: #35373c; }
 .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #23a559; display: inline-block; }
 
 /* MODALES */
