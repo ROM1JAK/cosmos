@@ -10,6 +10,19 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .sidebar-header { padding: 15px; background: #232428; border-bottom: 1px solid #1e1f22; }
 .app-title { margin: 0; font-size: 1.1rem; color: white; }
 .btn-close-sidebar { display: none; background: none; border: none; color: white; cursor: pointer; }
+/* Style du bouton déconnexion */
+.btn-logout {
+    background: #da373c; /* Rouge */
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+.btn-logout:hover {
+    background: #a1282c;
+}
 #player-id-display { font-size: 0.8rem; color: var(--accent); font-weight:bold; margin: 5px 0 10px; }
 .btn-login { background: #3f4147; border: none; color: white; padding: 6px; border-radius: 4px; width: 100%; cursor: pointer; }
 .sidebar-section { padding: 15px; }
@@ -130,3 +143,4 @@ select#charSelector { background: #2b2d31; color: white; border: none; padding: 
     select#charSelector { padding: 12px 5px; max-width: 90px; font-size: 0.85em; }
     .msg-actions { opacity: 1; top: -25px; }
 }
+
