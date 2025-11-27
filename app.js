@@ -28,6 +28,12 @@ socket.on('login_success', (data) => {
     PLAYER_ID = data.userId;
 });
 
+// Gestion des erreurs de connexion
+socket.on('login_error', (errorMessage) => {
+    alert(errorMessage); // Affiche l'erreur (ex: Pseudo pris)
+    // On laisse la modale ouverte pour qu'il puisse réessayer
+});
+
 function getPlayerId() {
     let id = localStorage.getItem('rp_code');
     if (!id) { id = 'player_' + Math.random().toString(36).substring(2, 9); localStorage.setItem('rp_code', id); }
@@ -264,3 +270,4 @@ function displayMessage(msg) {
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
+
