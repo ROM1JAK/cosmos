@@ -2,27 +2,24 @@ var socket = io();
 let myCharacters = [];
 let allRooms = []; 
 let currentRoomId = 'global'; 
+let currentDmTarget = null; // Si non null, on est en MP avec ce pseudo
 let PLAYER_ID; 
-let USERNAME; // Stockage local du pseudo
+let USERNAME; 
 let IS_ADMIN = false;
 let currentContext = null; 
 let typingTimeout = null;
 let unreadRooms = new Set();
+let unreadDms = new Set(); // Set des usernames avec MPs non lus
+let dmContacts = []; // Liste des gens avec qui j'ai parlé
 let firstUnreadMap = {}; 
 
 // --- UI & LOGIN / COMPTE ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
 function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
 
-// Gestion du bouton principal Sidebar (Login ou Compte)
 function openAccountUI() {
-    if (PLAYER_ID) {
-        // Connecté -> Ouvre "Mon Profil"
-        openUserSettingsModal();
-    } else {
-        // Pas connecté -> Ouvre "Login"
-        openLoginModal();
-    }
+    if (PLAYER_ID) openUserSettingsModal();
+    else openLoginModal();
 }
 
 // LOGIN
@@ -35,7 +32,6 @@ function submitLogin() {
     if (pseudo && code) socket.emit('login_request', { username: pseudo, code: code });
 }
 
-// LOGOUT
 function logoutUser() {
     if(confirm("Déconnexion ?")) {
         localStorage.removeItem('rp_username');
@@ -47,7 +43,7 @@ function logoutUser() {
 // MON PROFIL
 function openUserSettingsModal() {
     document.getElementById('settingsUsernameInput').value = USERNAME || "";
-    document.getElementById('settingsCodeInput').value = PLAYER_ID || ""; // Le Code est l'ID
+    document.getElementById('settingsCodeInput').value = PLAYER_ID || ""; 
     document.getElementById('settings-msg').textContent = "";
     document.getElementById('settings-msg').style.color = "#aaa";
     document.getElementById('user-settings-modal').classList.remove('hidden');
@@ -79,16 +75,19 @@ socket.on('login_success', (data) => {
     PLAYER_ID = data.userId;
     IS_ADMIN = data.isAdmin;
     
-    // Mise à jour UI Sidebar
     document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`;
     document.getElementById('player-id-display').style.color = IS_ADMIN ? "#da373c" : "var(--accent)";
     
     const btn = document.getElementById('btn-account-main');
     btn.textContent = "👤 Mon Profil";
-    btn.style.background = "#2b2d31"; // Style plus neutre une fois connecté
+    btn.style.background = "#2b2d31"; 
     
     closeLoginModal();
     socket.emit('request_initial_data', PLAYER_ID);
+    
+    // Charger les contacts MP
+    socket.emit('request_dm_contacts', USERNAME);
+    
     joinRoom('global');
 });
 
@@ -101,14 +100,10 @@ socket.on('login_error', (msg) => {
 socket.on('username_change_success', (newName) => {
     USERNAME = newName;
     localStorage.setItem('rp_username', newName);
-    
-    // Mise à jour immédiate UI
     document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`;
     const msgEl = document.getElementById('settings-msg');
     msgEl.textContent = "Pseudo mis à jour !";
     msgEl.style.color = "#23a559";
-    
-    // On peut fermer ou laisser ouvert, ici on laisse pour voir la confirmation
 });
 
 socket.on('username_change_error', (msg) => {
@@ -125,7 +120,6 @@ function checkAutoLogin() {
     if (savedUser && savedCode) {
         socket.emit('login_request', { username: savedUser, code: savedCode });
     } else {
-        // Pas connecté -> UI par défaut
         openLoginModal();
     }
 }
@@ -140,10 +134,13 @@ socket.on('update_user_list', (users) => {
     const countSpan = document.getElementById('online-count');
     listDiv.innerHTML = "";
     countSpan.textContent = users.length;
-    users.forEach(u => listDiv.innerHTML += `<div class="online-user"><span class="status-dot"></span><span>${u}</span></div>`);
+    users.forEach(u => {
+        // Ajout du clic pour lancer un MP
+        listDiv.innerHTML += `<div class="online-user" onclick="startDmFromList('${u}')"><span class="status-dot"></span><span>${u}</span></div>`
+    });
 });
 
-socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId) socket.emit('request_history', currentRoomId); });
+socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId && !currentDmTarget) socket.emit('request_history', currentRoomId); });
 
 // --- MEDIAS ---
 function previewFile(type) {
@@ -179,6 +176,19 @@ function submitVideoUrl() {
 }
 
 function sendMediaMessage(content, type) {
+    // Si en MP, pas besoin de sélecteur de perso
+    if (currentDmTarget) {
+         const msg = {
+            sender: USERNAME,
+            target: currentDmTarget,
+            content: content,
+            type: type,
+            date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+        };
+        socket.emit('send_dm', msg);
+        return;
+    }
+
     const sel = document.getElementById('charSelector'); 
     if(sel.options.length === 0) return alert("Créez un personnage d'abord !");
     const opt = sel.options[sel.selectedIndex];
@@ -194,16 +204,18 @@ function sendMediaMessage(content, type) {
 // --- TYPING ---
 const txtInput = document.getElementById('txtInput');
 txtInput.addEventListener('input', () => {
+    if(currentDmTarget) return; // Pas de typing en DM pour simplifier ici
     const sel = document.getElementById('charSelector');
     const name = sel.options[sel.selectedIndex]?.text || "Quelqu'un";
     socket.emit('typing_start', { roomId: currentRoomId, charName: name });
     clearTimeout(typingTimeout);
     typingTimeout = setTimeout(() => { socket.emit('typing_stop', { roomId: currentRoomId, charName: name }); }, 1000);
 });
-socket.on('display_typing', (data) => { if(data.roomId === currentRoomId) { document.getElementById('typing-indicator').classList.remove('hidden'); document.getElementById('typing-text').textContent = `${data.charName} écrit...`; } });
+socket.on('display_typing', (data) => { if(data.roomId === currentRoomId && !currentDmTarget) { document.getElementById('typing-indicator').classList.remove('hidden'); document.getElementById('typing-text').textContent = `${data.charName} écrit...`; } });
 socket.on('hide_typing', (data) => { if(data.roomId === currentRoomId) document.getElementById('typing-indicator').classList.add('hidden'); });
 
-// --- SALONS ---
+// --- GESTION DES SALONS ET NAVIGATION ---
+
 function createRoomPrompt() {
     const name = prompt("Nom du salon :");
     if (name) socket.emit('create_room', { name, creatorId: PLAYER_ID, allowedCharacters: [] });
@@ -212,31 +224,127 @@ function deleteRoom(roomId) { if(confirm("ADMIN : Supprimer ?")) socket.emit('de
 
 function joinRoom(roomId) {
     if (currentRoomId && currentRoomId !== roomId) socket.emit('leave_room', currentRoomId);
+    
     currentRoomId = roomId;
+    currentDmTarget = null; // On quitte le mode MP
+    
     socket.emit('join_room', currentRoomId);
     if (unreadRooms.has(currentRoomId)) unreadRooms.delete(currentRoomId);
 
     const room = allRooms.find(r => r._id === roomId);
     document.getElementById('currentRoomName').textContent = room ? room.name : 'Salon Global';
+    document.getElementById('currentRoomName').style.color = "white";
     document.getElementById('messages').innerHTML = ""; 
     document.getElementById('typing-indicator').classList.add('hidden');
+    document.getElementById('charSelector').style.display = 'block'; // Afficher sélecteur perso
+    
     socket.emit('request_history', currentRoomId);
     cancelContext();
     if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
     updateRoomListUI();
+    updateDmListUI();
 }
 socket.on('rooms_data', (rooms) => { allRooms = rooms; updateRoomListUI(); });
 
 function updateRoomListUI() {
     const list = document.getElementById('roomList');
-    list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''} ${unreadRooms.has('global')?'unread':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
+    list.innerHTML = `<div class="room-item ${(currentRoomId === 'global' && !currentDmTarget)?'active':''} ${unreadRooms.has('global')?'unread':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
     allRooms.forEach(room => {
         const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>` : '';
         const isUnread = unreadRooms.has(room._id) ? 'unread' : '';
-        const isActive = currentRoomId === room._id ? 'active' : '';
+        const isActive = (currentRoomId === room._id && !currentDmTarget) ? 'active' : '';
         list.innerHTML += `<div class="room-item ${isActive} ${isUnread}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
     });
 }
+
+// --- GESTION DES MESSAGES PRIVÉS (DM) ---
+
+function startDmFromList(targetUsername) {
+    if (targetUsername === USERNAME) return alert("C'est vous !");
+    socket.emit('start_dm', targetUsername);
+}
+
+socket.on('open_dm_ui', (targetUsername) => {
+    openDm(targetUsername);
+});
+
+function openDm(targetUsername) {
+    currentDmTarget = targetUsername;
+    currentRoomId = null; // On quitte visuellement le salon
+
+    // Mise à jour de la liste de contacts si nouveau
+    if (!dmContacts.includes(targetUsername)) dmContacts.push(targetUsername);
+    if (unreadDms.has(targetUsername)) unreadDms.delete(targetUsername);
+
+    document.getElementById('currentRoomName').textContent = `@${targetUsername}`;
+    document.getElementById('currentRoomName').style.color = "#7d5bc4"; // Couleur DM
+    document.getElementById('messages').innerHTML = "";
+    document.getElementById('typing-indicator').classList.add('hidden');
+    document.getElementById('charSelector').style.display = 'none'; // Cacher sélecteur perso en MP
+    
+    cancelContext();
+    
+    // Charger l'historique
+    socket.emit('request_dm_history', { myUsername: USERNAME, targetUsername: targetUsername });
+    
+    updateRoomListUI(); // Pour enlever le highlight des salons
+    updateDmListUI();
+    
+    if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
+}
+
+socket.on('dm_contacts_data', (contacts) => {
+    dmContacts = contacts;
+    updateDmListUI();
+});
+
+function updateDmListUI() {
+    const list = document.getElementById('dmList');
+    list.innerHTML = "";
+    dmContacts.forEach(contact => {
+        const isActive = (currentDmTarget === contact) ? 'active' : '';
+        const isUnread = unreadDms.has(contact) ? 'unread' : '';
+        const avatarUrl = `https://ui-avatars.com/api/?name=${contact}&background=random&color=fff&size=64`;
+        
+        list.innerHTML += `
+            <div class="dm-item ${isActive} ${isUnread}" onclick="openDm('${contact}')">
+                <img src="${avatarUrl}" class="dm-avatar">
+                <span>${contact}</span>
+            </div>
+        `;
+    });
+}
+
+socket.on('dm_history_data', (data) => {
+    // data.history contient les messages
+    if (currentDmTarget !== data.target) return; // Sécurité si on a changé entre temps
+    const container = document.getElementById('messages');
+    container.innerHTML = "";
+    data.history.forEach(msg => {
+        displayMessage(msg, true); // true = isDM
+    });
+    scrollToBottom();
+});
+
+socket.on('receive_dm', (msg) => {
+    const otherUser = (msg.sender === USERNAME) ? msg.target : msg.sender;
+    
+    // Si c'est un nouveau contact, on l'ajoute
+    if (!dmContacts.includes(otherUser)) {
+        dmContacts.push(otherUser);
+        updateDmListUI();
+    }
+
+    if (currentDmTarget === otherUser) {
+        displayMessage(msg, true);
+        scrollToBottom();
+    } else {
+        // Notif
+        unreadDms.add(otherUser);
+        updateDmListUI();
+    }
+});
+
 
 // --- PERSONNAGES ---
 function createCharacter() {
@@ -333,6 +441,13 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
     document.getElementById('profile-modal').classList.remove('hidden');
+    
+    // Bouton MP depuis le profil
+    const btnDm = document.getElementById('btn-dm-profile');
+    btnDm.onclick = function() {
+        closeProfileModal();
+        if (char.ownerUsername) openDm(char.ownerUsername);
+    };
 });
 
 // --- ACTIONS ---
@@ -358,6 +473,23 @@ function sendMessage() {
     const txt = document.getElementById('txtInput');
     const content = txt.value.trim();
     if (!content) return;
+
+    // --- LOGIQUE MP ---
+    if (currentDmTarget) {
+        const msg = {
+            sender: USERNAME,
+            target: currentDmTarget,
+            content: content,
+            type: "text",
+            date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+        };
+        socket.emit('send_dm', msg);
+        txt.value = ''; 
+        cancelContext();
+        return;
+    }
+    // ------------------
+
     if (content === "/clear") { if(IS_ADMIN) socket.emit('admin_clear_room', currentRoomId); txt.value = ''; return; }
     if (currentContext && currentContext.type === 'edit') { socket.emit('edit_message', { id: currentContext.data.id, newContent: content }); txt.value = ''; cancelContext(); return; }
 
@@ -378,6 +510,7 @@ function sendMessage() {
 
 // --- DISPLAY ---
 socket.on('history_data', (msgs) => { 
+    if(currentDmTarget) return; // Si on est passé en MP entre temps
     const container = document.getElementById('messages');
     container.innerHTML = ""; 
     const splitId = firstUnreadMap[currentRoomId];
@@ -395,7 +528,7 @@ socket.on('history_data', (msgs) => {
 });
 
 socket.on('message_rp', (msg) => { 
-    if(msg.roomId === currentRoomId) { 
+    if(msg.roomId === currentRoomId && !currentDmTarget) { 
         displayMessage(msg); scrollToBottom(); 
     } else {
         unreadRooms.add(msg.roomId);
@@ -421,15 +554,38 @@ function getYoutubeId(url) {
     return (match && match[2].length === 11) ? match[2] : null;
 }
 
-function displayMessage(msg) {
+function displayMessage(msg, isDm = false) {
     const div = document.createElement('div');
-    div.className = 'message-container'; div.id = `msg-${msg._id}`;
-    const canEdit = (msg.ownerId === PLAYER_ID);
-    const canDelete = (msg.ownerId === PLAYER_ID) || IS_ADMIN;
+    div.className = 'message-container'; 
+    if(isDm) div.classList.add('dm-message');
+    div.id = `msg-${msg._id}`;
+    
+    // Config pour DM ou RP
+    let senderName, senderAvatar, senderColor, senderRole;
+    let canEdit = false;
+    let canDelete = false;
 
-    let actionsHTML = `<button class="action-btn" onclick="triggerReply('${msg._id}', '${msg.senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre">↩️</button>`;
-    if (msg.type === 'text' && canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button>`;
-    if (canDelete) actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
+    if (isDm) {
+        senderName = msg.sender;
+        senderAvatar = `https://ui-avatars.com/api/?name=${msg.sender}&background=random&color=fff&size=64`;
+        senderColor = "#dbdee1"; // Couleur neutre
+        senderRole = "Utilisateur";
+        // Pas d'edit/delete en DM pour simplifier (ou seulement delete local si besoin, ici on désactive)
+    } else {
+        senderName = msg.senderName;
+        senderAvatar = msg.senderAvatar;
+        senderColor = msg.senderColor;
+        senderRole = msg.senderRole;
+        canEdit = (msg.ownerId === PLAYER_ID);
+        canDelete = (msg.ownerId === PLAYER_ID) || IS_ADMIN;
+    }
+
+    let actionsHTML = "";
+    if (!isDm) {
+         actionsHTML += `<button class="action-btn" onclick="triggerReply('${msg._id}', '${senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre">↩️</button>`;
+         if (msg.type === 'text' && canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button>`;
+         if (canDelete) actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
+    }
 
     let replyHTML = "", spacingStyle = "";
     if (msg.replyTo && msg.replyTo.author) { spacingStyle = "margin-top: 15px;"; replyHTML = `<div class="reply-spine"></div><div class="reply-context-line" style="margin-left: 55px;"><span class="reply-name">@${msg.replyTo.author}</span><span class="reply-text">${msg.replyTo.content}</span></div>`; }
@@ -451,8 +607,11 @@ function displayMessage(msg) {
     }
 
     const editedTag = msg.edited ? '<span class="edited-tag">(modifié)</span>' : '';
+    // Click avatar en DM ne fait rien, en RP ouvre profil
+    const avatarClick = isDm ? "" : `onclick="openProfile('${senderName.replace(/'/g, "\\'")}')"`;
+    const nameClick = isDm ? "" : `onclick="openProfile('${senderName.replace(/'/g, "\\'")}')"`;
 
-    div.innerHTML = `${replyHTML}<div class="msg-actions">${actionsHTML}</div><div style="position:relative; ${spacingStyle}"><img src="${msg.senderAvatar}" class="avatar-img" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')"><div style="margin-left: 55px;"><div class="char-header"><span class="char-name" style="color: ${msg.senderColor}" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')">${msg.senderName}</span><span class="char-role">${msg.senderRole || ""}</span><span class="timestamp">${msg.date} ${editedTag}</span></div>${contentHTML}</div></div>`;
+    div.innerHTML = `${replyHTML}<div class="msg-actions">${actionsHTML}</div><div style="position:relative; ${spacingStyle}"><img src="${senderAvatar}" class="avatar-img" ${avatarClick}><div style="margin-left: 55px;"><div class="char-header"><span class="char-name" style="color: ${senderColor}" ${nameClick}>${senderName}</span><span class="char-role">${senderRole || ""}</span><span class="timestamp">${msg.date} ${editedTag}</span></div>${contentHTML}</div></div>`;
     document.getElementById('messages').appendChild(div);
 }
 
