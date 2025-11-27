@@ -181,7 +181,17 @@ function updateUI() {
     const select = document.getElementById('charSelector');
     const prev = select.value;
     list.innerHTML = "";
-    select.innerHTML = '<option value="Narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
+    
+    // --- MODIFICATION ICI ---
+    // On vide le select d'abord
+    select.innerHTML = "";
+    
+    // On ajoute le Narrateur SEULEMENT si on est Admin
+    if (IS_ADMIN) {
+        select.innerHTML += '<option value="Narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
+    }
+    // ------------------------
+
     myCharacters.forEach(char => {
         const safeDesc = (char.description || "").replace(/'/g, "\\'");
         list.innerHTML += `
@@ -270,4 +280,5 @@ function displayMessage(msg) {
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
+
 
