@@ -7,12 +7,12 @@ let IS_ADMIN = false;
 let currentContext = null; 
 let typingTimeout = null;
 let unreadRooms = new Set();
-let firstUnreadMap = {}; // CORRECTIF 2 : Stocke ID du premier msg non lu par salon
+let firstUnreadMap = {}; 
 
 // --- UI & LOGIN ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
 function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
-function openLoginModal() { document.getElementById('login-modal').classList.remove('hidden'); document.getElementById('login-error-msg').textContent = ""; }
+function openLoginModal() { document.getElementById('login-modal').classList.remove('hidden'); document.getElementById('login-error-msg').style.display = "none"; }
 function closeLoginModal() { document.getElementById('login-modal').classList.add('hidden'); }
 
 function submitLogin() {
@@ -29,7 +29,6 @@ function logoutUser() {
     }
 }
 
-// Auto-Login
 function checkAutoLogin() {
     const savedUser = localStorage.getItem('rp_username');
     const savedCode = localStorage.getItem('rp_code');
@@ -52,13 +51,10 @@ socket.on('login_success', (data) => {
     joinRoom('global');
 });
 
-// CORRECTIF 1 : Affiche l'erreur SANS fermer la modale
 socket.on('login_error', (msg) => {
     const errorEl = document.getElementById('login-error-msg');
     errorEl.textContent = msg;
     errorEl.style.display = 'block';
-    // IMPORTANT : On n'appelle PAS closeLoginModal() ici, ni checkAutoLogin().
-    // L'utilisateur reste sur la modale pour corriger son code.
 });
 
 // --- SOCKET ---
@@ -76,7 +72,7 @@ socket.on('update_user_list', (users) => {
 
 socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId) socket.emit('request_history', currentRoomId); });
 
-// --- IMAGES ---
+// --- MEDIAS (IMAGES & VIDEO) ---
 function previewFile(type) {
     const fileInput = document.getElementById(type === 'new' ? 'newCharFile' : 'editCharFile');
     const hiddenInput = document.getElementById(type === 'new' ? 'newCharBase64' : 'editCharBase64');
@@ -88,20 +84,40 @@ function previewFile(type) {
         reader.readAsDataURL(file);
     }
 }
+
+// IMAGES
 function openUrlModal() { document.getElementById('url-modal').classList.remove('hidden'); }
 function closeUrlModal() { document.getElementById('url-modal').classList.add('hidden'); }
 function submitImageUrl() {
     const url = document.getElementById('urlInput').value.trim();
     if(url) {
-        const sel = document.getElementById('charSelector'); const opt = sel.options[sel.selectedIndex];
-        socket.emit('message_rp', { 
-            content: url, type: "image", 
-            senderName: opt.value, senderColor: opt.dataset.color, senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role, 
-            ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, 
-            date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: null 
-        });
+        sendMediaMessage(url, 'image');
         document.getElementById('urlInput').value = ""; closeUrlModal();
     }
+}
+
+// VIDEOS (NOUVEAU)
+function openVideoModal() { document.getElementById('video-modal').classList.remove('hidden'); }
+function closeVideoModal() { document.getElementById('video-modal').classList.add('hidden'); }
+function submitVideoUrl() {
+    const url = document.getElementById('videoInput').value.trim();
+    if(url) {
+        sendMediaMessage(url, 'video');
+        document.getElementById('videoInput').value = ""; closeVideoModal();
+    }
+}
+
+function sendMediaMessage(content, type) {
+    const sel = document.getElementById('charSelector'); 
+    if(sel.options.length === 0) return alert("Créez un personnage d'abord !");
+    const opt = sel.options[sel.selectedIndex];
+    
+    socket.emit('message_rp', { 
+        content: content, type: type, 
+        senderName: opt.value, senderColor: opt.dataset.color, senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role, 
+        ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, 
+        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: null 
+    });
 }
 
 // --- TYPING ---
@@ -127,13 +143,7 @@ function joinRoom(roomId) {
     if (currentRoomId && currentRoomId !== roomId) socket.emit('leave_room', currentRoomId);
     currentRoomId = roomId;
     socket.emit('join_room', currentRoomId);
-    
-    // CORRECTIF 2 : On enlève le statut "unread" visuellement (rouge)...
-    if (unreadRooms.has(currentRoomId)) {
-        unreadRooms.delete(currentRoomId);
-    }
-    // ... MAIS on ne supprime PAS firstUnreadMap[roomId] ici ! 
-    // On en a besoin dans request_history pour placer la barre séparatrice.
+    if (unreadRooms.has(currentRoomId)) unreadRooms.delete(currentRoomId);
 
     const room = allRooms.find(r => r._id === roomId);
     document.getElementById('currentRoomName').textContent = room ? room.name : 'Salon Global';
@@ -171,17 +181,24 @@ function createCharacter() {
     document.getElementById('newCharBase64').value = "";
 }
 
-function editCharacter(id, name, role, avatar, color, desc) {
-    document.getElementById('editCharId').value = id;
-    document.getElementById('editCharOriginalName').value = name;
-    document.getElementById('editCharName').value = name;
-    document.getElementById('editCharRole').value = role;
-    document.getElementById('editCharDesc').value = desc; 
-    document.getElementById('editCharColor').value = color;
+// CORRECTIF BUG : On n'utilise plus les arguments directs dans le HTML
+// On appelle une fonction qui prépare le form en cherchant le perso par ID
+function prepareEditCharacter(charId) {
+    const char = myCharacters.find(c => c._id === charId);
+    if (!char) return;
+
+    document.getElementById('editCharId').value = char._id;
+    document.getElementById('editCharOriginalName').value = char.name;
+    document.getElementById('editCharName').value = char.name;
+    document.getElementById('editCharRole').value = char.role;
+    document.getElementById('editCharDesc').value = char.description; 
+    document.getElementById('editCharColor').value = char.color;
     document.getElementById('editCharBase64').value = "";
+    
     document.getElementById('edit-char-form').classList.remove('hidden');
     document.getElementById('create-char-form').classList.add('hidden');
 }
+
 function cancelEditCharacter() { document.getElementById('edit-char-form').classList.add('hidden'); }
 function submitEditCharacter() {
     const charId = document.getElementById('editCharId').value;
@@ -205,11 +222,9 @@ function updateUI() {
     const list = document.getElementById('myCharList');
     const select = document.getElementById('charSelector');
     
-    // Maintien de la sélection intelligente par ID
     let selectedCharId = null;
     if (select.selectedIndex >= 0) {
-        const currentOpt = select.options[select.selectedIndex];
-        selectedCharId = currentOpt.dataset.id; 
+        selectedCharId = select.options[select.selectedIndex].dataset.id; 
     }
 
     list.innerHTML = "";
@@ -220,9 +235,19 @@ function updateUI() {
     }
 
     myCharacters.forEach(char => {
-        const safeDesc = (char.description || "").replace(/'/g, "\\'");
+        // ICI : On passe seulement l'ID à la fonction prepareEditCharacter
         list.innerHTML += `
-            <div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="editCharacter('${char._id}', '${char.name}', '${char.role}', '${char.avatar}', '${char.color}', '${safeDesc}')">⚙️</button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;">✕</button></div></div>`;
+            <div class="char-item">
+                <img src="${char.avatar}" class="mini-avatar">
+                <div class="char-info">
+                    <div class="char-name-list" style="color:${char.color}">${char.name}</div>
+                    <div class="char-role-list">${char.role}</div>
+                </div>
+                <div class="char-actions">
+                    <button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')">⚙️</button>
+                    <button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;">✕</button>
+                </div>
+            </div>`;
         
         const opt = document.createElement('option');
         opt.value = char.name; 
@@ -234,7 +259,6 @@ function updateUI() {
         select.appendChild(opt);
     });
     
-    // Restauration de la sélection
     if(selectedCharId) {
         const optionToSelect = Array.from(select.options).find(o => o.dataset.id === selectedCharId);
         if(optionToSelect) optionToSelect.selected = true;
@@ -295,16 +319,12 @@ function sendMessage() {
     txt.value = ''; cancelContext();
 }
 
-// --- DISPLAY (CORRECTIF 2 APPLIQUÉ) ---
+// --- DISPLAY ---
 socket.on('history_data', (msgs) => { 
     const container = document.getElementById('messages');
     container.innerHTML = ""; 
-    
-    // Récupération de l'ID du message où couper
     const splitId = firstUnreadMap[currentRoomId];
-    
     msgs.forEach(msg => {
-        // Insertion de la barre de séparation AVANT le message non-lu
         if(splitId && msg._id === splitId) {
             const separator = document.createElement('div');
             separator.className = 'new-msg-separator';
@@ -313,12 +333,7 @@ socket.on('history_data', (msgs) => {
         }
         displayMessage(msg); 
     });
-    
-    // Une fois affichés, on peut nettoyer la notification pour ce salon
-    if(firstUnreadMap[currentRoomId]) {
-        delete firstUnreadMap[currentRoomId];
-    }
-    
+    if(firstUnreadMap[currentRoomId]) delete firstUnreadMap[currentRoomId];
     scrollToBottom(); 
 });
 
@@ -326,17 +341,8 @@ socket.on('message_rp', (msg) => {
     if(msg.roomId === currentRoomId) { 
         displayMessage(msg); scrollToBottom(); 
     } else {
-        // Si le message arrive dans un autre salon...
-        
-        // 1. Ajouter à la liste des salons non lus (pour le point rouge)
         unreadRooms.add(msg.roomId);
-        
-        // 2. Si c'est le PREMIER message non lu de ce salon, on stocke son ID
-        // pour pouvoir afficher la barre de séparation plus tard.
-        if (!firstUnreadMap[msg.roomId]) {
-            firstUnreadMap[msg.roomId] = msg._id;
-        }
-        
+        if (!firstUnreadMap[msg.roomId]) firstUnreadMap[msg.roomId] = msg._id;
         updateRoomListUI();
     }
 });
@@ -352,6 +358,13 @@ function formatText(text) {
     return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\*(.*?)\*/g, '<i>$1</i>').replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
 }
 
+// FONCTION UTILITAIRE VIDEO
+function getYoutubeId(url) {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+}
+
 function displayMessage(msg) {
     const div = document.createElement('div');
     div.className = 'message-container'; div.id = `msg-${msg._id}`;
@@ -365,7 +378,23 @@ function displayMessage(msg) {
     let replyHTML = "", spacingStyle = "";
     if (msg.replyTo && msg.replyTo.author) { spacingStyle = "margin-top: 15px;"; replyHTML = `<div class="reply-spine"></div><div class="reply-context-line" style="margin-left: 55px;"><span class="reply-name">@${msg.replyTo.author}</span><span class="reply-text">${msg.replyTo.content}</span></div>`; }
     
-    let contentHTML = msg.type === "image" ? `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">` : `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
+    // GESTION CONTENU (TEXTE, IMAGE, VIDEO)
+    let contentHTML = "";
+    if (msg.type === "image") {
+        contentHTML = `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">`;
+    } else if (msg.type === "video") {
+        const ytId = getYoutubeId(msg.content);
+        if (ytId) {
+            contentHTML = `<iframe class="video-frame" src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe>`;
+        } else if (msg.content.match(/\.(mp4|webm|ogg)$/i)) {
+            contentHTML = `<video class="video-direct" controls><source src="${msg.content}">Votre navigateur ne supporte pas la vidéo.</video>`;
+        } else {
+             contentHTML = `<div class="text-body"><a href="${msg.content}" target="_blank" style="color:var(--accent)">[Lien Vidéo] ${msg.content}</a></div>`;
+        }
+    } else {
+        contentHTML = `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
+    }
+
     const editedTag = msg.edited ? '<span class="edited-tag">(modifié)</span>' : '';
 
     div.innerHTML = `${replyHTML}<div class="msg-actions">${actionsHTML}</div><div style="position:relative; ${spacingStyle}"><img src="${msg.senderAvatar}" class="avatar-img" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')"><div style="margin-left: 55px;"><div class="char-header"><span class="char-name" style="color: ${msg.senderColor}" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')">${msg.senderName}</span><span class="char-role">${msg.senderRole || ""}</span><span class="timestamp">${msg.date} ${editedTag}</span></div>${contentHTML}</div></div>`;
