@@ -6,11 +6,14 @@ const mongoose = require('mongoose');
 
 app.use(express.static(__dirname));
 
+// CONFIGURATION
 const ADMIN_CODE = "ADMIN"; 
 const mongoURI = process.env.MONGO_URI; 
 
 if (!mongoURI) console.error("ERREUR : Variable MONGO_URI manquante.");
-else mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true }).then(() => console.log('Connecté à MongoDB.'));
+else mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log('Connecté à MongoDB.'))
+    .catch(err => console.error("Erreur MongoDB:", err));
 
 // --- SCHEMAS ---
 const UserSchema = new mongoose.Schema({
@@ -49,24 +52,31 @@ function broadcastUserList() {
 
 io.on('connection', async (socket) => {
   
-  // --- LOGIN ---
+  // --- LOGIN (CORRECTIF 1 APPLIQUÉ) ---
   socket.on('login_request', async ({ username, code }) => {
       try {
           let user = await User.findOne({ username: username });
           const isAdmin = (code === ADMIN_CODE);
 
           if (user) {
+              // Vérification stricte du code si l'utilisateur existe déjà
               if (user.secretCode !== code && !isAdmin) {
                   socket.emit('login_error', "Mot de passe incorrect pour ce pseudo !");
-                  return;
+                  return; // CRUCIAL : On arrête tout ici si le mot de passe est faux
               }
-              if(isAdmin && !user.isAdmin) { user.isAdmin = true; await user.save(); }
+              
+              // Si Admin code utilisé, on donne les droits admin
+              if(isAdmin && !user.isAdmin) { 
+                  user.isAdmin = true; 
+                  await user.save(); 
+              }
           } else {
+              // Création nouveau compte
               user = new User({ username, secretCode: code, isAdmin });
               await user.save();
           }
 
-          // Mise à jour du pseudo propriétaire sur tous les persos existants (rétroactif)
+          // Mise à jour rétroactive des personnages (si on change de pseudo propriétaire par ex)
           await Character.updateMany({ ownerId: code }, { ownerUsername: username });
 
           onlineUsers[socket.id] = user.username;
@@ -79,7 +89,8 @@ io.on('connection', async (socket) => {
           });
 
       } catch (e) {
-          console.error(e);
+          console.error("Erreur Login:", e);
+          socket.emit('login_error', "Erreur serveur lors de la connexion.");
       }
   });
 
@@ -104,7 +115,7 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('create_char', async (data) => {
-    // CORRECTIF REQ 3 : On récupère le username du créateur
+    // Récupération du nom du créateur pour le profil
     const user = await User.findOne({ secretCode: data.ownerId });
     if (user) data.ownerUsername = user.username;
     
@@ -119,7 +130,7 @@ io.on('connection', async (socket) => {
           name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor, description: data.newDescription 
       });
       
-      // 2. Update Anciens Messages
+      // 2. Update Anciens Messages (pour que l'historique reste cohérent)
       await Message.updateMany(
           { senderName: data.originalName, ownerId: data.ownerId },
           { $set: { 
@@ -157,20 +168,26 @@ io.on('connection', async (socket) => {
   socket.on('leave_room', (roomId) => { socket.leave(roomId); });
   
   socket.on('request_history', async (roomId) => {
+      // On charge les 200 derniers messages
       const history = await Message.find({ roomId: roomId }).sort({ timestamp: 1 }).limit(200);
       socket.emit('history_data', history);
   });
 
-  // --- MESSAGES ---
+  // --- MESSAGES (CORRECTIF 2 PRÉPARÉ) ---
   socket.on('message_rp', async (msgData) => {
     if (!msgData.roomId) return; 
+    
+    // Sécurité : Vérifier si c'est le Narrateur
     if (msgData.senderName === "Narrateur") {
         const user = await User.findOne({ secretCode: msgData.ownerId });
         if (!user || !user.isAdmin) return;
     }
+
     const newMessage = new Message(msgData);
     const savedMsg = await newMessage.save();
-    io.to(msgData.roomId).emit('message_rp', savedMsg);
+    
+    // On envoie à tout le monde dans la room (le client gèrera la notif si pas focus)
+    io.emit('message_rp', savedMsg); 
   });
 
   socket.on('delete_message', async (msgId) => {
