@@ -133,10 +133,15 @@ function joinRoom(roomId) {
 socket.on('rooms_data', (rooms) => { allRooms = rooms; updateRoomListUI(); });
 function updateRoomListUI() {
     const list = document.getElementById('roomList');
-    list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
+    list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''} ${unreadRooms.has('global')?'unread':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
+    
     allRooms.forEach(room => {
         const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>` : '';
-        list.innerHTML += `<div class="room-item ${currentRoomId === room._id?'active':''}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
+        // Ajout de la condition unread
+        const isUnread = unreadRooms.has(room._id) ? 'unread' : '';
+        const isActive = currentRoomId === room._id ? 'active' : '';
+        
+        list.innerHTML += `<div class="room-item ${isActive} ${isUnread}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
     });
 }
 
@@ -317,5 +322,6 @@ function displayMessage(msg) {
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
+
 
 
