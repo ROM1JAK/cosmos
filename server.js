@@ -31,7 +31,7 @@ const Character = mongoose.model('Character', CharacterSchema);
 const MessageSchema = new mongoose.Schema({
     content: String, type: String,
     senderName: String, senderColor: String, senderAvatar: String, senderRole: String, ownerId: String,
-    targetName: String, targetOwnerId: String, // Ajout pour identifier le destinataire réel
+    targetName: String, targetOwnerId: String, 
     roomId: { type: String, required: true },
     replyTo: { id: String, author: String, content: String },
     edited: { type: Boolean, default: false },
@@ -44,7 +44,18 @@ const RoomSchema = new mongoose.Schema({
 });
 const Room = mongoose.model('Room', RoomSchema);
 
-let onlineUsers = {}; 
+// NOUVEAU : Schema MP (User vs User)
+const DirectMessageSchema = new mongoose.Schema({
+    sender: String, // Username
+    target: String, // Username
+    content: String,
+    type: { type: String, default: "text" },
+    date: String,
+    timestamp: { type: Date, default: Date.now }
+});
+const DirectMessage = mongoose.model('DirectMessage', DirectMessageSchema);
+
+let onlineUsers = {}; // socket.id -> username
 
 function broadcastUserList() {
     const uniqueNames = [...new Set(Object.values(onlineUsers))];
@@ -96,8 +107,13 @@ io.on('connection', async (socket) => {
               socket.emit('username_change_error', "Ce pseudo est déjà pris.");
               return;
           }
+          const oldName = onlineUsers[socket.id];
           await User.findOneAndUpdate({ secretCode: userId }, { username: newUsername });
           await Character.updateMany({ ownerId: userId }, { ownerUsername: newUsername });
+          
+          // Mettre à jour les MPs (optionnel mais propre : changer le nom dans l'historique)
+          // Pour simplifier ici, on garde l'historique tel quel, mais les futurs messages auront le nouveau nom.
+          
           onlineUsers[socket.id] = newUsername;
           broadcastUserList();
           socket.emit('username_change_success', newUsername);
@@ -166,55 +182,38 @@ io.on('connection', async (socket) => {
   socket.on('join_room', (roomId) => { socket.join(roomId); });
   socket.on('leave_room', (roomId) => { socket.leave(roomId); });
   
-  // --- HISTORIQUE (Avec Filtrage MP) ---
+  // --- HISTORIQUE ROOM ---
   socket.on('request_history', async (data) => {
-      // Data peut être un string (roomId) ou un objet {roomId, userId}
       const roomId = (typeof data === 'object') ? data.roomId : data;
       const requesterId = (typeof data === 'object') ? data.userId : null;
-
       const query = { roomId: roomId };
-      
       if (requesterId) {
-          // Si on est connecté, on veut : Messages Publics OU (MP envoyé par moi) OU (MP reçu par moi)
           query.$or = [
-              { targetName: { $exists: false } }, // Public
-              { targetName: "" },                 // Public
-              { ownerId: requesterId },           // Mon MP envoyé
-              { targetOwnerId: requesterId }      // MP reçu
+              { targetName: { $exists: false } },
+              { targetName: "" },
+              { ownerId: requesterId },
+              { targetOwnerId: requesterId }
           ];
       } else {
-          // Invité : Seulement messages publics
           query.$or = [{ targetName: { $exists: false } }, { targetName: "" }];
       }
-
       const history = await Message.find(query).sort({ timestamp: 1 }).limit(200);
       socket.emit('history_data', history);
   });
 
-  // --- MESSAGES ---
+  // --- MESSAGES ROOM ---
   socket.on('message_rp', async (msgData) => {
     if (!msgData.roomId) return; 
-    
-    // Check Narrateur Admin
     if (msgData.senderName === "Narrateur") {
         const user = await User.findOne({ secretCode: msgData.ownerId });
         if (!user || !user.isAdmin) return;
     }
-
-    // Gestion MP : Récupérer le ownerId du destinataire
     if (msgData.targetName) {
         const targetChar = await Character.findOne({ name: msgData.targetName }).sort({_id: -1});
-        if (targetChar) {
-            msgData.targetOwnerId = targetChar.ownerId;
-        } else {
-            // Perso introuvable ? On traite comme public ou on annule. Ici on laisse filer mais sans ownerId (donc invisible destinataire)
-        }
+        if (targetChar) msgData.targetOwnerId = targetChar.ownerId;
     }
-
     const newMessage = new Message(msgData);
     const savedMsg = await newMessage.save();
-    
-    // On broadcast à la room, le filtrage visuel se fera côté client pour le temps réel
     io.to(msgData.roomId).emit('message_rp', savedMsg); 
   });
 
@@ -229,6 +228,55 @@ io.on('connection', async (socket) => {
   socket.on('admin_clear_room', async (roomId) => {
       await Message.deleteMany({ roomId: roomId });
       io.to(roomId).emit('history_cleared');
+  });
+
+  // --- GESTION DES MESSAGES PRIVÉS (DM) ---
+  
+  // 1. Envoyer un DM
+  socket.on('send_dm', async (data) => {
+      // data: { sender: 'Moi', target: 'Lui', content: '...', type: 'text', date: '...' }
+      const newDm = new DirectMessage(data);
+      await newDm.save();
+
+      // Trouver les sockets du sender et du target pour l'envoi en temps réel
+      const targetSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.target);
+      const senderSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.sender);
+
+      [...targetSockets, ...senderSockets].forEach(sId => {
+          io.to(sId).emit('receive_dm', newDm);
+      });
+  });
+
+  // 2. Récupérer l'historique DM avec une personne spécifique
+  socket.on('request_dm_history', async ({ myUsername, targetUsername }) => {
+      const history = await DirectMessage.find({
+          $or: [
+              { sender: myUsername, target: targetUsername },
+              { sender: targetUsername, target: myUsername }
+          ]
+      }).sort({ timestamp: 1 }).limit(100);
+      
+      socket.emit('dm_history_data', { history, target: targetUsername });
+  });
+
+  // 3. Récupérer la liste des gens avec qui j'ai parlé (Contacts)
+  socket.on('request_dm_contacts', async (username) => {
+      // On cherche tous les messages où je suis sender ou target
+      const msgs = await DirectMessage.find({ $or: [{ sender: username }, { target: username }] });
+      
+      const contacts = new Set();
+      msgs.forEach(m => {
+          if (m.sender === username) contacts.add(m.target);
+          else contacts.add(m.sender);
+      });
+
+      socket.emit('dm_contacts_data', Array.from(contacts));
+  });
+
+  // 4. Initialiser un DM (depuis la liste de droite)
+  socket.on('start_dm', (targetUsername) => {
+      // Vérifier si le user existe (optionnel, on suppose qu'on clique sur un user existant)
+      socket.emit('open_dm_ui', targetUsername);
   });
 
   // --- TYPING ---
