@@ -28,6 +28,17 @@ socket.on('login_success', (data) => {
     PLAYER_ID = data.userId;
 });
 
+// Fonction de Déconnexion
+function logoutUser() {
+    if(confirm("Voulez-vous vraiment vous déconnecter ?")) {
+        // On supprime les infos de connexion
+        localStorage.removeItem('rp_username');
+        localStorage.removeItem('rp_code');
+        
+        // On recharge la page pour revenir à l'état "Invité"
+        location.reload();
+    }
+}
 // Gestion des erreurs de connexion
 socket.on('login_error', (errorMessage) => {
     alert(errorMessage); // Affiche l'erreur (ex: Pseudo pris)
@@ -280,5 +291,6 @@ function displayMessage(msg) {
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
+
 
 
