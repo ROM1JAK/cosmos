@@ -1,5 +1,5 @@
 var socket = io();
-const notifSound = new Audio('https://discord.com/channels/918212633637814343/1323488087288053821/1443747694689648780'); // AJOUT : Son de notification
+const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2346/2346-preview.mp3''); // AJOUT : Son de notification
 let myCharacters = [];
 let allRooms = []; 
 let currentRoomId = 'global'; 
@@ -610,4 +610,5 @@ function displayMessage(msg, isDm = false) {
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
+
 
