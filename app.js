@@ -6,8 +6,8 @@ let PLAYER_ID;
 let IS_ADMIN = false;
 let currentContext = null; 
 let typingTimeout = null;
-let unreadRooms = new Set(); // Stocke les ID des salons non lus
-let firstUnreadMap = {};     // Stocke l'ID du premier message non lu par salon
+let unreadRooms = new Set();
+let firstUnreadMap = {};
 
 // --- UI & LOGIN ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
@@ -21,19 +21,35 @@ function submitLogin() {
     if (pseudo && code) socket.emit('login_request', { username: pseudo, code: code });
 }
 
+function logoutUser() {
+    if(confirm("Déconnexion ?")) {
+        localStorage.removeItem('rp_username');
+        localStorage.removeItem('rp_code');
+        location.reload();
+    }
+}
+
+// AUTO LOGIN AU DÉMARRAGE (CORRECTIF)
+function checkAutoLogin() {
+    const savedUser = localStorage.getItem('rp_username');
+    const savedCode = localStorage.getItem('rp_code');
+    if (savedUser && savedCode) {
+        // On tente de se reconnecter
+        socket.emit('login_request', { username: savedUser, code: savedCode });
+    } else {
+        // Sinon on force l'ouverture de la modale
+        openLoginModal();
+    }
+}
+
 socket.on('login_success', (data) => {
     localStorage.setItem('rp_username', data.username);
     localStorage.setItem('rp_code', data.userId);
     document.getElementById('player-id-display').textContent = `Compte : ${data.username}`;
     IS_ADMIN = data.isAdmin;
     if(IS_ADMIN) document.getElementById('player-id-display').style.color = "#da373c";
-    
-    // MISE À JOUR CRITIQUE DES ID
     PLAYER_ID = data.userId;
-    
     closeLoginModal();
-    
-    // On demande Immédiatement les persos liés à ce nouveau compte
     socket.emit('request_initial_data', PLAYER_ID);
     joinRoom('global');
 });
@@ -42,23 +58,17 @@ socket.on('login_error', (msg) => {
     document.getElementById('login-error-msg').textContent = msg;
 });
 
-function getPlayerId() {
-    let id = localStorage.getItem('rp_code');
-    // Si pas de code, on est invité (code aléatoire)
-    if (!id) { id = 'player_' + Math.random().toString(36).substring(2, 9); localStorage.setItem('rp_code', id); }
-    PLAYER_ID = id;
-    
-    let name = localStorage.getItem('rp_username') || "Invité";
-    document.getElementById('player-id-display').textContent = `Compte : ${name}`;
-    return id;
-}
-getPlayerId();
+// Appel initial
+checkAutoLogin();
 
 // --- SOCKET ---
 socket.on('connect', () => {
-    socket.emit('request_my_chars', PLAYER_ID);
-    socket.emit('request_rooms');
-    joinRoom('global');
+    // Si on a déjà un ID chargé (cas d'un refresh rapide), on redemande les infos
+    if(PLAYER_ID) {
+        socket.emit('request_my_chars', PLAYER_ID);
+        socket.emit('request_rooms');
+        joinRoom('global');
+    }
 });
 
 socket.on('update_user_list', (users) => {
@@ -121,6 +131,13 @@ function joinRoom(roomId) {
     if (currentRoomId && currentRoomId !== roomId) socket.emit('leave_room', currentRoomId);
     currentRoomId = roomId;
     socket.emit('join_room', currentRoomId);
+    
+    // Reset notifications
+    if (unreadRooms.has(currentRoomId)) {
+        unreadRooms.delete(currentRoomId);
+        delete firstUnreadMap[currentRoomId];
+    }
+
     const room = allRooms.find(r => r._id === roomId);
     document.getElementById('currentRoomName').textContent = room ? room.name : 'Salon Global';
     document.getElementById('messages').innerHTML = ""; 
@@ -134,13 +151,10 @@ socket.on('rooms_data', (rooms) => { allRooms = rooms; updateRoomListUI(); });
 function updateRoomListUI() {
     const list = document.getElementById('roomList');
     list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''} ${unreadRooms.has('global')?'unread':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
-    
     allRooms.forEach(room => {
         const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>` : '';
-        // Ajout de la condition unread
         const isUnread = unreadRooms.has(room._id) ? 'unread' : '';
         const isActive = currentRoomId === room._id ? 'active' : '';
-        
         list.innerHTML += `<div class="room-item ${isActive} ${isUnread}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
     });
 }
@@ -192,10 +206,12 @@ socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c
 function updateUI() {
     const list = document.getElementById('myCharList');
     const select = document.getElementById('charSelector');
-    const prev = select.value;
-    list.innerHTML = "";
+    // On sauvegarde la sélection actuelle par ID (plus sûr que par nom)
+    const prevIndex = select.selectedIndex;
     
-    // NARRATEUR SEULEMENT POUR ADMIN
+    list.innerHTML = "";
+    select.innerHTML = ""; // Reset complet pour éviter doublons
+    
     if(IS_ADMIN) {
         select.innerHTML = '<option value="Narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
     }
@@ -209,16 +225,14 @@ function updateUI() {
         select.appendChild(opt);
     });
     
-    // Sécurité : si je n'ai plus de perso et pas admin, select vide
-    if (myCharacters.length === 0 && !IS_ADMIN) {
-        // On ne sélectionne rien par défaut ou on peut mettre une option "Créer un perso"
-    } else if (prev && (prev === "Narrateur" || myCharacters.some(c => c.name === prev))) {
-        select.value = prev;
+    // Tenter de restaurer la sélection
+    if(prevIndex >= 0 && prevIndex < select.options.length) {
+        select.selectedIndex = prevIndex;
     }
 }
 
 // --- PROFIL ---
-function openProfile(charId) { socket.emit('get_char_profile', charId); }
+function openProfile(charName) { socket.emit('get_char_profile', charName); }
 function closeProfileModal() { document.getElementById('profile-modal').classList.add('hidden'); }
 socket.on('char_profile_data', (char) => {
     document.getElementById('profileName').textContent = char.name;
@@ -256,7 +270,7 @@ function sendMessage() {
     if (currentContext && currentContext.type === 'edit') { socket.emit('edit_message', { id: currentContext.data.id, newContent: content }); txt.value = ''; cancelContext(); return; }
 
     const sel = document.getElementById('charSelector');
-    if (sel.selectedIndex === -1) { alert("Sélectionnez un personnage !"); return; }
+    if (sel.options.length === 0) { alert("Créez un personnage d'abord !"); return; }
     const opt = sel.options[sel.selectedIndex];
     
     const msg = {
@@ -270,51 +284,42 @@ function sendMessage() {
     txt.value = ''; cancelContext();
 }
 
-socket.on('history_data', (msgs) => {
+// --- DISPLAY ---
+socket.on('history_data', (msgs) => { 
     const container = document.getElementById('messages');
-    container.innerHTML = "";
-    
-    // On récupère l'ID du message où on doit couper (s'il existe)
+    container.innerHTML = ""; 
     const splitId = firstUnreadMap[currentRoomId];
-
+    
     msgs.forEach(msg => {
-        // Si c'est le message marquant le début du non-lu, on insère la ligne AVANT
-        if (splitId && msg._id === splitId) {
+        if(splitId && msg._id === splitId) {
             const separator = document.createElement('div');
             separator.className = 'new-msg-separator';
             separator.textContent = "Nouveaux messages";
             container.appendChild(separator);
         }
-        displayMessage(msg);
+        displayMessage(msg); 
     });
     
-    scrollToBottom();
-
-    // Maintenant qu'on a vu les messages, on nettoie les notifications pour ce salon
-    if (unreadRooms.has(currentRoomId)) {
+    // Nettoyage notification
+    if(unreadRooms.has(currentRoomId)) {
         unreadRooms.delete(currentRoomId);
         delete firstUnreadMap[currentRoomId];
-        updateRoomListUI(); // On retire le rouge de la sidebar
+        updateRoomListUI();
+    }
+    
+    scrollToBottom(); 
+});
+
+socket.on('message_rp', (msg) => { 
+    if(msg.roomId === currentRoomId) { 
+        displayMessage(msg); scrollToBottom(); 
+    } else {
+        unreadRooms.add(msg.roomId);
+        if (!firstUnreadMap[msg.roomId]) firstUnreadMap[msg.roomId] = msg._id;
+        updateRoomListUI();
     }
 });
-socket.on('message_rp', (msg) => {
-    // Cas 1 : Je suis dans le salon du message
-    if (msg.roomId === currentRoomId) {
-        displayMessage(msg);
-        scrollToBottom();
-    } 
-    // Cas 2 : Je suis ailleurs (Notification !)
-    else {
-        unreadRooms.add(msg.roomId); // On marque le salon comme non lu
-        
-        // Si c'est le tout premier message raté, on sauvegarde son ID pour mettre la ligne plus tard
-        if (!firstUnreadMap[msg.roomId]) {
-            firstUnreadMap[msg.roomId] = msg._id;
-        }
-        
-        updateRoomListUI(); // On met à jour la sidebar pour afficher le rouge
-    }
-});
+
 socket.on('message_deleted', (msgId) => { const el = document.getElementById(`msg-${msgId}`); if(el) el.remove(); });
 socket.on('message_updated', (data) => {
     const el = document.getElementById(`content-${data.id}`);
@@ -348,7 +353,3 @@ function displayMessage(msg) {
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
-
-
-
-
