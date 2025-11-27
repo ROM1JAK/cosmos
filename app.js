@@ -3,13 +3,14 @@ let myCharacters = [];
 let allRooms = []; 
 let currentRoomId = 'global'; 
 let PLAYER_ID; 
+let IS_ADMIN = false;
 let currentContext = null; 
 let typingTimeout = null;
 
 // --- UI & LOGIN ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
 function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
-function openLoginModal() { document.getElementById('login-modal').classList.remove('hidden'); }
+function openLoginModal() { document.getElementById('login-modal').classList.remove('hidden'); document.getElementById('login-error-msg').textContent = ""; }
 function closeLoginModal() { document.getElementById('login-modal').classList.add('hidden'); }
 
 function submitLogin() {
@@ -22,33 +23,29 @@ socket.on('login_success', (data) => {
     localStorage.setItem('rp_username', data.username);
     localStorage.setItem('rp_code', data.userId);
     document.getElementById('player-id-display').textContent = `Compte : ${data.username}`;
-    closeLoginModal();
-    socket.emit('request_initial_data', data.userId);
-    joinRoom('global');
+    IS_ADMIN = data.isAdmin;
+    if(IS_ADMIN) document.getElementById('player-id-display').style.color = "#da373c";
+    
+    // MISE À JOUR CRITIQUE DES ID
     PLAYER_ID = data.userId;
+    
+    closeLoginModal();
+    
+    // On demande Immédiatement les persos liés à ce nouveau compte
+    socket.emit('request_initial_data', PLAYER_ID);
+    joinRoom('global');
 });
 
-// Fonction de Déconnexion
-function logoutUser() {
-    if(confirm("Voulez-vous vraiment vous déconnecter ?")) {
-        // On supprime les infos de connexion
-        localStorage.removeItem('rp_username');
-        localStorage.removeItem('rp_code');
-        
-        // On recharge la page pour revenir à l'état "Invité"
-        location.reload();
-    }
-}
-// Gestion des erreurs de connexion
-socket.on('login_error', (errorMessage) => {
-    alert(errorMessage); // Affiche l'erreur (ex: Pseudo pris)
-    // On laisse la modale ouverte pour qu'il puisse réessayer
+socket.on('login_error', (msg) => {
+    document.getElementById('login-error-msg').textContent = msg;
 });
 
 function getPlayerId() {
     let id = localStorage.getItem('rp_code');
+    // Si pas de code, on est invité (code aléatoire)
     if (!id) { id = 'player_' + Math.random().toString(36).substring(2, 9); localStorage.setItem('rp_code', id); }
     PLAYER_ID = id;
+    
     let name = localStorage.getItem('rp_username') || "Invité";
     document.getElementById('player-id-display').textContent = `Compte : ${name}`;
     return id;
@@ -72,7 +69,7 @@ socket.on('update_user_list', (users) => {
 
 socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId) socket.emit('request_history', currentRoomId); });
 
-// --- GESTION IMAGES (BASE64) ---
+// --- IMAGES ---
 function previewFile(type) {
     const fileInput = document.getElementById(type === 'new' ? 'newCharFile' : 'editCharFile');
     const hiddenInput = document.getElementById(type === 'new' ? 'newCharBase64' : 'editCharBase64');
@@ -84,8 +81,6 @@ function previewFile(type) {
         reader.readAsDataURL(file);
     }
 }
-
-// --- MODALE URL IMAGE CHAT ---
 function openUrlModal() { document.getElementById('url-modal').classList.remove('hidden'); }
 function closeUrlModal() { document.getElementById('url-modal').classList.add('hidden'); }
 function submitImageUrl() {
@@ -138,7 +133,7 @@ function updateRoomListUI() {
     const list = document.getElementById('roomList');
     list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
     allRooms.forEach(room => {
-        const delBtn = `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>`;
+        const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>` : '';
         list.innerHTML += `<div class="room-item ${currentRoomId === room._id?'active':''}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
     });
 }
@@ -193,15 +188,10 @@ function updateUI() {
     const prev = select.value;
     list.innerHTML = "";
     
-    // --- MODIFICATION ICI ---
-    // On vide le select d'abord
-    select.innerHTML = "";
-    
-    // On ajoute le Narrateur SEULEMENT si on est Admin
-    if (IS_ADMIN) {
-        select.innerHTML += '<option value="Narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
+    // NARRATEUR SEULEMENT POUR ADMIN
+    if(IS_ADMIN) {
+        select.innerHTML = '<option value="Narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
     }
-    // ------------------------
 
     myCharacters.forEach(char => {
         const safeDesc = (char.description || "").replace(/'/g, "\\'");
@@ -211,7 +201,13 @@ function updateUI() {
         opt.value = char.name; opt.text = char.name; opt.dataset.color = char.color; opt.dataset.avatar = char.avatar; opt.dataset.role = char.role;
         select.appendChild(opt);
     });
-    if (prev && (prev === "Narrateur" || myCharacters.some(c => c.name === prev))) select.value = prev;
+    
+    // Sécurité : si je n'ai plus de perso et pas admin, select vide
+    if (myCharacters.length === 0 && !IS_ADMIN) {
+        // On ne sélectionne rien par défaut ou on peut mettre une option "Créer un perso"
+    } else if (prev && (prev === "Narrateur" || myCharacters.some(c => c.name === prev))) {
+        select.value = prev;
+    }
 }
 
 // --- PROFIL ---
@@ -249,11 +245,20 @@ function sendMessage() {
     const txt = document.getElementById('txtInput');
     const content = txt.value.trim();
     if (!content) return;
-    if (content === "/clear") { socket.emit('admin_clear_room', currentRoomId); txt.value = ''; return; }
+    if (content === "/clear") { if(IS_ADMIN) socket.emit('admin_clear_room', currentRoomId); txt.value = ''; return; }
     if (currentContext && currentContext.type === 'edit') { socket.emit('edit_message', { id: currentContext.data.id, newContent: content }); txt.value = ''; cancelContext(); return; }
 
-    const sel = document.getElementById('charSelector'); const opt = sel.options[sel.selectedIndex];
-    const msg = { content, type: "text", senderName: opt.value, senderColor: opt.dataset.color || "#fff", senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role, ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null };
+    const sel = document.getElementById('charSelector');
+    if (sel.selectedIndex === -1) { alert("Sélectionnez un personnage !"); return; }
+    const opt = sel.options[sel.selectedIndex];
+    
+    const msg = {
+        content, type: "text",
+        senderName: opt.value, senderColor: opt.dataset.color || "#fff", senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role,
+        ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId,
+        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+        replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null
+    };
     socket.emit('message_rp', msg);
     txt.value = ''; cancelContext();
 }
@@ -266,31 +271,30 @@ socket.on('message_updated', (data) => {
     if(el) { el.innerHTML = formatText(data.newContent); const meta = el.parentElement.parentElement.querySelector('.timestamp'); if(!meta.textContent.includes('(modifié)')) meta.textContent += ' (modifié)'; }
 });
 
-function formatText(text) { if(!text) return ""; return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\*(.*?)\*/g, '<i>$1</i>').replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>'); }
+function formatText(text) {
+    if(!text) return "";
+    return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\*(.*?)\*/g, '<i>$1</i>').replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
+}
 
 function displayMessage(msg) {
     const div = document.createElement('div');
     div.className = 'message-container'; div.id = `msg-${msg._id}`;
     const canEdit = (msg.ownerId === PLAYER_ID);
+    const canDelete = (msg.ownerId === PLAYER_ID) || IS_ADMIN;
+
     let actionsHTML = `<button class="action-btn" onclick="triggerReply('${msg._id}', '${msg.senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre">↩️</button>`;
-    if (msg.type === 'text' && canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button><button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
-    
+    if (msg.type === 'text' && canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button>`;
+    if (canDelete) actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
+
     let replyHTML = "", spacingStyle = "";
     if (msg.replyTo && msg.replyTo.author) { spacingStyle = "margin-top: 15px;"; replyHTML = `<div class="reply-spine"></div><div class="reply-context-line" style="margin-left: 55px;"><span class="reply-name">@${msg.replyTo.author}</span><span class="reply-text">${msg.replyTo.content}</span></div>`; }
     
     let contentHTML = msg.type === "image" ? `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">` : `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
     const editedTag = msg.edited ? '<span class="edited-tag">(modifié)</span>' : '';
-    
-    // Le hack ici : comme on ne stocke pas l'ID dans le message pour le moment, on fait une recherche approximative par nom pour le profil (pas idéal mais rapide)
-    // Pour faire propre : il faut stocker charId dans MessageSchema. J'utilise openProfile qui attend un nom pour l'instant coté serveur.
-    // Correction : J'ai mis à jour get_char_profile pour accepter un ID ou un Nom. Mais dans le message on a pas l'ID du char.
-    // On va utiliser le nom pour l'instant.
+
     div.innerHTML = `${replyHTML}<div class="msg-actions">${actionsHTML}</div><div style="position:relative; ${spacingStyle}"><img src="${msg.senderAvatar}" class="avatar-img" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')"><div style="margin-left: 55px;"><div class="char-header"><span class="char-name" style="color: ${msg.senderColor}" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')">${msg.senderName}</span><span class="char-role">${msg.senderRole || ""}</span><span class="timestamp">${msg.date} ${editedTag}</span></div>${contentHTML}</div></div>`;
     document.getElementById('messages').appendChild(div);
 }
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
-
-
-
