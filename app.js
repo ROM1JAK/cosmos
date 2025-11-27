@@ -266,7 +266,24 @@ function sendMessage() {
 }
 
 socket.on('history_data', (msgs) => { document.getElementById('messages').innerHTML = ""; msgs.forEach(displayMessage); scrollToBottom(); });
-socket.on('message_rp', (msg) => { if(msg.roomId === currentRoomId) { displayMessage(msg); scrollToBottom(); } });
+socket.on('message_rp', (msg) => {
+    // Cas 1 : Je suis dans le salon du message
+    if (msg.roomId === currentRoomId) {
+        displayMessage(msg);
+        scrollToBottom();
+    } 
+    // Cas 2 : Je suis ailleurs (Notification !)
+    else {
+        unreadRooms.add(msg.roomId); // On marque le salon comme non lu
+        
+        // Si c'est le tout premier message raté, on sauvegarde son ID pour mettre la ligne plus tard
+        if (!firstUnreadMap[msg.roomId]) {
+            firstUnreadMap[msg.roomId] = msg._id;
+        }
+        
+        updateRoomListUI(); // On met à jour la sidebar pour afficher le rouge
+    }
+});
 socket.on('message_deleted', (msgId) => { const el = document.getElementById(`msg-${msgId}`); if(el) el.remove(); });
 socket.on('message_updated', (data) => {
     const el = document.getElementById(`content-${data.id}`);
@@ -300,4 +317,5 @@ function displayMessage(msg) {
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
+
 
