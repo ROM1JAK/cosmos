@@ -7,7 +7,8 @@ let IS_ADMIN = false;
 let currentContext = null; 
 let typingTimeout = null;
 let unreadRooms = new Set();
-let firstUnreadMap = {};
+// CORRECTIF REQ 4 : Map pour stocker l'ID du premier message non-lu par salon
+let firstUnreadMap = {}; 
 
 // --- UI & LOGIN ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
@@ -29,15 +30,16 @@ function logoutUser() {
     }
 }
 
-// AUTO LOGIN AU DÉMARRAGE (CORRECTIF)
+// CORRECTIF REQ 1 : Auto-login robuste au chargement
 function checkAutoLogin() {
     const savedUser = localStorage.getItem('rp_username');
     const savedCode = localStorage.getItem('rp_code');
+    
     if (savedUser && savedCode) {
-        // On tente de se reconnecter
+        // Tentative de connexion silencieuse
         socket.emit('login_request', { username: savedUser, code: savedCode });
     } else {
-        // Sinon on force l'ouverture de la modale
+        // Pas de sauvegarde, on affiche la modale
         openLoginModal();
     }
 }
@@ -49,26 +51,27 @@ socket.on('login_success', (data) => {
     IS_ADMIN = data.isAdmin;
     if(IS_ADMIN) document.getElementById('player-id-display').style.color = "#da373c";
     PLAYER_ID = data.userId;
+    
+    // Ferme la modale si elle est ouverte
     closeLoginModal();
+    
     socket.emit('request_initial_data', PLAYER_ID);
+    
+    // On ne force le join global que si on n'est pas déjà dans un état stable
+    // Mais pour simplifier, on reset sur Global au login
     joinRoom('global');
 });
 
 socket.on('login_error', (msg) => {
+    // Si l'auto-login échoue, on affiche l'erreur et la modale
     document.getElementById('login-error-msg').textContent = msg;
+    openLoginModal();
 });
-
-// Appel initial
-checkAutoLogin();
 
 // --- SOCKET ---
 socket.on('connect', () => {
-    // Si on a déjà un ID chargé (cas d'un refresh rapide), on redemande les infos
-    if(PLAYER_ID) {
-        socket.emit('request_my_chars', PLAYER_ID);
-        socket.emit('request_rooms');
-        joinRoom('global');
-    }
+    // Une fois le socket connecté, on lance la procédure de login
+    checkAutoLogin();
 });
 
 socket.on('update_user_list', (users) => {
@@ -127,15 +130,15 @@ function createRoomPrompt() {
     if (name) socket.emit('create_room', { name, creatorId: PLAYER_ID, allowedCharacters: [] });
 }
 function deleteRoom(roomId) { if(confirm("ADMIN : Supprimer ?")) socket.emit('delete_room', roomId); }
+
 function joinRoom(roomId) {
     if (currentRoomId && currentRoomId !== roomId) socket.emit('leave_room', currentRoomId);
     currentRoomId = roomId;
     socket.emit('join_room', currentRoomId);
     
-    // Reset notifications
+    // On conserve firstUnreadMap pour le rendu de l'historique, on ne le supprime qu'après affichage
     if (unreadRooms.has(currentRoomId)) {
         unreadRooms.delete(currentRoomId);
-        delete firstUnreadMap[currentRoomId];
     }
 
     const room = allRooms.find(r => r._id === roomId);
@@ -148,6 +151,7 @@ function joinRoom(roomId) {
     updateRoomListUI();
 }
 socket.on('rooms_data', (rooms) => { allRooms = rooms; updateRoomListUI(); });
+
 function updateRoomListUI() {
     const list = document.getElementById('roomList');
     list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''} ${unreadRooms.has('global')?'unread':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
@@ -203,31 +207,49 @@ socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(
 function deleteCharacter(id) { if(confirm('Supprimer ?')) socket.emit('delete_char', id); }
 socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c => c._id !== id); updateUI(); });
 
+// CORRECTIF REQ 2 : updateUI amélioré pour maintenir la sélection par ID
 function updateUI() {
     const list = document.getElementById('myCharList');
     const select = document.getElementById('charSelector');
-    // On sauvegarde la sélection actuelle par ID (plus sûr que par nom)
-    const prevIndex = select.selectedIndex;
     
+    // On essaie de récupérer l'ID du perso actuellement sélectionné
+    let selectedCharId = null;
+    if (select.selectedIndex >= 0) {
+        const currentOpt = select.options[select.selectedIndex];
+        selectedCharId = currentOpt.dataset.id; // On utilisera un dataset ID
+    }
+
     list.innerHTML = "";
-    select.innerHTML = ""; // Reset complet pour éviter doublons
+    select.innerHTML = ""; 
     
     if(IS_ADMIN) {
-        select.innerHTML = '<option value="Narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
+        select.innerHTML = '<option value="Narrateur" data-id="narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
     }
 
     myCharacters.forEach(char => {
         const safeDesc = (char.description || "").replace(/'/g, "\\'");
         list.innerHTML += `
             <div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="editCharacter('${char._id}', '${char.name}', '${char.role}', '${char.avatar}', '${char.color}', '${safeDesc}')">⚙️</button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;">✕</button></div></div>`;
+        
         const opt = document.createElement('option');
-        opt.value = char.name; opt.text = char.name; opt.dataset.color = char.color; opt.dataset.avatar = char.avatar; opt.dataset.role = char.role;
+        opt.value = char.name; 
+        opt.text = char.name; 
+        opt.dataset.id = char._id; // Important pour retrouver le perso
+        opt.dataset.color = char.color; 
+        opt.dataset.avatar = char.avatar; 
+        opt.dataset.role = char.role;
         select.appendChild(opt);
     });
     
-    // Tenter de restaurer la sélection
-    if(prevIndex >= 0 && prevIndex < select.options.length) {
-        select.selectedIndex = prevIndex;
+    // Restauration intelligente de la sélection
+    if(selectedCharId) {
+        // On cherche l'option qui a cet ID
+        const optionToSelect = Array.from(select.options).find(o => o.dataset.id === selectedCharId);
+        if(optionToSelect) {
+            optionToSelect.selected = true;
+        } else if (select.options.length > 0) {
+            select.selectedIndex = 0;
+        }
     }
 }
 
@@ -239,6 +261,7 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileRole').textContent = char.role;
     document.getElementById('profileAvatar').src = char.avatar;
     document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
+    // CORRECTIF REQ 3 : Affichage du ownerUsername récupéré du serveur
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
     document.getElementById('profile-modal').classList.remove('hidden');
 });
@@ -288,23 +311,23 @@ function sendMessage() {
 socket.on('history_data', (msgs) => { 
     const container = document.getElementById('messages');
     container.innerHTML = ""; 
+    // CORRECTIF REQ 4 : On récupère l'ID où insérer la barre
     const splitId = firstUnreadMap[currentRoomId];
     
     msgs.forEach(msg => {
+        // Insertion barre si match
         if(splitId && msg._id === splitId) {
             const separator = document.createElement('div');
             separator.className = 'new-msg-separator';
-            separator.textContent = "Nouveaux messages";
+            separator.textContent = "-- Nouveaux messages --";
             container.appendChild(separator);
         }
         displayMessage(msg); 
     });
     
-    // Nettoyage notification
-    if(unreadRooms.has(currentRoomId)) {
-        unreadRooms.delete(currentRoomId);
+    // Nettoyage notification une fois lus
+    if(firstUnreadMap[currentRoomId]) {
         delete firstUnreadMap[currentRoomId];
-        updateRoomListUI();
     }
     
     scrollToBottom(); 
@@ -314,8 +337,9 @@ socket.on('message_rp', (msg) => {
     if(msg.roomId === currentRoomId) { 
         displayMessage(msg); scrollToBottom(); 
     } else {
-        unreadRooms.add(msg.roomId);
+        // CORRECTIF REQ 4 : On enregistre le premier message non lu
         if (!firstUnreadMap[msg.roomId]) firstUnreadMap[msg.roomId] = msg._id;
+        unreadRooms.add(msg.roomId);
         updateRoomListUI();
     }
 });
