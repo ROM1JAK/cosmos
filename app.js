@@ -10,7 +10,7 @@ let typingTimeout = null;
 let unreadRooms = new Set();
 let firstUnreadMap = {}; 
 
-// --- GESTION DES VUES ---
+// --- UI & LOGIN / COMPTE ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
 function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
 
@@ -73,7 +73,7 @@ socket.on('login_success', (data) => {
     
     // UI Update
     document.getElementById('player-id-display').textContent = USERNAME;
-    document.getElementById('player-id-display').style.color = IS_ADMIN ? "#da373c" : "#949ba4";
+    document.getElementById('player-id-display').style.color = IS_ADMIN ? "#da373c" : "var(--accent)";
     const btn = document.getElementById('btn-account-main');
     btn.textContent = "👤 Mon Profil";
     btn.style.background = "#2b2d31";
@@ -238,8 +238,7 @@ function createCharacter() {
     document.getElementById('newCharBase64').value = "";
 }
 
-// FIX: Fonction globale accessible par le HTML onclick
-window.prepareEditCharacter = function(charId) {
+function prepareEditCharacter(charId) {
     const char = myCharacters.find(c => c._id === charId);
     if (!char) return;
     document.getElementById('editCharId').value = char._id;
@@ -269,8 +268,7 @@ function submitEditCharacter() {
 
 socket.on('my_chars_data', (chars) => { myCharacters = chars; updateUI(); });
 socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(); });
-// FIX: Fonction globale pour suppression
-window.deleteCharacter = function(id) { if(confirm('Supprimer ?')) socket.emit('delete_char', id); }
+function deleteCharacter(id) { if(confirm('Supprimer ?')) socket.emit('delete_char', id); }
 socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c => c._id !== id); updateUI(); });
 
 function updateUI() {
@@ -295,8 +293,8 @@ function updateUI() {
                     <div class="char-role-list">${char.role}</div>
                 </div>
                 <div class="char-actions">
-                    <button class="btn-mini-action" onclick="window.prepareEditCharacter('${char._id}')">⚙️</button>
-                    <button class="btn-mini-action" onclick="window.deleteCharacter('${char._id}')" style="color:#da373c;">✕</button>
+                    <button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')">⚙️</button>
+                    <button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;">✕</button>
                 </div>
             </div>`;
         const opt = document.createElement('option');
@@ -312,10 +310,8 @@ function updateUI() {
 }
 
 // --- PROFIL ---
-// FIX: Globales
-window.openProfile = function(charName) { socket.emit('get_char_profile', charName); }
-window.closeProfileModal = function() { document.getElementById('profile-modal').classList.add('hidden'); }
-
+function openProfile(charName) { socket.emit('get_char_profile', charName); }
+function closeProfileModal() { document.getElementById('profile-modal').classList.add('hidden'); }
 socket.on('char_profile_data', (char) => {
     document.getElementById('profileName').textContent = char.name;
     document.getElementById('profileRole').textContent = char.role;
@@ -330,7 +326,7 @@ socket.on('char_profile_data', (char) => {
         btnDM.style.display = 'block';
         btnDM.onclick = function() {
             triggerDM(char.name);
-            window.closeProfileModal();
+            closeProfileModal();
         };
     }
     
@@ -345,6 +341,7 @@ function setContext(type, data) {
     const text = document.getElementById('context-text');
     
     bar.className = 'visible';
+    // Reset classes
     bar.classList.remove('dm-context');
 
     if (type === 'reply') { 
@@ -371,9 +368,9 @@ function cancelContext() {
     document.getElementById('context-bar').className = 'hidden';
     if(document.getElementById('txtInput').value !== "") document.getElementById('txtInput').value = "";
 }
-window.triggerReply = function(id, author, content) { setContext('reply', { id, author, content }); }
-window.triggerEdit = function(id, content) { setContext('edit', { id, content }); }
-window.triggerDelete = function(id) { if(confirm("Supprimer ?")) socket.emit('delete_message', id); }
+function triggerReply(id, author, content) { setContext('reply', { id, author, content }); }
+function triggerEdit(id, content) { setContext('edit', { id, content }); }
+function triggerDelete(id) { if(confirm("Supprimer ?")) socket.emit('delete_message', id); }
 
 function sendMessage() {
     const txt = document.getElementById('txtInput');
@@ -386,13 +383,18 @@ function sendMessage() {
     if (sel.options.length === 0) { alert("Créez un personnage d'abord !"); return; }
     const opt = sel.options[sel.selectedIndex];
     
+    // Logique pour MP
     let targetName = "";
-    if (currentContext && currentContext.type === 'dm') targetName = currentContext.data.target;
+    if (currentContext && currentContext.type === 'dm') {
+        targetName = currentContext.data.target;
+    }
 
     const msg = {
         content, type: "text",
         senderName: opt.value, senderColor: opt.dataset.color || "#fff", senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role,
-        ownerId: PLAYER_ID, targetName: targetName, roomId: currentRoomId,
+        ownerId: PLAYER_ID, 
+        targetName: targetName, // Ajout MP
+        roomId: currentRoomId,
         date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
         replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null
     };
@@ -419,8 +421,12 @@ socket.on('history_data', (msgs) => {
 });
 
 socket.on('message_rp', (msg) => { 
-    // Filtrage visuel des MP qui ne me concernent pas
-    if (msg.targetName && msg.ownerId !== PLAYER_ID && msg.targetOwnerId !== PLAYER_ID) return;
+    // Filtrage Client Temps Réel (Sécurité Visuelle)
+    // Si c'est un MP qui ne me concerne pas (je ne suis ni l'envoyeur, ni le destinataire), je ne l'affiche pas.
+    // Note: msg.targetOwnerId est rempli par le serveur.
+    if (msg.targetName && msg.ownerId !== PLAYER_ID && msg.targetOwnerId !== PLAYER_ID) {
+        return;
+    }
 
     if(msg.roomId === currentRoomId) { 
         displayMessage(msg); scrollToBottom(); 
@@ -452,11 +458,15 @@ function displayMessage(msg) {
     const div = document.createElement('div');
     div.className = 'message-container'; div.id = `msg-${msg._id}`;
     
+    // Gestion Visuelle MP
     let privateBadge = "";
     if (msg.targetName) {
         div.classList.add('dm-message');
-        if (msg.ownerId === PLAYER_ID) privateBadge = `<span class="private-badge">🔒 À ${msg.targetName}</span>`;
-        else privateBadge = `<span class="private-badge">🔒 DE ${msg.senderName}</span>`;
+        if (msg.ownerId === PLAYER_ID) {
+            privateBadge = `<span class="private-badge" style="background:var(--dm-color); margin-right:5px;">🔒 Privé à ${msg.targetName}</span>`;
+        } else {
+            privateBadge = `<span class="private-badge" style="background:var(--dm-color); margin-right:5px;">🔒 Privé de ${msg.senderName}</span>`;
+        }
     }
 
     const canEdit = (msg.ownerId === PLAYER_ID);
@@ -464,8 +474,10 @@ function displayMessage(msg) {
 
     let actionsHTML = `<button class="action-btn" onclick="triggerReply('${msg._id}', '${msg.senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre">↩️</button>`;
     
+    // Bouton MP dans actions
+    // On ne s'envoie pas de MP si c'est notre propre message
     if (msg.ownerId !== PLAYER_ID) {
-        actionsHTML += `<button class="action-btn" onclick="triggerDM('${msg.senderName.replace(/'/g, "\\'")}')" title="MP">✉️</button>`;
+        actionsHTML += `<button class="action-btn" onclick="triggerDM('${msg.senderName.replace(/'/g, "\\'")}')" title="Message Privé">✉️</button>`;
     }
 
     if (msg.type === 'text' && canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button>`;
@@ -482,9 +494,9 @@ function displayMessage(msg) {
         if (ytId) {
             contentHTML = `<iframe class="video-frame" src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe>`;
         } else if (msg.content.match(/\.(mp4|webm|ogg)$/i)) {
-            contentHTML = `<video class="video-direct" controls><source src="${msg.content}">Non supporté.</video>`;
+            contentHTML = `<video class="video-direct" controls><source src="${msg.content}">Votre navigateur ne supporte pas la vidéo.</video>`;
         } else {
-             contentHTML = `<div class="text-body"><a href="${msg.content}" target="_blank" style="color:var(--accent)">[Lien Vidéo]</a></div>`;
+             contentHTML = `<div class="text-body"><a href="${msg.content}" target="_blank" style="color:var(--accent)">[Lien Vidéo] ${msg.content}</a></div>`;
         }
     } else {
         contentHTML = `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
@@ -492,8 +504,7 @@ function displayMessage(msg) {
 
     const editedTag = msg.edited ? '<span class="edited-tag">(modifié)</span>' : '';
 
-    // Important : onclick utilise des fonctions globales window.X
-    div.innerHTML = `${replyHTML}<div class="msg-actions">${actionsHTML}</div><div style="position:relative; ${spacingStyle}"><img src="${msg.senderAvatar}" class="avatar-img" onclick="window.openProfile('${msg.senderName.replace(/'/g, "\\'")}')"><div style="margin-left: 55px;"><div class="char-header">${privateBadge}<span class="char-name" style="color: ${msg.senderColor}" onclick="window.openProfile('${msg.senderName.replace(/'/g, "\\'")}')">${msg.senderName}</span><span class="char-role">${msg.senderRole || ""}</span><span class="timestamp">${msg.date} ${editedTag}</span></div>${contentHTML}</div></div>`;
+    div.innerHTML = `${replyHTML}<div class="msg-actions">${actionsHTML}</div><div style="position:relative; ${spacingStyle}"><img src="${msg.senderAvatar}" class="avatar-img" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')"><div style="margin-left: 55px;"><div class="char-header">${privateBadge}<span class="char-name" style="color: ${msg.senderColor}" onclick="openProfile('${msg.senderName.replace(/'/g, "\\'")}')">${msg.senderName}</span><span class="char-role">${msg.senderRole || ""}</span><span class="timestamp">${msg.date} ${editedTag}</span></div>${contentHTML}</div></div>`;
     document.getElementById('messages').appendChild(div);
 }
 
