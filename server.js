@@ -66,7 +66,7 @@ io.on('connection', async (socket) => {
               await user.save();
           }
 
-          // Mise à jour du pseudo propriétaire sur tous les persos existants
+          // Mise à jour du pseudo propriétaire sur tous les persos existants (rétroactif)
           await Character.updateMany({ ownerId: code }, { ownerUsername: username });
 
           onlineUsers[socket.id] = user.username;
@@ -99,12 +99,15 @@ io.on('connection', async (socket) => {
 
   // --- PERSONNAGES ---
   socket.on('get_char_profile', async (charName) => {
-      // Recherche le perso le plus récent avec ce nom
       const char = await Character.findOne({ name: charName }).sort({_id: -1});
       if(char) socket.emit('char_profile_data', char);
   });
 
   socket.on('create_char', async (data) => {
+    // CORRECTIF REQ 3 : On récupère le username du créateur
+    const user = await User.findOne({ secretCode: data.ownerId });
+    if (user) data.ownerUsername = user.username;
+    
     const newChar = new Character(data);
     await newChar.save();
     socket.emit('char_created_success', newChar);
