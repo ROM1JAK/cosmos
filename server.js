@@ -154,8 +154,20 @@ io.on('connection', async (socket) => {
   });
 
   // --- MESSAGES ---
+// --- MESSAGES SÉCURISÉS (ADMIN NARRATEUR) ---
   socket.on('message_rp', async (msgData) => {
     if (!msgData.roomId) return; 
+
+    // VÉRIFICATION NARRATEUR
+    // Si le perso est "Narrateur", on vérifie si l'auteur est ADMIN
+    if (msgData.senderName === "Narrateur") {
+        const user = await User.findOne({ secretCode: msgData.ownerId });
+        if (!user || !user.isAdmin) {
+            // Ce n'est pas un admin -> on ignore le message ou on peut renvoyer une erreur
+            return; 
+        }
+    }
+
     const newMessage = new Message(msgData);
     const savedMsg = await newMessage.save();
     io.to(msgData.roomId).emit('message_rp', savedMsg);
@@ -180,4 +192,5 @@ io.on('connection', async (socket) => {
 
 const port = process.env.PORT || 3000;
 http.listen(port, () => { console.log(`Serveur prêt : ${port}`); });
+
 
