@@ -144,3 +144,36 @@ select#charSelector { background: #2b2d31; color: white; border: none; padding: 
     .msg-actions { opacity: 1; top: -25px; }
 }
 
+/* --- NOUVEAUTÉS : NOTIFICATIONS & SÉPARATEUR --- */
+
+/* Salon avec messages non lus */
+.room-item.unread {
+    color: #ff6b6b !important; /* Rouge clair */
+    font-weight: bold;
+    background: rgba(255, 107, 107, 0.1);
+}
+.room-item.unread::after {
+    content: "●"; /* Petit point */
+    margin-left: auto;
+    font-size: 0.8em;
+}
+
+/* La ligne rouge dans le chat */
+.new-msg-separator {
+    display: flex;
+    align-items: center;
+    color: #ff6b6b;
+    margin: 20px 0;
+    font-size: 0.75rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.new-msg-separator::before, .new-msg-separator::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: #ff6b6b;
+    opacity: 0.5;
+    margin: 0 10px;
+}
