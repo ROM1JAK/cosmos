@@ -11,45 +11,50 @@
 
     <div id="mobile-overlay" onclick="toggleSidebar()"></div>
 
-    <!-- MODALES -->
-    
-    <!-- Connexion -->
+    <!-- Modale Connexion -->
     <div id="login-modal" class="modal-overlay hidden">
-        <div class="modal-box">
-            <button class="btn-close-modal" onclick="closeLoginModal()">✕</button>
+        <div class="modal-box" style="position: relative;">
+            <button onclick="closeLoginModal()" style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: #aaa; cursor: pointer; font-size: 1.2rem;">✕</button>
             <h2>Connexion</h2>
-            <p class="modal-subtitle">Pseudo unique + Code secret.</p>
-            <input type="text" id="loginPseudoInput" placeholder="Votre Pseudo (Ex: Pedro)" class="modal-input">
-            <input type="password" id="loginCodeInput" placeholder="Votre Code Secret" class="modal-input">
-            <button onclick="submitLogin()" class="btn-primary full-width">Se connecter / Créer</button>
-            <p id="login-error-msg" class="error-msg"></p>
+            <p style="color:#aaa; font-size:0.9em;">Pseudo unique + Code secret.</p>
+            <input type="text" id="loginPseudoInput" placeholder="Pseudo (Ex: Pedro)" class="modal-input">
+            <input type="password" id="loginCodeInput" placeholder="Code Secret" class="modal-input">
+            <div class="modal-buttons">
+                <button onclick="submitLogin()" class="btn-primary full-width">Se connecter / Créer</button>
+            </div>
+            <p id="login-error-msg" style="color: #da373c; font-size: 0.8em; margin-top: 10px;"></p>
         </div>
     </div>
 
-    <!-- Mon Profil -->
+    <!-- Modale Mon Profil -->
     <div id="user-settings-modal" class="modal-overlay hidden">
-        <div class="modal-box">
-            <button class="btn-close-modal" onclick="closeUserSettingsModal()">✕</button>
+        <div class="modal-box" style="position: relative;">
+            <button onclick="closeUserSettingsModal()" style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: #aaa; cursor: pointer; font-size: 1.2rem;">✕</button>
             <h2>Mon Profil</h2>
             
-            <label class="modal-label">PSEUDO</label>
-            <div class="input-group">
-                <input type="text" id="settingsUsernameInput" class="modal-input">
-                <button onclick="submitUsernameChange()" class="btn-primary btn-small">Sauver</button>
+            <div style="text-align: left; margin-bottom: 5px;">
+                <label style="font-size:0.8em; color:#aaa; font-weight:bold;">PSEUDO</label>
+            </div>
+            <div style="display:flex; gap:5px; margin-bottom: 15px;">
+                <input type="text" id="settingsUsernameInput" class="modal-input" style="margin:0;">
+                <button onclick="submitUsernameChange()" class="btn-primary" style="width: auto; padding: 0 15px;">Sauver</button>
             </div>
 
-            <label class="modal-label">CODE SECRET</label>
+            <div style="text-align: left; margin-bottom: 5px;">
+                <label style="font-size:0.8em; color:#aaa; font-weight:bold;">CODE SECRET</label>
+            </div>
             <div class="password-wrapper">
-                <input type="password" id="settingsCodeInput" class="modal-input" readonly>
-                <button onclick="toggleSecretVisibility()" class="btn-eye" title="Voir">👁️</button>
+                <input type="password" id="settingsCodeInput" class="modal-input" readonly style="margin:0;">
+                <button onclick="toggleSecretVisibility()" class="btn-eye" title="Afficher/Masquer">👁️</button>
             </div>
             
-            <p id="settings-msg" class="info-msg"></p>
-            <button onclick="logoutUser()" class="btn-logout full-width mt-10">Déconnexion</button>
+            <p id="settings-msg" style="height: 1.2em; margin: 10px 0; font-size: 0.85rem;"></p>
+
+            <button onclick="logoutUser()" class="btn-logout full-width" style="margin-top: 10px;">Déconnexion</button>
         </div>
     </div>
 
-    <!-- Médias -->
+    <!-- Modales Médias -->
     <div id="url-modal" class="modal-overlay hidden">
         <div class="modal-box">
             <h3>Insérer une image</h3>
@@ -64,7 +69,7 @@
     <div id="video-modal" class="modal-overlay hidden">
         <div class="modal-box">
             <h3>Insérer une vidéo</h3>
-            <p class="modal-subtitle">YouTube ou lien .mp4 direct</p>
+            <p style="font-size:0.8em; color:#aaa;">YouTube ou lien .mp4 direct</p>
             <input type="text" id="videoInput" placeholder="https://youtube.com/..." class="modal-input">
             <div class="modal-buttons">
                 <button onclick="submitVideoUrl()" class="btn-primary">Envoyer</button>
@@ -73,7 +78,7 @@
         </div>
     </div>
 
-    <!-- Profil Personnage -->
+    <!-- Modale Profil Personnage -->
     <div id="profile-modal" class="modal-overlay hidden" onclick="closeProfileModal()">
         <div class="modal-box profile-box" onclick="event.stopPropagation()">
             <div class="profile-header">
@@ -81,88 +86,83 @@
                 <div class="profile-title">
                     <h2 id="profileName">Nom</h2>
                     <span id="profileRole" class="profile-role-tag">Rôle</span>
-                    <div id="profileOwner" class="profile-owner"></div>
+                    <div id="profileOwner" style="margin-top:5px; color:#aaa; font-size:0.85em; font-weight:bold;"></div>
                 </div>
             </div>
             <div class="profile-body">
                 <p id="profileDesc" class="profile-desc-text">...</p>
             </div>
-            <button id="btn-dm-profile" class="btn-dm full-width mt-10">✉️ Envoyer un MP</button>
-            <button onclick="closeProfileModal()" class="btn-secondary full-width mt-5">Fermer</button>
+            <button id="btn-dm-profile" class="btn-primary full-width" style="margin-top:15px; background: #6b4c9a;">✉️ Envoyer un MP</button>
+            <button onclick="closeProfileModal()" class="btn-secondary full-width" style="margin-top:5px;">Fermer</button>
         </div>
     </div>
 
-    <!-- UI PRINCIPALE -->
     <button id="menu-toggle-btn" onclick="toggleSidebar()">
         <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
     </button>
 
     <div id="app-container">
-        
-        <!-- SIDEBAR GAUCHE -->
         <div id="sidebar">
             <div class="sidebar-header">
-                <h2 class="app-title">RP Verse</h2>
-                <button class="btn-close-sidebar" onclick="toggleSidebar()">✕</button>
-            </div>
-            
-            <div class="account-section">
+                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                    <h2 class="app-title">RP Verse</h2>
+                    <button class="btn-close-sidebar" onclick="toggleSidebar()">✕</button>
+                </div>
                 <div id="player-id-display">Non connecté</div>
-                <button id="btn-account-main" class="btn-account full-width" onclick="openAccountUI()">🔑 Connexion</button>
+                <div style="display:flex; gap:5px; width:100%;">
+                    <button id="btn-account-main" class="btn-login full-width" onclick="openAccountUI()">🔑 Connexion</button>
+                </div>
             </div>
 
-            <div class="sidebar-scroll">
-                <div class="sidebar-section">
-                    <h3>Salons</h3>
-                    <div id="roomList"></div>
-                    <button class="btn-add-room" onclick="createRoomPrompt()">+ Salon</button>
+            <div class="sidebar-section">
+                <h3>Salons</h3>
+                <div id="roomList"></div>
+                <button class="btn-add-room" onclick="createRoomPrompt()">+ Salon</button>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Mes Personnages</h3>
+                <div id="myCharList"></div>
+                <div class="create-form-toggle" onclick="toggleCreateForm()">+ Nouveau Personnage</div>
+                
+                <div id="create-char-form" class="create-form hidden">
+                    <input type="text" id="newCharName" placeholder="Nom">
+                    <input type="text" id="newCharRole" placeholder="Rôle">
+                    <label class="file-upload-label">
+                        <span>📷 Image (Max 2Mo)</span>
+                        <input type="file" id="newCharFile" accept="image/*" onchange="previewFile('new')">
+                    </label>
+                    <input type="hidden" id="newCharBase64">
+                    <textarea id="newCharDesc" placeholder="Histoire..." rows="3"></textarea>
+                    <div class="color-picker-wrapper">
+                        <span>Couleur:</span> <input type="color" id="newCharColor" value="#5c7cfa">
+                    </div>
+                    <button onclick="createCharacter()" class="btn-primary">Créer</button>
                 </div>
 
-                <div class="sidebar-section">
-                    <h3>Mes Personnages</h3>
-                    <div id="myCharList"></div>
-                    <div class="create-form-toggle" onclick="toggleCreateForm()">+ Nouveau Personnage</div>
-                    
-                    <div id="create-char-form" class="create-form hidden">
-                        <input type="text" id="newCharName" placeholder="Nom">
-                        <input type="text" id="newCharRole" placeholder="Rôle">
-                        <label class="file-upload-label">
-                            <span>📷 Image (Max 2Mo)</span>
-                            <input type="file" id="newCharFile" accept="image/*" onchange="previewFile('new')">
-                        </label>
-                        <input type="hidden" id="newCharBase64">
-                        <textarea id="newCharDesc" placeholder="Histoire..." rows="3"></textarea>
-                        <div class="color-picker-wrapper">
-                            <span>Couleur:</span> <input type="color" id="newCharColor" value="#5c7cfa">
-                        </div>
-                        <button onclick="createCharacter()" class="btn-primary">Créer</button>
+                <div id="edit-char-form" class="create-form hidden edit-mode">
+                    <h4 style="margin:0 0 5px 0; color:#eab308;">Modifier</h4>
+                    <input type="hidden" id="editCharId">
+                    <input type="hidden" id="editCharOriginalName">
+                    <input type="text" id="editCharName" placeholder="Nom">
+                    <input type="text" id="editCharRole" placeholder="Rôle">
+                    <label class="file-upload-label">
+                        <span>📷 Changer Image</span>
+                        <input type="file" id="editCharFile" accept="image/*" onchange="previewFile('edit')">
+                    </label>
+                    <input type="hidden" id="editCharBase64">
+                    <textarea id="editCharDesc" placeholder="Description..." rows="3"></textarea>
+                    <div class="color-picker-wrapper">
+                        <span>Couleur:</span> <input type="color" id="editCharColor">
                     </div>
-
-                    <div id="edit-char-form" class="create-form hidden edit-mode">
-                        <h4 style="margin:0 0 5px 0; color:#eab308;">Modifier</h4>
-                        <input type="hidden" id="editCharId">
-                        <input type="hidden" id="editCharOriginalName">
-                        <input type="text" id="editCharName" placeholder="Nom">
-                        <input type="text" id="editCharRole" placeholder="Rôle">
-                        <label class="file-upload-label">
-                            <span>📷 Changer Image</span>
-                            <input type="file" id="editCharFile" accept="image/*" onchange="previewFile('edit')">
-                        </label>
-                        <input type="hidden" id="editCharBase64">
-                        <textarea id="editCharDesc" placeholder="Description..." rows="3"></textarea>
-                        <div class="color-picker-wrapper">
-                            <span>Couleur:</span> <input type="color" id="editCharColor">
-                        </div>
-                        <div style="display:flex; gap:5px;">
-                            <button onclick="submitEditCharacter()" class="btn-primary btn-warning">Sauver</button>
-                            <button onclick="cancelEditCharacter()" class="btn-secondary">Annuler</button>
-                        </div>
+                    <div style="display:flex; gap:5px;">
+                        <button onclick="submitEditCharacter()" class="btn-primary btn-warning">Sauver</button>
+                        <button onclick="cancelEditCharacter()" class="btn-secondary">Annuler</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- ZONE CHAT (CENTRE) -->
         <div id="chat-area">
             <div class="chat-header">
                 <span class="header-hash">#</span>
@@ -195,7 +195,6 @@
             </div>
         </div>
 
-        <!-- SIDEBAR DROITE -->
         <div id="users-sidebar">
             <div class="users-header">
                 <h3>EN LIGNE — <span id="online-count">0</span></h3>
