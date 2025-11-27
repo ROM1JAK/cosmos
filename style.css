@@ -20,7 +20,7 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .room-item:hover { background: #35373c; color: var(--text-normal); }
 .room-item.active { background: #404249; color: white; }
 .room-item.unread { color: #ff6b6b !important; font-weight: bold; background: rgba(255, 107, 107, 0.1); }
-.room-item.unread::after { content: "●"; font-size: 0.8em; }
+.room-item.unread::after { content: "●"; font-size: 0.8em; margin-left: 5px; }
 .room-name::before { content: "#"; margin-right: 8px; font-size: 1.2em; color: #6d6f78; }
 .btn-del-room { background: none; border: none; color: #666; cursor: pointer; display: none; font-size: 0.9em;}
 .btn-del-room:hover { color: var(--danger); }
@@ -128,4 +128,8 @@ select#charSelector { background: #2b2d31; color: white; border: none; padding: 
 @media (max-width: 768px) {
     #app-container { grid-template-columns: 1fr; }
     #users-sidebar { display: none; }
-    #sidebar { position: fixed; left: -100%; top: 0; bottom:
+    #sidebar { position: fixed; left: -100%; top: 0; bottom: 0; width: 260px; z-index: 100; transition: left 0.3s; }
+    #sidebar.open { left: 0; }
+    #menu-toggle-btn { display: block; position: fixed; top: 15px; left: 15px; z-index: 80; background: #313338; border: none; color: white; border-radius: 4px; padding: 5px; }
+    .btn-close-sidebar { display: block; }
+}
