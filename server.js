@@ -44,18 +44,31 @@ const RoomSchema = new mongoose.Schema({
 });
 const Room = mongoose.model('Room', RoomSchema);
 
-// NOUVEAU : Schema MP (User vs User)
 const DirectMessageSchema = new mongoose.Schema({
-    sender: String, // Username
-    target: String, // Username
-    content: String,
+    sender: String, target: String, content: String,
     type: { type: String, default: "text" },
-    date: String,
-    timestamp: { type: Date, default: Date.now }
+    date: String, timestamp: { type: Date, default: Date.now }
 });
 const DirectMessage = mongoose.model('DirectMessage', DirectMessageSchema);
 
-let onlineUsers = {}; // socket.id -> username
+// NOUVEAU : Schema FEED / POSTS
+const PostSchema = new mongoose.Schema({
+    authorName: String,
+    authorAvatar: String,
+    authorRole: String,
+    content: String,
+    date: String,
+    timestamp: { type: Date, default: Date.now },
+    likes: [String], // Tableau des ownerIds qui ont liké
+    comments: [{
+        author: String, // Nom du perso qui commente
+        content: String,
+        date: String
+    }]
+});
+const Post = mongoose.model('Post', PostSchema);
+
+let onlineUsers = {}; 
 
 function broadcastUserList() {
     const uniqueNames = [...new Set(Object.values(onlineUsers))];
@@ -107,12 +120,8 @@ io.on('connection', async (socket) => {
               socket.emit('username_change_error', "Ce pseudo est déjà pris.");
               return;
           }
-          const oldName = onlineUsers[socket.id];
           await User.findOneAndUpdate({ secretCode: userId }, { username: newUsername });
           await Character.updateMany({ ownerId: userId }, { ownerUsername: newUsername });
-          
-          // Mettre à jour les MPs (optionnel mais propre : changer le nom dans l'historique)
-          // Pour simplifier ici, on garde l'historique tel quel, mais les futurs messages auront le nouveau nom.
           
           onlineUsers[socket.id] = newUsername;
           broadcastUserList();
@@ -157,6 +166,8 @@ io.on('connection', async (socket) => {
           { senderName: data.originalName, ownerId: data.ownerId },
           { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }}
       );
+      // Mise à jour aussi dans les posts si besoin (optionnel, ici on simplifie)
+      
       const myChars = await Character.find({ ownerId: data.ownerId });
       socket.emit('my_chars_data', myChars);
       io.emit('force_history_refresh', { roomId: data.currentRoomId });
@@ -230,53 +241,71 @@ io.on('connection', async (socket) => {
       io.to(roomId).emit('history_cleared');
   });
 
-  // --- GESTION DES MESSAGES PRIVÉS (DM) ---
-  
-  // 1. Envoyer un DM
+  // --- GESTION DES MP ---
   socket.on('send_dm', async (data) => {
-      // data: { sender: 'Moi', target: 'Lui', content: '...', type: 'text', date: '...' }
       const newDm = new DirectMessage(data);
       await newDm.save();
-
-      // Trouver les sockets du sender et du target pour l'envoi en temps réel
       const targetSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.target);
       const senderSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.sender);
-
-      [...targetSockets, ...senderSockets].forEach(sId => {
-          io.to(sId).emit('receive_dm', newDm);
-      });
+      [...targetSockets, ...senderSockets].forEach(sId => { io.to(sId).emit('receive_dm', newDm); });
   });
 
-  // 2. Récupérer l'historique DM avec une personne spécifique
   socket.on('request_dm_history', async ({ myUsername, targetUsername }) => {
       const history = await DirectMessage.find({
-          $or: [
-              { sender: myUsername, target: targetUsername },
-              { sender: targetUsername, target: myUsername }
-          ]
+          $or: [ { sender: myUsername, target: targetUsername }, { sender: targetUsername, target: myUsername } ]
       }).sort({ timestamp: 1 }).limit(100);
-      
       socket.emit('dm_history_data', { history, target: targetUsername });
   });
 
-  // 3. Récupérer la liste des gens avec qui j'ai parlé (Contacts)
   socket.on('request_dm_contacts', async (username) => {
-      // On cherche tous les messages où je suis sender ou target
       const msgs = await DirectMessage.find({ $or: [{ sender: username }, { target: username }] });
-      
       const contacts = new Set();
       msgs.forEach(m => {
           if (m.sender === username) contacts.add(m.target);
           else contacts.add(m.sender);
       });
-
       socket.emit('dm_contacts_data', Array.from(contacts));
   });
 
-  // 4. Initialiser un DM (depuis la liste de droite)
-  socket.on('start_dm', (targetUsername) => {
-      // Vérifier si le user existe (optionnel, on suppose qu'on clique sur un user existant)
-      socket.emit('open_dm_ui', targetUsername);
+  socket.on('start_dm', (targetUsername) => { socket.emit('open_dm_ui', targetUsername); });
+
+  // --- FEED / SOCIAL NETWORK ---
+  
+  // 1. Demander le feed
+  socket.on('request_feed', async () => {
+      const posts = await Post.find().sort({ timestamp: -1 }).limit(50);
+      socket.emit('feed_data', posts);
+  });
+
+  // 2. Nouveau post
+  socket.on('new_post', async (postData) => {
+      // postData: { authorName, authorAvatar, authorRole, content, date }
+      const newPost = new Post(postData);
+      const savedPost = await newPost.save();
+      io.emit('new_post_added', savedPost);
+  });
+
+  // 3. Liker un post (Toggle)
+  socket.on('like_post', async ({ postId, userId }) => {
+      const post = await Post.findById(postId);
+      if(!post) return;
+
+      if (post.likes.includes(userId)) {
+          post.likes = post.likes.filter(id => id !== userId); // Unlike
+      } else {
+          post.likes.push(userId); // Like
+      }
+      await post.save();
+      io.emit('post_updated', post); // Met à jour le like pour tout le monde
+  });
+
+  // 4. Commenter un post
+  socket.on('comment_post', async ({ postId, author, content, date }) => {
+      const post = await Post.findById(postId);
+      if(!post) return;
+      post.comments.push({ author, content, date });
+      await post.save();
+      io.emit('post_updated', post);
   });
 
   // --- TYPING ---
