@@ -214,15 +214,25 @@ io.on('connection', async (socket) => {
       socket.emit('history_data', history);
   });
 
-  // ICI : Le correctif pour que les contacts MP ne disparaissent pas au refresh
+  // --- CORRECTIF MP : Gestion de l'historique et des contacts ---
+  socket.on('request_dm_history', async ({ myUsername, targetUsername }) => {
+      const messages = await Message.find({
+           roomId: 'dm',
+           $or: [
+               { senderName: myUsername, targetName: targetUsername },
+               { senderName: targetUsername, targetName: myUsername }
+           ]
+      }).sort({ timestamp: 1 });
+
+      socket.emit('dm_history_data', { target: targetUsername, history: messages });
+  });
+
   socket.on('request_dm_contacts', async (username) => {
-      // Chercher tous les messages où je suis expéditeur OU destinataire, et type 'dm'
       const messages = await Message.find({
           roomId: 'dm',
           $or: [{ senderName: username }, { targetName: username }]
       });
       
-      // Extraire les noms uniques
       const contacts = new Set();
       messages.forEach(msg => {
           const other = (msg.senderName === username) ? msg.targetName : msg.senderName;
@@ -231,6 +241,7 @@ io.on('connection', async (socket) => {
       
       socket.emit('dm_contacts_data', Array.from(contacts));
   });
+  // -------------------------------------------------------------
 
   socket.on('dm_delete_history', async ({ userId, targetName }) => {
       const targetChar = await Character.findOne({ name: targetName });
