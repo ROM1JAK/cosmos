@@ -67,6 +67,43 @@ function broadcastUserList() {
 }
 
 io.on('connection', async (socket) => {
+    // --- GESTION DES MP (Ajout Manquant) ---
+  socket.on('send_dm', async (data) => {
+      // Récupérer les infos utilisateurs pour stocker les IDs (nécessaire pour l'historique)
+      const senderUser = await User.findOne({ username: data.sender });
+      const targetUser = await User.findOne({ username: data.target });
+
+      const newMessage = new Message({
+          content: data.content,
+          type: data.type,
+          senderName: data.sender,
+          ownerId: senderUser ? senderUser.secretCode : null, // ID du créateur pour l'historique
+          targetName: data.target,
+          targetOwnerId: targetUser ? targetUser.secretCode : null, // ID de la cible pour l'historique
+          roomId: 'dm', // ID fictif pour respecter le schéma
+          date: data.date
+      });
+      
+      const savedMsg = await newMessage.save();
+
+      // Préparer l'objet pour le client (format attendu par app.js)
+      const payload = {
+          _id: savedMsg._id,
+          sender: savedMsg.senderName,
+          target: savedMsg.targetName,
+          content: savedMsg.content,
+          type: savedMsg.type,
+          date: savedMsg.date
+      };
+
+      // Envoyer à l'expéditeur ET au destinataire
+      const targetSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.target);
+      const senderSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.sender);
+      
+      [...new Set([...targetSockets, ...senderSockets])].forEach(sockId => {
+          io.to(sockId).emit('receive_dm', payload);
+      });
+  });
   
   // --- LOGIN ---
   socket.on('login_request', async ({ username, code }) => {
@@ -316,3 +353,4 @@ io.on('connection', async (socket) => {
 
 const port = process.env.PORT || 3000;
 http.listen(port, () => { console.log(`Serveur prêt : ${port}`); });
+
