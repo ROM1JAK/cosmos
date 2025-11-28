@@ -437,11 +437,19 @@ function displayMessage(msg, isDm = false) {
     const div = document.createElement('div');
     div.className = 'message-container'; if(isDm) div.classList.add('dm-message'); div.id = `msg-${msg._id}`;
     let senderName, senderAvatar, senderColor, senderRole, canEdit = false, canDelete = false;
+    
     if (isDm) {
-        senderName = msg.sender; senderAvatar = `https://ui-avatars.com/api/?name=${msg.sender}&background=random&color=fff&size=64`; senderColor = "#dbdee1"; senderRole = "Utilisateur";
+        // CORRECTION "UNDEFINED" : 
+        // On vérifie si c'est 'sender' (live) ou 'senderName' (historique DB)
+        const realSender = msg.sender || msg.senderName;
+        senderName = realSender; 
+        senderAvatar = `https://ui-avatars.com/api/?name=${realSender}&background=random&color=fff&size=64`; 
+        senderColor = "#dbdee1"; 
+        senderRole = "Utilisateur";
     } else {
         senderName = msg.senderName; senderAvatar = msg.senderAvatar; senderColor = msg.senderColor; senderRole = msg.senderRole; canEdit = (msg.ownerId === PLAYER_ID); canDelete = (msg.ownerId === PLAYER_ID) || IS_ADMIN;
     }
+
     let actionsHTML = "";
     if (!isDm) {
          actionsHTML += `<button class="action-btn" onclick="triggerReply('${msg._id}', '${senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre">↩️</button>`;
