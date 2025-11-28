@@ -592,8 +592,21 @@ function generateCommentsHTML(comments, postId) {
 }
 
 function createPostElement(post) {
+    function createPostElement(post) {
     const div = document.createElement('div');
     div.className = 'post-card'; div.id = `post-${post._id}`;
+    
+    const isLiked = post.likes.includes(PLAYER_ID);
+    const likeClass = isLiked ? 'liked' : '';
+
+    // --- CORRECTION BOUTON SUPPRIMER ---
+    // Vérifie si je suis admin OU si je suis le créateur du post
+    const isOwner = (post.ownerId === PLAYER_ID); 
+    const canDelete = IS_ADMIN || isOwner;
+    
+    const deleteBtn = canDelete ? 
+        `<button class="btn-danger-small" style="position:absolute; top:10px; right:10px; border:none; background:none; cursor:pointer;" onclick="event.stopPropagation(); deletePost('${post._id}')">🗑️</button>` 
+        : '';;
     
     const isLiked = post.likes.includes(PLAYER_ID);
     const likeClass = isLiked ? 'liked' : '';
@@ -632,4 +645,5 @@ function createPostElement(post) {
     `;
     return div;
 }
+
 
