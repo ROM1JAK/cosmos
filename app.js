@@ -1,14 +1,38 @@
 var socket = io();
 let myCharacters = [];
 let allRooms = []; 
+let allPosts = []; // Stockage local des posts
 let currentRoomId = 'global'; 
+let currentDmTarget = null; // Pour filtrer la vue conversation MP
 let PLAYER_ID; 
 let USERNAME; 
 let IS_ADMIN = false;
 let currentContext = null; 
 let typingTimeout = null;
 let unreadRooms = new Set();
+let dmList = new Set(); // Liste des gens avec qui j'ai un MP
 let firstUnreadMap = {}; 
+let currentView = 'chat'; // 'chat' ou 'feed'
+let currentPostId = null; // Post ouvert en détail
+
+// --- NAVIGATION SPA ---
+function switchView(view) {
+    currentView = view;
+    document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    
+    if (view === 'chat') {
+        document.getElementById('view-chat').classList.remove('hidden');
+        document.getElementById('btn-view-chat').classList.add('active');
+        scrollToBottom();
+    } else if (view === 'feed') {
+        document.getElementById('view-feed').classList.remove('hidden');
+        document.getElementById('btn-view-feed').classList.add('active');
+        document.getElementById('btn-view-feed').classList.remove('notif-active'); // Clear notif
+        // Reset vue détail
+        closePostDetail();
+    }
+}
 
 // --- UI & LOGIN / COMPTE ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
@@ -152,24 +176,22 @@ function sendMediaMessage(content, type) {
     if(sel.options.length === 0) return alert("Créez un personnage d'abord !");
     const opt = sel.options[sel.selectedIndex];
     
-    // Si on est en mode MP, on ajoute targetName
+    // Si on est en mode MP
     let targetName = "";
-    if (currentContext && currentContext.type === 'dm') {
-        targetName = currentContext.data.target;
-    }
+    if (currentContext && currentContext.type === 'dm') targetName = currentContext.data.target;
+    else if (currentDmTarget) targetName = currentDmTarget;
 
     socket.emit('message_rp', { 
         content: content, type: type, 
         senderName: opt.value, senderColor: opt.dataset.color, senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role, 
         ownerId: PLAYER_ID, 
-        targetName: targetName, // Ajout pour MP
+        targetName: targetName,
         roomId: currentRoomId, 
         date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), 
         replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null
     });
     
-    // Si c'était un MP, on reset le contexte après envoi
-    if (targetName) cancelContext();
+    cancelContext();
 }
 
 // --- TYPING ---
@@ -194,28 +216,32 @@ function deleteRoom(roomId) { if(confirm("ADMIN : Supprimer ?")) socket.emit('de
 function joinRoom(roomId) {
     if (currentRoomId && currentRoomId !== roomId) socket.emit('leave_room', currentRoomId);
     currentRoomId = roomId;
+    currentDmTarget = null; // Reset MP filter
+    
     socket.emit('join_room', currentRoomId);
     if (unreadRooms.has(currentRoomId)) unreadRooms.delete(currentRoomId);
 
     const room = allRooms.find(r => r._id === roomId);
-    document.getElementById('currentRoomName').textContent = room ? room.name : 'Salon Global';
+    updateChatHeader(room ? room.name : 'Salon Global', false);
+    
     document.getElementById('messages').innerHTML = ""; 
     document.getElementById('typing-indicator').classList.add('hidden');
-    // Mise à jour : on envoie userId pour filtrer l'historique
+    
     socket.emit('request_history', { roomId: currentRoomId, userId: PLAYER_ID });
     cancelContext();
     if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
     updateRoomListUI();
+    updateDmListUI(); // Reset visual selection
 }
 socket.on('rooms_data', (rooms) => { allRooms = rooms; updateRoomListUI(); });
 
 function updateRoomListUI() {
     const list = document.getElementById('roomList');
-    list.innerHTML = `<div class="room-item ${currentRoomId === 'global'?'active':''} ${unreadRooms.has('global')?'unread':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
+    list.innerHTML = `<div class="room-item ${currentRoomId === 'global' && !currentDmTarget ? 'active' : ''} ${unreadRooms.has('global')?'unread':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
     allRooms.forEach(room => {
         const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>` : '';
         const isUnread = unreadRooms.has(room._id) ? 'unread' : '';
-        const isActive = currentRoomId === room._id ? 'active' : '';
+        const isActive = (currentRoomId === room._id && !currentDmTarget) ? 'active' : '';
         list.innerHTML += `<div class="room-item ${isActive} ${isUnread}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
     });
 }
@@ -270,14 +296,18 @@ socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c
 function updateUI() {
     const list = document.getElementById('myCharList');
     const select = document.getElementById('charSelector');
+    const feedSelect = document.getElementById('feedCharSelector');
+    const commentSelect = document.getElementById('commentCharSelector');
+    
     let selectedCharId = null;
     if (select.selectedIndex >= 0) selectedCharId = select.options[select.selectedIndex].dataset.id; 
 
     list.innerHTML = "";
-    select.innerHTML = ""; 
+    select.innerHTML = ""; feedSelect.innerHTML = ""; commentSelect.innerHTML = "";
     
     if(IS_ADMIN) {
-        select.innerHTML = '<option value="Narrateur" data-id="narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
+        const narrateurOpt = '<option value="Narrateur" data-id="narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
+        select.innerHTML = narrateurOpt; feedSelect.innerHTML = narrateurOpt; commentSelect.innerHTML = narrateurOpt;
     }
 
     myCharacters.forEach(char => {
@@ -293,15 +323,16 @@ function updateUI() {
                     <button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;">✕</button>
                 </div>
             </div>`;
-        const opt = document.createElement('option');
-        opt.value = char.name; opt.text = char.name; opt.dataset.id = char._id; opt.dataset.color = char.color; opt.dataset.avatar = c.avatar; opt.dataset.role = char.role;
-        select.appendChild(opt);
+        
+        const optText = `<option value="${char.name}" data-id="${char._id}" data-color="${char.color}" data-avatar="${char.avatar}" data-role="${char.role}">${char.name}</option>`;
+        select.innerHTML += optText;
+        feedSelect.innerHTML += optText;
+        commentSelect.innerHTML += optText;
     });
     
     if(selectedCharId) {
         const optionToSelect = Array.from(select.options).find(o => o.dataset.id === selectedCharId);
         if(optionToSelect) optionToSelect.selected = true;
-        else if (select.options.length > 0) select.selectedIndex = 0;
     }
 }
 
@@ -314,15 +345,14 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileAvatar').src = char.avatar;
     document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
-    // Configurer le bouton "Envoyer un MP"
+    
     const btnDM = document.getElementById('btn-dm-profile');
-    // On ne s'envoie pas de MP à soi-même
     if (char.ownerId === PLAYER_ID) {
         btnDM.style.display = 'none';
     } else {
         btnDM.style.display = 'block';
         btnDM.onclick = function() {
-            triggerDM(char.name);
+            openDMConversation(char.name); // Nouvelle fonction d'ouverture de MP
             closeProfileModal();
         };
     }
@@ -338,7 +368,6 @@ function setContext(type, data) {
     const text = document.getElementById('context-text');
     
     bar.className = 'visible';
-    // Reset classes
     bar.classList.remove('dm-context');
 
     if (type === 'reply') { 
@@ -380,17 +409,15 @@ function sendMessage() {
     if (sel.options.length === 0) { alert("Créez un personnage d'abord !"); return; }
     const opt = sel.options[sel.selectedIndex];
     
-    // Logique pour MP
     let targetName = "";
-    if (currentContext && currentContext.type === 'dm') {
-        targetName = currentContext.data.target;
-    }
+    if (currentContext && currentContext.type === 'dm') targetName = currentContext.data.target;
+    else if (currentDmTarget) targetName = currentDmTarget; // Si on est en mode conversation MP
 
     const msg = {
         content, type: "text",
         senderName: opt.value, senderColor: opt.dataset.color || "#fff", senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role,
         ownerId: PLAYER_ID, 
-        targetName: targetName, // Ajout MP
+        targetName: targetName, 
         roomId: currentRoomId,
         date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
         replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null
@@ -399,38 +426,107 @@ function sendMessage() {
     txt.value = ''; cancelContext();
 }
 
-// --- DISPLAY ---
+// --- GESTION AVANCEE DES MP ---
+function openDMConversation(targetName) {
+    if(window.innerWidth <= 768) toggleSidebar(); // Fermer menu mobile si ouvert
+    currentDmTarget = targetName;
+    
+    // Mettre à jour l'UI
+    updateChatHeader(`Privé : ${targetName}`, true);
+    updateDmListUI();
+    updateRoomListUI(); // Désélectionner le salon
+    
+    // Relancer la demande d'historique pour filtrer
+    socket.emit('request_history', { roomId: currentRoomId, userId: PLAYER_ID });
+    
+    // Ajouter à la liste visuelle si pas présent
+    if(!dmList.has(targetName)) {
+        dmList.add(targetName);
+        updateDmListUI();
+    }
+}
+
+function closeDMConversation() {
+    const target = currentDmTarget;
+    currentDmTarget = null;
+    dmList.delete(target);
+    updateDmListUI();
+    joinRoom('global'); // Retour au global
+}
+
+function deleteDMHistory() {
+    if(confirm("ATTENTION : Cela supprimera définitivement tous les messages échangés avec ce personnage pour les deux parties. Continuer ?")) {
+        socket.emit('dm_delete_history', { userId: PLAYER_ID, targetName: currentDmTarget });
+    }
+}
+
+function updateChatHeader(title, isDm) {
+    document.getElementById('currentRoomName').textContent = title;
+    const actions = document.getElementById('dm-header-actions');
+    actions.style.display = isDm ? 'flex' : 'none';
+}
+
+function updateDmListUI() {
+    const list = document.getElementById('dmList');
+    list.innerHTML = "";
+    dmList.forEach(name => {
+        const isActive = (currentDmTarget === name) ? 'active' : '';
+        list.innerHTML += `<div class="dm-item ${isActive}" onclick="openDMConversation('${name}')"><span>${name}</span></div>`;
+    });
+}
+
+// --- DISPLAY CHAT ---
 socket.on('history_data', (msgs) => { 
     const container = document.getElementById('messages');
     container.innerHTML = ""; 
-    const splitId = firstUnreadMap[currentRoomId];
-    msgs.forEach(msg => {
-        if(splitId && msg._id === splitId) {
-            const separator = document.createElement('div');
-            separator.className = 'new-msg-separator';
-            separator.textContent = "-- Nouveaux messages --";
-            container.appendChild(separator);
-        }
+    // Filtrage Client pour le mode Conversation
+    let filteredMsgs = msgs;
+    if (currentDmTarget) {
+        filteredMsgs = msgs.filter(m => 
+            (m.senderName === currentDmTarget && m.targetOwnerId === PLAYER_ID) || 
+            (m.targetName === currentDmTarget && m.ownerId === PLAYER_ID)
+        );
+    } else {
+        // En mode salon, on cache les MP qui ne sont pas dans le flux contextuel (optionnel, mais plus propre)
+        // Ici on garde le comportement par défaut : afficher les MP mélangés ou pas ?
+        // Le serveur envoie tout ce qui me concerne. Pour la clarté, si je ne suis pas en mode focus MP,
+        // je vois les salons publics + mes MPs reçus/envoyés comme avant.
+    }
+
+    filteredMsgs.forEach(msg => {
         displayMessage(msg); 
+        // Ajouter les interlocuteurs à la DM List latérale
+        if (msg.targetName) {
+            const other = (msg.ownerId === PLAYER_ID) ? msg.targetName : msg.senderName;
+            if (other && !dmList.has(other)) dmList.add(other);
+        }
     });
-    if(firstUnreadMap[currentRoomId]) delete firstUnreadMap[currentRoomId];
+    updateDmListUI();
     scrollToBottom(); 
 });
 
 socket.on('message_rp', (msg) => { 
-    // Filtrage Client Temps Réel (Sécurité Visuelle)
-    // Si c'est un MP qui ne me concerne pas (je ne suis ni l'envoyeur, ni le destinataire), je ne l'affiche pas.
-    // Note: msg.targetOwnerId est rempli par le serveur.
-    if (msg.targetName && msg.ownerId !== PLAYER_ID && msg.targetOwnerId !== PLAYER_ID) {
-        return;
+    if (msg.targetName && msg.ownerId !== PLAYER_ID && msg.targetOwnerId !== PLAYER_ID) return;
+
+    // Gestion DM List
+    if (msg.targetName) {
+        const other = (msg.ownerId === PLAYER_ID) ? msg.targetName : msg.senderName;
+        if (!dmList.has(other)) { dmList.add(other); updateDmListUI(); }
     }
 
-    if(msg.roomId === currentRoomId) { 
-        displayMessage(msg); scrollToBottom(); 
+    // Filtrage visuel selon si on est en mode focus MP ou pas
+    if (currentDmTarget) {
+        // Si je suis focus sur "Pedro", je ne veux voir que les messages de/pour Pedro
+        const isRelated = (msg.senderName === currentDmTarget || msg.targetName === currentDmTarget);
+        if (isRelated) { displayMessage(msg); scrollToBottom(); }
     } else {
-        unreadRooms.add(msg.roomId);
-        if (!firstUnreadMap[msg.roomId]) firstUnreadMap[msg.roomId] = msg._id;
-        updateRoomListUI();
+        // Mode Salon normal
+        if(msg.roomId === currentRoomId) { 
+            displayMessage(msg); scrollToBottom(); 
+        } else {
+            unreadRooms.add(msg.roomId);
+            updateRoomListUI();
+        }
     }
 });
 
@@ -455,28 +551,18 @@ function displayMessage(msg) {
     const div = document.createElement('div');
     div.className = 'message-container'; div.id = `msg-${msg._id}`;
     
-    // Gestion Visuelle MP
     let privateBadge = "";
     if (msg.targetName) {
         div.classList.add('dm-message');
-        if (msg.ownerId === PLAYER_ID) {
-            privateBadge = `<span class="private-badge" style="background:var(--dm-color); margin-right:5px;">🔒 Privé à ${msg.targetName}</span>`;
-        } else {
-            privateBadge = `<span class="private-badge" style="background:var(--dm-color); margin-right:5px;">🔒 Privé de ${msg.senderName}</span>`;
-        }
+        if (msg.ownerId === PLAYER_ID) privateBadge = `<span class="private-badge" style="background:var(--dm-color); margin-right:5px;">🔒 Privé à ${msg.targetName}</span>`;
+        else privateBadge = `<span class="private-badge" style="background:var(--dm-color); margin-right:5px;">🔒 Privé de ${msg.senderName}</span>`;
     }
 
     const canEdit = (msg.ownerId === PLAYER_ID);
     const canDelete = (msg.ownerId === PLAYER_ID) || IS_ADMIN;
 
     let actionsHTML = `<button class="action-btn" onclick="triggerReply('${msg._id}', '${msg.senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre">↩️</button>`;
-    
-    // Bouton MP dans actions
-    // On ne s'envoie pas de MP si c'est notre propre message
-    if (msg.ownerId !== PLAYER_ID) {
-        actionsHTML += `<button class="action-btn" onclick="triggerDM('${msg.senderName.replace(/'/g, "\\'")}')" title="Message Privé">✉️</button>`;
-    }
-
+    if (msg.ownerId !== PLAYER_ID) actionsHTML += `<button class="action-btn" onclick="openDMConversation('${msg.senderName.replace(/'/g, "\\'")}')" title="Message Privé">✉️</button>`;
     if (msg.type === 'text' && canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button>`;
     if (canDelete) actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
 
@@ -488,13 +574,9 @@ function displayMessage(msg) {
         contentHTML = `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">`;
     } else if (msg.type === "video") {
         const ytId = getYoutubeId(msg.content);
-        if (ytId) {
-            contentHTML = `<iframe class="video-frame" src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe>`;
-        } else if (msg.content.match(/\.(mp4|webm|ogg)$/i)) {
-            contentHTML = `<video class="video-direct" controls><source src="${msg.content}">Votre navigateur ne supporte pas la vidéo.</video>`;
-        } else {
-             contentHTML = `<div class="text-body"><a href="${msg.content}" target="_blank" style="color:var(--accent)">[Lien Vidéo] ${msg.content}</a></div>`;
-        }
+        if (ytId) contentHTML = `<iframe class="video-frame" src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe>`;
+        else if (msg.content.match(/\.(mp4|webm|ogg)$/i)) contentHTML = `<video class="video-direct" controls><source src="${msg.content}">Votre navigateur ne supporte pas la vidéo.</video>`;
+        else contentHTML = `<div class="text-body"><a href="${msg.content}" target="_blank" style="color:var(--accent)">[Lien Vidéo] ${msg.content}</a></div>`;
     } else {
         contentHTML = `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
     }
@@ -507,3 +589,204 @@ function displayMessage(msg) {
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
+
+
+// --- SECTION POSTS (FEED) ---
+
+socket.on('posts_data', (posts) => {
+    allPosts = posts;
+    renderFeed();
+});
+
+socket.on('new_post', (post) => {
+    allPosts.unshift(post);
+    renderFeed();
+    // Notification
+    if (currentView !== 'feed') {
+        document.getElementById('btn-view-feed').classList.add('notif-active');
+    }
+    // Highlight
+    setTimeout(() => {
+        const el = document.querySelector(`.post-card[data-id="${post._id}"]`);
+        if(el) {
+            el.classList.add('new-post-highlight');
+            setTimeout(() => el.classList.remove('new-post-highlight'), 3000);
+        }
+    }, 100);
+});
+
+socket.on('post_deleted', (id) => {
+    allPosts = allPosts.filter(p => p._id !== id);
+    renderFeed();
+    if(currentPostId === id) closePostDetail();
+});
+
+socket.on('post_updated', (updatedPost) => {
+    const index = allPosts.findIndex(p => p._id === updatedPost._id);
+    if(index !== -1) allPosts[index] = updatedPost;
+    renderFeed();
+    if(currentPostId === updatedPost._id) openPostDetail(updatedPost); // Refresh detail
+});
+
+socket.on('reload_posts', () => { socket.emit('request_initial_data', null); });
+
+function renderFeed() {
+    const container = document.getElementById('feed-stream');
+    container.innerHTML = "";
+    allPosts.forEach(post => {
+        const canDelete = (post.ownerId === PLAYER_ID || IS_ADMIN);
+        let mediaHTML = getMediaHTML(post);
+        const delBtn = canDelete ? `<button class="post-action delete-post-btn" onclick="deletePost(event, '${post._id}')">🗑️</button>` : '';
+        const likeClass = post.likes.includes(PLAYER_ID) ? 'liked' : '';
+        
+        const html = `
+        <div class="post-card" data-id="${post._id}" onclick="clickPost('${post._id}')">
+            <div class="post-header">
+                <img src="${post.authorAvatar}" class="post-avatar" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
+                <div>
+                    <div class="post-author" style="color:${post.authorColor || '#fff'}" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">${post.authorName}</div>
+                    <div style="font-size:0.7em; color:#888;">${post.authorRole}</div>
+                </div>
+                <div class="post-date">${post.date}</div>
+            </div>
+            <div class="post-content">${formatText(post.content)}</div>
+            ${mediaHTML}
+            <div class="post-footer">
+                <button class="post-action ${likeClass} juicy-btn" onclick="likePost(event, '${post._id}')">❤️ ${post.likes.length}</button>
+                <button class="post-action juicy-btn">💬 ${post.comments.length}</button>
+                ${delBtn}
+            </div>
+        </div>`;
+        container.innerHTML += html;
+    });
+}
+
+function getMediaHTML(post) {
+    if(!post.mediaUrl) return "";
+    if(post.mediaType === 'image') return `<img src="${post.mediaUrl}" class="post-media" onclick="event.stopPropagation(); window.open(this.src)">`;
+    if(post.mediaType === 'video') {
+         const ytId = getYoutubeId(post.mediaUrl);
+         if(ytId) return `<div onclick="event.stopPropagation()"><iframe class="video-frame" src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
+         return `<div onclick="event.stopPropagation()"><video class="video-direct" controls><source src="${post.mediaUrl}"></video></div>`;
+    }
+    return "";
+}
+
+function clickPost(id) {
+    const post = allPosts.find(p => p._id === id);
+    if(post) openPostDetail(post);
+}
+
+function openPostDetail(post) {
+    currentPostId = post._id;
+    document.getElementById('feed-view').classList.add('hidden');
+    document.getElementById('post-view').classList.remove('hidden');
+    
+    // Render detail
+    const container = document.getElementById('post-detail-container');
+    const canDelete = (post.ownerId === PLAYER_ID || IS_ADMIN);
+    let mediaHTML = getMediaHTML(post);
+    const likeClass = post.likes.includes(PLAYER_ID) ? 'liked' : '';
+    
+    container.innerHTML = `
+        <div class="post-card">
+            <div class="post-header">
+                <img src="${post.authorAvatar}" class="post-avatar" onclick="openProfile('${post.authorName.replace(/'/g, "\\'")}')">
+                <div>
+                    <div class="post-author" style="color:${post.authorColor}">${post.authorName}</div>
+                    <div style="font-size:0.7em; color:#888;">${post.authorRole}</div>
+                </div>
+                <div class="post-date">${post.date}</div>
+            </div>
+            <div class="post-content" style="font-size:1.1em;">${formatText(post.content)}</div>
+            ${mediaHTML}
+            <div class="post-footer">
+                <button class="post-action ${likeClass} juicy-btn" onclick="likePost(event, '${post._id}')">❤️ ${post.likes.length}</button>
+                <button class="post-action">💬 ${post.comments.length}</button>
+            </div>
+        </div>
+    `;
+
+    // Render comments
+    const list = document.getElementById('comments-list');
+    list.innerHTML = "";
+    post.comments.forEach(c => {
+        const canDelCom = (c.ownerId === PLAYER_ID || IS_ADMIN);
+        const delBtn = canDelCom ? `<span style="cursor:pointer; color:#da373c; float:right;" onclick="deleteComment('${post._id}', '${c.id}')">✕</span>` : '';
+        list.innerHTML += `
+            <div class="comment-item">
+                <img src="${c.authorAvatar}" class="comment-avatar" onclick="openProfile('${c.authorName.replace(/'/g, "\\'")}')">
+                <div class="comment-body">
+                    <div class="comment-header"><span style="cursor:pointer;" onclick="openProfile('${c.authorName.replace(/'/g, "\\'")}')">${c.authorName}</span> <span class="comment-date">${c.date} ${delBtn}</span></div>
+                    <div>${formatText(c.content)}</div>
+                </div>
+            </div>
+        `;
+    });
+}
+
+function closePostDetail() {
+    currentPostId = null;
+    document.getElementById('post-view').classList.add('hidden');
+    document.getElementById('feed-view').classList.remove('hidden');
+}
+
+function submitPost() {
+    const sel = document.getElementById('feedCharSelector');
+    if(!sel.value) return alert("Choisissez un personnage");
+    const opt = sel.options[sel.selectedIndex];
+    
+    const content = document.getElementById('postContent').value.trim();
+    if(!content) return;
+    
+    const mediaUrl = document.getElementById('postMediaUrl').value.trim();
+    let mediaType = null;
+    if(mediaUrl) {
+        if(mediaUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i) != null) mediaType = 'image';
+        else mediaType = 'video';
+    }
+
+    socket.emit('create_post', {
+        content, mediaUrl, mediaType,
+        authorName: opt.value, authorAvatar: opt.dataset.avatar, authorRole: opt.dataset.role, authorColor: opt.dataset.color,
+        ownerId: PLAYER_ID,
+        date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+    });
+
+    document.getElementById('postContent').value = "";
+    document.getElementById('postMediaUrl').value = "";
+}
+
+function deletePost(e, id) {
+    e.stopPropagation();
+    if(confirm("Supprimer ce post ?")) socket.emit('delete_post', id);
+}
+
+function likePost(e, id) {
+    e.stopPropagation();
+    socket.emit('like_post', { postId: id, userId: PLAYER_ID });
+}
+
+function submitComment() {
+    if(!currentPostId) return;
+    const sel = document.getElementById('commentCharSelector');
+    if(!sel.value) return alert("Perso ?");
+    const opt = sel.options[sel.selectedIndex];
+    
+    const content = document.getElementById('commentInput').value.trim();
+    if(!content) return;
+    
+    socket.emit('post_comment', {
+        postId: currentPostId,
+        comment: {
+            authorName: opt.value, authorAvatar: opt.dataset.avatar, ownerId: PLAYER_ID,
+            content: content,
+            date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+        }
+    });
+    document.getElementById('commentInput').value = "";
+}
+
+function deleteComment(postId, comId) {
+    if(confirm("Supprimer commentaire ?")) socket.emit('delete_comment', { postId, commentId: comId });
+}
