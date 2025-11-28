@@ -14,7 +14,7 @@ let unreadDms = new Set();
 let dmContacts = []; 
 let firstUnreadMap = {}; 
 let currentView = 'chat'; 
-let lastFeedVisit = 0; // Pour le highlight des nouveaux posts
+let lastFeedVisit = 0; 
 
 // --- NAVIGATION ---
 function switchView(view) {
@@ -30,7 +30,7 @@ function switchView(view) {
     document.getElementById(`btn-view-${view}`).classList.add('active');
 
     if(view === 'feed') {
-        document.getElementById('feed-notif-dot').classList.add('hidden'); // Reset notif
+        document.getElementById('feed-notif-dot').classList.add('hidden');
         lastFeedVisit = Date.now();
         loadFeed();
     }
@@ -125,7 +125,6 @@ socket.on('update_user_list', (users) => {
     document.getElementById('online-count').textContent = users.length;
     listDiv.innerHTML = "";
     users.forEach(u => {
-        // BUGFIX 2: L'onclick appelle maintenant une fonction locale directe
         listDiv.innerHTML += `<div class="online-user" onclick="startDmFromList('${u}')"><span class="status-dot"></span><span>${u}</span></div>`
     });
 });
@@ -220,7 +219,6 @@ function updateRoomListUI() {
     allRooms.forEach(room => {
         const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>` : '';
         const isUnread = unreadRooms.has(room._id) ? 'unread' : '';
-        // BUGFIX 3 : Comparaison String pour s'assurer que ça matche
         const isActive = (String(currentRoomId) === String(room._id) && !currentDmTarget) ? 'active' : '';
         list.innerHTML += `<div class="room-item ${isActive} ${isUnread}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
     });
@@ -229,7 +227,6 @@ function updateRoomListUI() {
 // --- DM / MP AVANCÉ ---
 function startDmFromList(targetUsername) {
     if (targetUsername === USERNAME) return alert("C'est vous !");
-    // BUGFIX 2: Ouverture directe de la DM UI sans passer par le serveur inutilement
     openDm(targetUsername);
 }
 socket.on('open_dm_ui', (targetUsername) => { openDm(targetUsername); });
@@ -493,13 +490,12 @@ function submitPost() {
         authorName: opt.value, 
         authorAvatar: opt.dataset.avatar, 
         authorRole: opt.dataset.role,
-        ownerId: PLAYER_ID, // <--- LIGNE AJOUTÉE : On envoie ton ID unique
+        ownerId: PLAYER_ID, // AJOUT : Envoi de l'ID propriétaire
         content: content, 
         mediaUrl: mediaUrl, 
         mediaType: mediaType, 
         date: new Date().toLocaleDateString()
     };
-    // BUGFIX 1 : Émission de 'create_post' pour matcher le serveur
     socket.emit('create_post', postData);
     document.getElementById('postContent').value = ""; document.getElementById('postMediaUrl').value = ""; document.getElementById('char-count').textContent = "0/1000";
 }
@@ -512,7 +508,7 @@ let currentDetailPostId = null;
 function openPostDetail(postId) {
     const postEl = document.getElementById(`post-${postId}`);
     if(!postEl) return;
-    // On clone visuellement pour la modale
+    
     currentDetailPostId = postId;
     const contentClone = postEl.cloneNode(true);
     contentClone.onclick = null; 
@@ -525,7 +521,6 @@ function openPostDetail(postId) {
     detailContent.innerHTML = "";
     detailContent.appendChild(contentClone);
     
-    // Transfert des commentaires du DOM vers la liste modale
     const commentsListDiv = document.getElementById('post-detail-comments-list');
     commentsListDiv.innerHTML = "";
     
@@ -554,7 +549,7 @@ socket.on('feed_data', (posts) => {
     const container = document.getElementById('feed-stream'); container.innerHTML = "";
     posts.forEach(post => container.appendChild(createPostElement(post)));
 });
-// BUGFIX 1: On écoute 'new_post' comme émis par le serveur
+
 socket.on('new_post', (post) => {
     if(currentView !== 'feed') document.getElementById('feed-notif-dot').classList.remove('hidden');
     const container = document.getElementById('feed-stream');
@@ -592,25 +587,16 @@ function generateCommentsHTML(comments, postId) {
 }
 
 function createPostElement(post) {
-    function createPostElement(post) {
     const div = document.createElement('div');
     div.className = 'post-card'; div.id = `post-${post._id}`;
     
     const isLiked = post.likes.includes(PLAYER_ID);
     const likeClass = isLiked ? 'liked' : '';
 
-    // --- CORRECTION BOUTON SUPPRIMER ---
-    // Vérifie si je suis admin OU si je suis le créateur du post
-    const isOwner = (post.ownerId === PLAYER_ID); 
+    // AJOUT : Vérification du propriétaire pour le bouton supprimer
+    const isOwner = (post.ownerId === PLAYER_ID);
     const canDelete = IS_ADMIN || isOwner;
-    
-    const deleteBtn = canDelete ? 
-        `<button class="btn-danger-small" style="position:absolute; top:10px; right:10px; border:none; background:none; cursor:pointer;" onclick="event.stopPropagation(); deletePost('${post._id}')">🗑️</button>` 
-        : '';;
-    
-    const isLiked = post.likes.includes(PLAYER_ID);
-    const likeClass = isLiked ? 'liked' : '';
-    const adminDelBtn = IS_ADMIN ? `<button class="btn-danger-small" style="position:absolute; top:10px; right:10px;" onclick="event.stopPropagation(); deletePost('${post._id}')">🗑️</button>` : '';
+    const deleteBtn = canDelete ? `<button class="btn-danger-small" style="position:absolute; top:10px; right:10px; border:none; background:none; cursor:pointer;" onclick="event.stopPropagation(); deletePost('${post._id}')">🗑️</button>` : '';
 
     let mediaHTML = "";
     if(post.mediaUrl) {
@@ -626,7 +612,7 @@ function createPostElement(post) {
     const commentsHTML = generateCommentsHTML(post.comments, post._id);
 
     div.innerHTML = `
-        ${adminDelBtn}
+        ${deleteBtn}
         <div class="post-header" onclick="openProfile('${post.authorName.replace(/'/g, "\\'")}')">
             <img src="${post.authorAvatar}" class="post-avatar">
             <div class="post-meta">
@@ -645,5 +631,3 @@ function createPostElement(post) {
     `;
     return div;
 }
-
-
