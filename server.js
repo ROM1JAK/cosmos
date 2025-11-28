@@ -67,43 +67,6 @@ function broadcastUserList() {
 }
 
 io.on('connection', async (socket) => {
-    // --- GESTION DES MP (Ajout Manquant) ---
-  socket.on('send_dm', async (data) => {
-      // Récupérer les infos utilisateurs pour stocker les IDs (nécessaire pour l'historique)
-      const senderUser = await User.findOne({ username: data.sender });
-      const targetUser = await User.findOne({ username: data.target });
-
-      const newMessage = new Message({
-          content: data.content,
-          type: data.type,
-          senderName: data.sender,
-          ownerId: senderUser ? senderUser.secretCode : null, // ID du créateur pour l'historique
-          targetName: data.target,
-          targetOwnerId: targetUser ? targetUser.secretCode : null, // ID de la cible pour l'historique
-          roomId: 'dm', // ID fictif pour respecter le schéma
-          date: data.date
-      });
-      
-      const savedMsg = await newMessage.save();
-
-      // Préparer l'objet pour le client (format attendu par app.js)
-      const payload = {
-          _id: savedMsg._id,
-          sender: savedMsg.senderName,
-          target: savedMsg.targetName,
-          content: savedMsg.content,
-          type: savedMsg.type,
-          date: savedMsg.date
-      };
-
-      // Envoyer à l'expéditeur ET au destinataire
-      const targetSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.target);
-      const senderSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.sender);
-      
-      [...new Set([...targetSockets, ...senderSockets])].forEach(sockId => {
-          io.to(sockId).emit('receive_dm', payload);
-      });
-  });
   
   // --- LOGIN ---
   socket.on('login_request', async ({ username, code }) => {
@@ -167,7 +130,7 @@ io.on('connection', async (socket) => {
       socket.emit('rooms_data', await Room.find());
       // Charger les posts récents
       const posts = await Post.find().sort({ timestamp: -1 }).limit(50);
-      socket.emit('feed_data', posts); // Correction nom event: feed_data pour matcher app.js
+      socket.emit('feed_data', posts);
       
       if(userId) {
           const myChars = await Character.find({ ownerId: userId });
@@ -251,7 +214,6 @@ io.on('connection', async (socket) => {
       socket.emit('history_data', history);
   });
 
-  // Suppression Historique MP (Avancé)
   socket.on('dm_delete_history', async ({ userId, targetName }) => {
       const targetChar = await Character.findOne({ name: targetName });
       let query = {
@@ -271,6 +233,42 @@ io.on('connection', async (socket) => {
   });
 
   // --- MESSAGES ---
+  // Ajout pour gérer l'envoi de MP
+  socket.on('send_dm', async (data) => {
+      const senderUser = await User.findOne({ username: data.sender });
+      const targetUser = await User.findOne({ username: data.target });
+
+      const newMessage = new Message({
+          content: data.content,
+          type: data.type,
+          senderName: data.sender,
+          ownerId: senderUser ? senderUser.secretCode : null,
+          targetName: data.target,
+          targetOwnerId: targetUser ? targetUser.secretCode : null,
+          roomId: 'dm', // ID fictif pour le schéma
+          date: data.date
+      });
+      
+      const savedMsg = await newMessage.save();
+
+      // Payload pour les clients
+      const payload = {
+          _id: savedMsg._id,
+          sender: savedMsg.senderName,
+          target: savedMsg.targetName,
+          content: savedMsg.content,
+          type: savedMsg.type,
+          date: savedMsg.date
+      };
+
+      const targetSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.target);
+      const senderSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.sender);
+      
+      [...new Set([...targetSockets, ...senderSockets])].forEach(sockId => {
+          io.to(sockId).emit('receive_dm', payload);
+      });
+  });
+
   socket.on('message_rp', async (msgData) => {
     if (!msgData.roomId) return; 
     
@@ -305,11 +303,10 @@ io.on('connection', async (socket) => {
   });
 
   // --- POSTS (FEED) ---
-  // BUGFIX 1 (Côté Serveur) : On s'assure d'écouter le bon événement 'create_post'
   socket.on('create_post', async (postData) => {
       const newPost = new Post(postData);
       const savedPost = await newPost.save();
-      io.emit('new_post', savedPost); // On émet 'new_post' vers le client
+      io.emit('new_post', savedPost);
   });
 
   socket.on('delete_post', async (postId) => {
@@ -353,4 +350,3 @@ io.on('connection', async (socket) => {
 
 const port = process.env.PORT || 3000;
 http.listen(port, () => { console.log(`Serveur prêt : ${port}`); });
-
