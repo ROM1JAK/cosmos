@@ -51,17 +51,20 @@ const DirectMessageSchema = new mongoose.Schema({
 });
 const DirectMessage = mongoose.model('DirectMessage', DirectMessageSchema);
 
-// NOUVEAU : Schema FEED / POSTS
+// Schema FEED / POSTS (Mise à jour)
 const PostSchema = new mongoose.Schema({
     authorName: String,
     authorAvatar: String,
     authorRole: String,
     content: String,
+    mediaUrl: String, // Nouveau: URL image/vidéo
+    mediaType: String, // 'image' ou 'video'
     date: String,
     timestamp: { type: Date, default: Date.now },
-    likes: [String], // Tableau des ownerIds qui ont liké
+    likes: [String], 
     comments: [{
-        author: String, // Nom du perso qui commente
+        _id: { type: mongoose.Schema.Types.ObjectId, auto: true }, // ID unique pour suppression
+        author: String, 
         content: String,
         date: String
     }]
@@ -166,8 +169,6 @@ io.on('connection', async (socket) => {
           { senderName: data.originalName, ownerId: data.ownerId },
           { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }}
       );
-      // Mise à jour aussi dans les posts si besoin (optionnel, ici on simplifie)
-      
       const myChars = await Character.find({ ownerId: data.ownerId });
       socket.emit('my_chars_data', myChars);
       io.emit('force_history_refresh', { roomId: data.currentRoomId });
@@ -178,7 +179,7 @@ io.on('connection', async (socket) => {
       socket.emit('char_deleted_success', charId);
   });
 
-  // --- ROOMS ---
+  // --- ROOMS & CHAT ---
   socket.on('create_room', async (roomData) => {
       await new Room(roomData).save();
       io.emit('rooms_data', await Room.find());
@@ -193,18 +194,12 @@ io.on('connection', async (socket) => {
   socket.on('join_room', (roomId) => { socket.join(roomId); });
   socket.on('leave_room', (roomId) => { socket.leave(roomId); });
   
-  // --- HISTORIQUE ROOM ---
   socket.on('request_history', async (data) => {
       const roomId = (typeof data === 'object') ? data.roomId : data;
       const requesterId = (typeof data === 'object') ? data.userId : null;
       const query = { roomId: roomId };
       if (requesterId) {
-          query.$or = [
-              { targetName: { $exists: false } },
-              { targetName: "" },
-              { ownerId: requesterId },
-              { targetOwnerId: requesterId }
-          ];
+          query.$or = [{ targetName: { $exists: false } }, { targetName: "" }, { ownerId: requesterId }, { targetOwnerId: requesterId }];
       } else {
           query.$or = [{ targetName: { $exists: false } }, { targetName: "" }];
       }
@@ -212,7 +207,6 @@ io.on('connection', async (socket) => {
       socket.emit('history_data', history);
   });
 
-  // --- MESSAGES ROOM ---
   socket.on('message_rp', async (msgData) => {
     if (!msgData.roomId) return; 
     if (msgData.senderName === "Narrateur") {
@@ -266,44 +260,59 @@ io.on('connection', async (socket) => {
       });
       socket.emit('dm_contacts_data', Array.from(contacts));
   });
+  
+  // Suppression historique MP
+  socket.on('delete_dm_history', async ({ myUsername, targetUsername }) => {
+      await DirectMessage.deleteMany({
+          $or: [ { sender: myUsername, target: targetUsername }, { sender: targetUsername, target: myUsername } ]
+      });
+      // Notifier les deux parties
+      const targetSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === targetUsername);
+      const senderSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === myUsername);
+      [...targetSockets, ...senderSockets].forEach(sId => { io.to(sId).emit('dm_history_deleted', targetUsername); });
+  });
 
   socket.on('start_dm', (targetUsername) => { socket.emit('open_dm_ui', targetUsername); });
 
   // --- FEED / SOCIAL NETWORK ---
   
-  // 1. Demander le feed
   socket.on('request_feed', async () => {
       const posts = await Post.find().sort({ timestamp: -1 }).limit(50);
       socket.emit('feed_data', posts);
   });
 
-  // 2. Nouveau post
   socket.on('new_post', async (postData) => {
-      // postData: { authorName, authorAvatar, authorRole, content, date }
       const newPost = new Post(postData);
       const savedPost = await newPost.save();
       io.emit('new_post_added', savedPost);
   });
 
-  // 3. Liker un post (Toggle)
+  socket.on('delete_post', async (postId) => {
+      await Post.findByIdAndDelete(postId);
+      io.emit('post_deleted', postId);
+  });
+
   socket.on('like_post', async ({ postId, userId }) => {
       const post = await Post.findById(postId);
       if(!post) return;
-
-      if (post.likes.includes(userId)) {
-          post.likes = post.likes.filter(id => id !== userId); // Unlike
-      } else {
-          post.likes.push(userId); // Like
-      }
+      if (post.likes.includes(userId)) post.likes = post.likes.filter(id => id !== userId);
+      else post.likes.push(userId);
       await post.save();
-      io.emit('post_updated', post); // Met à jour le like pour tout le monde
+      io.emit('post_updated', post);
   });
 
-  // 4. Commenter un post
   socket.on('comment_post', async ({ postId, author, content, date }) => {
       const post = await Post.findById(postId);
       if(!post) return;
       post.comments.push({ author, content, date });
+      await post.save();
+      io.emit('post_updated', post);
+  });
+
+  socket.on('delete_comment', async ({ postId, commentId }) => {
+      const post = await Post.findById(postId);
+      if(!post) return;
+      post.comments = post.comments.filter(c => c._id.toString() !== commentId);
       await post.save();
       io.emit('post_updated', post);
   });
