@@ -214,6 +214,24 @@ io.on('connection', async (socket) => {
       socket.emit('history_data', history);
   });
 
+  // ICI : Le correctif pour que les contacts MP ne disparaissent pas au refresh
+  socket.on('request_dm_contacts', async (username) => {
+      // Chercher tous les messages où je suis expéditeur OU destinataire, et type 'dm'
+      const messages = await Message.find({
+          roomId: 'dm',
+          $or: [{ senderName: username }, { targetName: username }]
+      });
+      
+      // Extraire les noms uniques
+      const contacts = new Set();
+      messages.forEach(msg => {
+          const other = (msg.senderName === username) ? msg.targetName : msg.senderName;
+          if(other) contacts.add(other);
+      });
+      
+      socket.emit('dm_contacts_data', Array.from(contacts));
+  });
+
   socket.on('dm_delete_history', async ({ userId, targetName }) => {
       const targetChar = await Character.findOne({ name: targetName });
       let query = {
@@ -233,7 +251,6 @@ io.on('connection', async (socket) => {
   });
 
   // --- MESSAGES ---
-  // Ajout pour gérer l'envoi de MP
   socket.on('send_dm', async (data) => {
       const senderUser = await User.findOne({ username: data.sender });
       const targetUser = await User.findOne({ username: data.target });
@@ -245,13 +262,12 @@ io.on('connection', async (socket) => {
           ownerId: senderUser ? senderUser.secretCode : null,
           targetName: data.target,
           targetOwnerId: targetUser ? targetUser.secretCode : null,
-          roomId: 'dm', // ID fictif pour le schéma
+          roomId: 'dm', 
           date: data.date
       });
       
       const savedMsg = await newMessage.save();
 
-      // Payload pour les clients
       const payload = {
           _id: savedMsg._id,
           sender: savedMsg.senderName,
