@@ -490,8 +490,14 @@ function submitPost() {
     const opt = sel.options[sel.selectedIndex];
 
     const postData = {
-        authorName: opt.value, authorAvatar: opt.dataset.avatar, authorRole: opt.dataset.role,
-        content: content, mediaUrl: mediaUrl, mediaType: mediaType, date: new Date().toLocaleDateString()
+        authorName: opt.value, 
+        authorAvatar: opt.dataset.avatar, 
+        authorRole: opt.dataset.role,
+        ownerId: PLAYER_ID, // <--- LIGNE AJOUTÉE : On envoie ton ID unique
+        content: content, 
+        mediaUrl: mediaUrl, 
+        mediaType: mediaType, 
+        date: new Date().toLocaleDateString()
     };
     // BUGFIX 1 : Émission de 'create_post' pour matcher le serveur
     socket.emit('create_post', postData);
@@ -626,3 +632,4 @@ function createPostElement(post) {
     `;
     return div;
 }
+
