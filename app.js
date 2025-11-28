@@ -125,6 +125,7 @@ socket.on('update_user_list', (users) => {
     document.getElementById('online-count').textContent = users.length;
     listDiv.innerHTML = "";
     users.forEach(u => {
+        // BUGFIX 2: L'onclick appelle maintenant une fonction locale directe
         listDiv.innerHTML += `<div class="online-user" onclick="startDmFromList('${u}')"><span class="status-dot"></span><span>${u}</span></div>`
     });
 });
@@ -219,7 +220,8 @@ function updateRoomListUI() {
     allRooms.forEach(room => {
         const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>` : '';
         const isUnread = unreadRooms.has(room._id) ? 'unread' : '';
-        const isActive = (currentRoomId === room._id && !currentDmTarget) ? 'active' : '';
+        // BUGFIX 3 : Comparaison String pour s'assurer que ça matche
+        const isActive = (String(currentRoomId) === String(room._id) && !currentDmTarget) ? 'active' : '';
         list.innerHTML += `<div class="room-item ${isActive} ${isUnread}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
     });
 }
@@ -227,7 +229,8 @@ function updateRoomListUI() {
 // --- DM / MP AVANCÉ ---
 function startDmFromList(targetUsername) {
     if (targetUsername === USERNAME) return alert("C'est vous !");
-    socket.emit('start_dm', targetUsername);
+    // BUGFIX 2: Ouverture directe de la DM UI sans passer par le serveur inutilement
+    openDm(targetUsername);
 }
 socket.on('open_dm_ui', (targetUsername) => { openDm(targetUsername); });
 
@@ -490,7 +493,8 @@ function submitPost() {
         authorName: opt.value, authorAvatar: opt.dataset.avatar, authorRole: opt.dataset.role,
         content: content, mediaUrl: mediaUrl, mediaType: mediaType, date: new Date().toLocaleDateString()
     };
-    socket.emit('new_post', postData);
+    // BUGFIX 1 : Émission de 'create_post' pour matcher le serveur
+    socket.emit('create_post', postData);
     document.getElementById('postContent').value = ""; document.getElementById('postMediaUrl').value = ""; document.getElementById('char-count').textContent = "0/1000";
 }
 
@@ -502,17 +506,12 @@ let currentDetailPostId = null;
 function openPostDetail(postId) {
     const postEl = document.getElementById(`post-${postId}`);
     if(!postEl) return;
-    // On clone visuellement pour la modale, mais on va reconstruire proprement
-    // Pour simplifier ici, on reconstruit via les données du DOM, idéalement on fetch le post object
-    // Hack rapide: on prend le HTML du post card
+    // On clone visuellement pour la modale
     currentDetailPostId = postId;
     const contentClone = postEl.cloneNode(true);
-    // On enlève le onClick pour éviter récursion
     contentClone.onclick = null; 
     contentClone.style.border = "none"; contentClone.classList.remove('highlight-new');
     
-    // Setup comments list (vide au début, rempli par socket updates ou data existante)
-    // Ici on triche un peu : on cache la section comments du clone et on utilise celle de la modale
     const oldComments = contentClone.querySelector('.comments-section');
     if(oldComments) oldComments.remove(); 
     
@@ -524,21 +523,17 @@ function openPostDetail(postId) {
     const commentsListDiv = document.getElementById('post-detail-comments-list');
     commentsListDiv.innerHTML = "";
     
-    // On récupère les commentaires stockés dans le DOM original (data attribute ou hidden structure serait mieux, ici on va parser)
-    // Pour une vraie app, on demanderait 'get_post_details' au serveur.
-    // On va utiliser le DOM existant du feed pour extraire les comments
     const feedComments = postEl.querySelector('.comments-list')?.innerHTML || "";
     commentsListDiv.innerHTML = feedComments;
     
     document.getElementById('post-detail-modal').classList.remove('hidden');
     
-    // Gestionnaire envoi commentaire détail
     document.getElementById('btn-detail-comment').onclick = () => {
         const txt = document.getElementById('post-detail-comment-input').value.trim();
         if(!txt) return;
         const sel = document.getElementById('feedCharSelector');
         if(sel.options.length === 0) return alert("Perso requis");
-        socket.emit('comment_post', { postId, author: sel.options[sel.selectedIndex].value, content: txt, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) });
+        socket.emit('post_comment', { postId, comment: { authorName: sel.options[sel.selectedIndex].value, authorAvatar: sel.options[sel.selectedIndex].dataset.avatar, content: txt, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), ownerId: PLAYER_ID } });
         document.getElementById('post-detail-comment-input').value = "";
     };
 }
@@ -553,7 +548,8 @@ socket.on('feed_data', (posts) => {
     const container = document.getElementById('feed-stream'); container.innerHTML = "";
     posts.forEach(post => container.appendChild(createPostElement(post)));
 });
-socket.on('new_post_added', (post) => {
+// BUGFIX 1: On écoute 'new_post' comme émis par le serveur
+socket.on('new_post', (post) => {
     if(currentView !== 'feed') document.getElementById('feed-notif-dot').classList.remove('hidden');
     const container = document.getElementById('feed-stream');
     const el = createPostElement(post);
@@ -563,12 +559,9 @@ socket.on('new_post_added', (post) => {
 socket.on('post_updated', (post) => {
     const existing = document.getElementById(`post-${post._id}`);
     if(existing) existing.replaceWith(createPostElement(post));
-    // Update modale si ouverte
     if(currentDetailPostId === post._id) {
-        // Update likes btn text
         const detailLikeBtn = document.querySelector('#post-detail-content .action-item');
         if(detailLikeBtn) detailLikeBtn.innerHTML = `❤️ ${post.likes.length}`;
-        // Update comments list
         const list = document.getElementById('post-detail-comments-list');
         list.innerHTML = generateCommentsHTML(post.comments, post._id);
     }
@@ -581,11 +574,11 @@ socket.on('post_deleted', (postId) => {
 function generateCommentsHTML(comments, postId) {
     let html = "";
     comments.forEach(c => {
-        const delBtn = IS_ADMIN ? `<span style="color:#da373c; cursor:pointer; margin-left:10px;" onclick="deleteComment('${postId}', '${c._id}')">✕</span>` : "";
+        const delBtn = IS_ADMIN ? `<span style="color:#da373c; cursor:pointer; margin-left:10px;" onclick="deleteComment('${postId}', '${c.id}')">✕</span>` : "";
         html += `<div class="comment-item">
             <div class="comment-bubble">
-                <div class="comment-meta"><span class="comment-author">${c.author}</span><span>${c.date}</span></div>
-                <div>${c.content} ${delBtn}</div>
+                <div class="comment-meta"><img src="${c.authorAvatar}" style="width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:5px;"><span class="comment-author">${c.authorName}</span><span>${c.date}</span></div>
+                <div style="margin-left:25px;">${c.content} ${delBtn}</div>
             </div>
         </div>`;
     });
@@ -611,7 +604,6 @@ function createPostElement(post) {
         }
     }
 
-    // On stocke les comments dans un div caché pour les récupérer dans la modale
     const commentsHTML = generateCommentsHTML(post.comments, post._id);
 
     div.innerHTML = `
