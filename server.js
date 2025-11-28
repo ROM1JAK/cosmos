@@ -130,7 +130,7 @@ io.on('connection', async (socket) => {
       socket.emit('rooms_data', await Room.find());
       // Charger les posts récents
       const posts = await Post.find().sort({ timestamp: -1 }).limit(50);
-      socket.emit('posts_data', posts);
+      socket.emit('feed_data', posts); // Correction nom event: feed_data pour matcher app.js
       
       if(userId) {
           const myChars = await Character.find({ ownerId: userId });
@@ -216,27 +216,21 @@ io.on('connection', async (socket) => {
 
   // Suppression Historique MP (Avancé)
   socket.on('dm_delete_history', async ({ userId, targetName }) => {
-      // Trouver l'ID du target pour être sûr de tout supprimer entre ces deux là
       const targetChar = await Character.findOne({ name: targetName });
       let query = {
           $or: [
-              // Messages que j'ai envoyés à target
               { ownerId: userId, targetName: targetName },
-              // Messages que target m'a envoyés (si on a son ID)
           ]
       };
       
       if(targetChar) {
           query.$or.push({ ownerId: targetChar.ownerId, targetOwnerId: userId });
       } else {
-           // Fallback si perso supprimé : on supprime ce qui me concerne vis à vis de ce nom
-           query.$or.push({ targetName: targetName, ownerId: userId }); // Redondant mais sûr
+           query.$or.push({ targetName: targetName, ownerId: userId }); 
       }
       
       await Message.deleteMany(query);
-      // Notifier les deux parties pour refresh
-      io.emit('force_history_refresh', { roomId: 'global' }); // On assume que les MP sont souvent en global ou partout
-      // Idéalement on ciblerait mieux, mais refresh global est sûr.
+      io.emit('force_history_refresh', { roomId: 'global' }); 
   });
 
   // --- MESSAGES ---
@@ -274,10 +268,11 @@ io.on('connection', async (socket) => {
   });
 
   // --- POSTS (FEED) ---
+  // BUGFIX 1 (Côté Serveur) : On s'assure d'écouter le bon événement 'create_post'
   socket.on('create_post', async (postData) => {
       const newPost = new Post(postData);
       const savedPost = await newPost.save();
-      io.emit('new_post', savedPost);
+      io.emit('new_post', savedPost); // On émet 'new_post' vers le client
   });
 
   socket.on('delete_post', async (postId) => {
@@ -300,7 +295,7 @@ io.on('connection', async (socket) => {
   socket.on('post_comment', async ({ postId, comment }) => {
       const post = await Post.findById(postId);
       if(!post) return;
-      comment.id = new mongoose.Types.ObjectId().toString(); // ID unique pour le com
+      comment.id = new mongoose.Types.ObjectId().toString();
       post.comments.push(comment);
       await post.save();
       io.emit('post_updated', post);
