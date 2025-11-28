@@ -89,14 +89,11 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
     line-height: 1.5; 
     white-space: pre-wrap; 
     margin-bottom: 12px; 
-    
-    /* --- AJOUTS --- */
-    cursor: pointer;
-    transition: opacity 0.2s;
+    cursor: pointer; /* AJOUT : Indique que c'est cliquable */
+    transition: opacity 0.2s; /* AJOUT : Effet de transition */
 }
-
 .post-content:hover {
-    opacity: 0.8; /* Petit effet visuel au survol */
+    opacity: 0.8; /* AJOUT : Effet au survol */
 }
 
 .post-actions { border-top: 1px solid #383a40; padding-top: 10px; display: flex; gap: 20px; }
@@ -210,4 +207,3 @@ select#charSelector { background: #2b2d31; color: white; border: none; padding: 
     #menu-toggle-btn { display: block; position: fixed; top: calc(15px + var(--nav-height)); left: 15px; z-index: 80; background: #313338; border: none; color: white; border-radius: 4px; padding: 5px; }
     .btn-close-sidebar { display: block; }
 }
-
