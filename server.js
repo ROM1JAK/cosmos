@@ -31,7 +31,7 @@ const Character = mongoose.model('Character', CharacterSchema);
 const MessageSchema = new mongoose.Schema({
     content: String, type: String,
     senderName: String, senderColor: String, senderAvatar: String, senderRole: String, ownerId: String,
-    targetName: String, targetOwnerId: String, // Ajout pour identifier le destinataire réel
+    targetName: String, targetOwnerId: String,
     roomId: { type: String, required: true },
     replyTo: { id: String, author: String, content: String },
     edited: { type: Boolean, default: false },
@@ -43,6 +43,21 @@ const RoomSchema = new mongoose.Schema({
     name: { type: String, required: true }, creatorId: String, allowedCharacters: [String]
 });
 const Room = mongoose.model('Room', RoomSchema);
+
+// NOUVEAU SCHEMA POSTS
+const PostSchema = new mongoose.Schema({
+    content: String,
+    mediaUrl: String,
+    mediaType: String, // 'image' | 'video' | null
+    authorName: String, authorAvatar: String, authorRole: String, authorColor: String, ownerId: String,
+    likes: [String], // Liste des ownerId qui ont liké
+    comments: [{
+        id: String, authorName: String, authorAvatar: String, content: String, ownerId: String, date: String
+    }],
+    date: String,
+    timestamp: { type: Date, default: Date.now }
+});
+const Post = mongoose.model('Post', PostSchema);
 
 let onlineUsers = {}; 
 
@@ -113,6 +128,10 @@ io.on('connection', async (socket) => {
 
   socket.on('request_initial_data', async (userId) => {
       socket.emit('rooms_data', await Room.find());
+      // Charger les posts récents
+      const posts = await Post.find().sort({ timestamp: -1 }).limit(50);
+      socket.emit('posts_data', posts);
+      
       if(userId) {
           const myChars = await Character.find({ ownerId: userId });
           socket.emit('my_chars_data', myChars);
@@ -141,9 +160,16 @@ io.on('connection', async (socket) => {
           { senderName: data.originalName, ownerId: data.ownerId },
           { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }}
       );
+      // Mettre à jour les posts aussi
+      await Post.updateMany(
+          { authorName: data.originalName, ownerId: data.ownerId },
+          { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor }}
+      );
+
       const myChars = await Character.find({ ownerId: data.ownerId });
       socket.emit('my_chars_data', myChars);
       io.emit('force_history_refresh', { roomId: data.currentRoomId });
+      io.emit('reload_posts'); // Refresh feed
   });
 
   socket.on('delete_char', async (charId) => {
@@ -166,24 +192,21 @@ io.on('connection', async (socket) => {
   socket.on('join_room', (roomId) => { socket.join(roomId); });
   socket.on('leave_room', (roomId) => { socket.leave(roomId); });
   
-  // --- HISTORIQUE (Avec Filtrage MP) ---
+  // --- HISTORIQUE & MP ---
   socket.on('request_history', async (data) => {
-      // Data peut être un string (roomId) ou un objet {roomId, userId}
       const roomId = (typeof data === 'object') ? data.roomId : data;
       const requesterId = (typeof data === 'object') ? data.userId : null;
 
       const query = { roomId: roomId };
       
       if (requesterId) {
-          // Si on est connecté, on veut : Messages Publics OU (MP envoyé par moi) OU (MP reçu par moi)
           query.$or = [
-              { targetName: { $exists: false } }, // Public
-              { targetName: "" },                 // Public
-              { ownerId: requesterId },           // Mon MP envoyé
-              { targetOwnerId: requesterId }      // MP reçu
+              { targetName: { $exists: false } }, 
+              { targetName: "" },                
+              { ownerId: requesterId },          
+              { targetOwnerId: requesterId }     
           ];
       } else {
-          // Invité : Seulement messages publics
           query.$or = [{ targetName: { $exists: false } }, { targetName: "" }];
       }
 
@@ -191,30 +214,49 @@ io.on('connection', async (socket) => {
       socket.emit('history_data', history);
   });
 
+  // Suppression Historique MP (Avancé)
+  socket.on('dm_delete_history', async ({ userId, targetName }) => {
+      // Trouver l'ID du target pour être sûr de tout supprimer entre ces deux là
+      const targetChar = await Character.findOne({ name: targetName });
+      let query = {
+          $or: [
+              // Messages que j'ai envoyés à target
+              { ownerId: userId, targetName: targetName },
+              // Messages que target m'a envoyés (si on a son ID)
+          ]
+      };
+      
+      if(targetChar) {
+          query.$or.push({ ownerId: targetChar.ownerId, targetOwnerId: userId });
+      } else {
+           // Fallback si perso supprimé : on supprime ce qui me concerne vis à vis de ce nom
+           query.$or.push({ targetName: targetName, ownerId: userId }); // Redondant mais sûr
+      }
+      
+      await Message.deleteMany(query);
+      // Notifier les deux parties pour refresh
+      io.emit('force_history_refresh', { roomId: 'global' }); // On assume que les MP sont souvent en global ou partout
+      // Idéalement on ciblerait mieux, mais refresh global est sûr.
+  });
+
   // --- MESSAGES ---
   socket.on('message_rp', async (msgData) => {
     if (!msgData.roomId) return; 
     
-    // Check Narrateur Admin
     if (msgData.senderName === "Narrateur") {
         const user = await User.findOne({ secretCode: msgData.ownerId });
         if (!user || !user.isAdmin) return;
     }
 
-    // Gestion MP : Récupérer le ownerId du destinataire
     if (msgData.targetName) {
         const targetChar = await Character.findOne({ name: msgData.targetName }).sort({_id: -1});
         if (targetChar) {
             msgData.targetOwnerId = targetChar.ownerId;
-        } else {
-            // Perso introuvable ? On traite comme public ou on annule. Ici on laisse filer mais sans ownerId (donc invisible destinataire)
         }
     }
 
     const newMessage = new Message(msgData);
     const savedMsg = await newMessage.save();
-    
-    // On broadcast à la room, le filtrage visuel se fera côté client pour le temps réel
     io.to(msgData.roomId).emit('message_rp', savedMsg); 
   });
 
@@ -229,6 +271,47 @@ io.on('connection', async (socket) => {
   socket.on('admin_clear_room', async (roomId) => {
       await Message.deleteMany({ roomId: roomId });
       io.to(roomId).emit('history_cleared');
+  });
+
+  // --- POSTS (FEED) ---
+  socket.on('create_post', async (postData) => {
+      const newPost = new Post(postData);
+      const savedPost = await newPost.save();
+      io.emit('new_post', savedPost);
+  });
+
+  socket.on('delete_post', async (postId) => {
+      await Post.findByIdAndDelete(postId);
+      io.emit('post_deleted', postId);
+  });
+
+  socket.on('like_post', async ({ postId, userId }) => {
+      const post = await Post.findById(postId);
+      if(!post) return;
+      
+      const index = post.likes.indexOf(userId);
+      if(index === -1) post.likes.push(userId);
+      else post.likes.splice(index, 1);
+      
+      await post.save();
+      io.emit('post_updated', post);
+  });
+
+  socket.on('post_comment', async ({ postId, comment }) => {
+      const post = await Post.findById(postId);
+      if(!post) return;
+      comment.id = new mongoose.Types.ObjectId().toString(); // ID unique pour le com
+      post.comments.push(comment);
+      await post.save();
+      io.emit('post_updated', post);
+  });
+
+  socket.on('delete_comment', async ({ postId, commentId }) => {
+      const post = await Post.findById(postId);
+      if(!post) return;
+      post.comments = post.comments.filter(c => c.id !== commentId);
+      await post.save();
+      io.emit('post_updated', post);
   });
 
   // --- TYPING ---
