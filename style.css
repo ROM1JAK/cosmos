@@ -2,6 +2,9 @@
 * { box-sizing: border-box; }
 body { background-color: var(--bg-primary); color: var(--text-normal); font-family: var(--font-main); margin: 0; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
 
+/* FIX CRITIQUE: Classe générique hidden manquante */
+.hidden { display: none !important; }
+
 /* TOP NAV */
 #top-nav { height: var(--nav-height); background: #1e1f22; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #111; gap: 20px; flex-shrink: 0; z-index: 101; }
 .nav-btn { background: transparent; border: none; color: var(--text-muted); font-size: 1rem; font-weight: 600; padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; transition: 0.2s; }
@@ -76,7 +79,16 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .feed-select { background: #383a40; color: white; border: none; padding: 8px; border-radius: 4px; flex: 1; }
 #postContent { width: 100%; background: #383a40; border: none; color: white; padding: 10px; border-radius: 4px; margin-top: 5px; resize: vertical; font-family: inherit; }
 
-.post-card { background: var(--bg-secondary); border-radius: 8px; border: 1px solid #222; padding: 15px; animation: fade 0.3s; }
+.post-card { background: var(--bg-secondary); border-radius: 8px; border: 1px solid #222; padding: 15px; animation: fade 0.3s; 
+    position: relative; /* AJOUT */
+    transition: background-color 0.2s, box-shadow 0.2s; /* AJOUT */
+}
+/* AJOUT EFFET SURVOL */
+.post-card:hover {
+    background-color: #32343a; 
+    border-color: var(--accent);
+}
+
 .post-header { display: flex; align-items: center; margin-bottom: 10px; }
 .post-avatar { width: 48px; height: 48px; border-radius: 50%; margin-right: 12px; object-fit: cover; }
 .post-meta { display: flex; flex-direction: column; }
@@ -89,11 +101,11 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
     line-height: 1.5; 
     white-space: pre-wrap; 
     margin-bottom: 12px; 
-    cursor: pointer; /* AJOUT : Indique que c'est cliquable */
-    transition: opacity 0.2s; /* AJOUT : Effet de transition */
+    cursor: pointer; 
+    transition: opacity 0.2s; 
 }
 .post-content:hover {
-    opacity: 0.8; /* AJOUT : Effet au survol */
+    opacity: 0.8; 
 }
 
 .post-actions { border-top: 1px solid #383a40; padding-top: 10px; display: flex; gap: 20px; }
