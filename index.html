@@ -86,22 +86,6 @@
         </div>
     </div>
 
-    <!-- MODALE DETAIL POST (THREAD) -->
-    <div id="post-detail-modal" class="modal-overlay hidden" onclick="closePostDetail()">
-        <div class="modal-box post-detail-box" onclick="event.stopPropagation()">
-            <button onclick="closePostDetail()" class="btn-close-modal">✕</button>
-            <div id="post-detail-content"></div> <!-- Contenu injecté JS -->
-            <div class="comments-container">
-                <h4>Commentaires</h4>
-                <div id="post-detail-comments-list"></div>
-                <div class="comment-form-large">
-                    <textarea id="post-detail-comment-input" placeholder="Écrire un commentaire..." rows="2"></textarea>
-                    <button id="btn-detail-comment" class="btn-primary">Envoyer</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <button id="menu-toggle-btn" onclick="toggleSidebar()">
         <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
     </button>
@@ -210,11 +194,13 @@
 
         <!-- VUE FEED -->
         <div id="view-feed" class="view-section hidden">
-            <div class="feed-container">
+            <!-- VUE LISTE DES POSTS (FEED) -->
+            <div id="feed-main-view" class="feed-container">
                 <div class="post-create-box">
                     <div style="display:flex; gap:10px; margin-bottom:10px;">
                         <select id="feedCharSelector" class="feed-select"></select>
                     </div>
+                    <!-- TEXTAREA AVEC STYLE CHAT -->
                     <textarea id="postContent" placeholder="Quoi de neuf ? (Max 1000 carac.)" rows="3" maxlength="1000"></textarea>
                     <input type="text" id="postMediaUrl" placeholder="URL Média Optionnelle (Image ou YouTube)" class="feed-media-input">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
@@ -223,6 +209,23 @@
                     </div>
                 </div>
                 <div id="feed-stream"></div>
+            </div>
+
+            <!-- VUE DETAIL FULL PAGE (CACHE PAR DEFAUT) -->
+            <div id="single-post-view" class="feed-container hidden">
+                <button class="btn-secondary" onclick="closePostDetail()" style="margin-bottom:15px; display:flex; align-items:center; gap:5px;">
+                    ⬅ Retour au fil
+                </button>
+                <div id="single-post-content"></div>
+                <!-- Section commentaires déplacée ici dynamiquement -->
+                <div id="single-post-comments-section" class="comments-section-large" style="margin-top:20px;">
+                    <h4 style="color:#aaa; border-bottom:1px solid #333; padding-bottom:10px;">Commentaires</h4>
+                    <div id="post-detail-comments-list"></div>
+                    <div class="comment-form-large">
+                        <textarea id="post-detail-comment-input" placeholder="Écrire un commentaire..." rows="2"></textarea>
+                        <button id="btn-detail-comment" class="btn-primary">Envoyer</button>
+                    </div>
+                </div>
             </div>
         </div>
 
