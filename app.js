@@ -1,5 +1,5 @@
 var socket = io();
-const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2346/2346-preview.mp3'); // AJOUT : Son de notification
+const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); 
 let myCharacters = [];
 let allRooms = []; 
 let currentRoomId = 'global'; 
@@ -13,6 +13,25 @@ let unreadRooms = new Set();
 let unreadDms = new Set(); 
 let dmContacts = []; 
 let firstUnreadMap = {}; 
+let currentView = 'chat'; // 'chat' ou 'feed'
+
+// --- NAVIGATION (NOUVEAU) ---
+function switchView(view) {
+    currentView = view;
+    document.querySelectorAll('.view-section').forEach(el => {
+        el.classList.remove('active');
+        el.classList.add('hidden');
+    });
+    document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+
+    document.getElementById(`view-${view}`).classList.remove('hidden');
+    document.getElementById(`view-${view}`).classList.add('active');
+    document.getElementById(`btn-view-${view}`).classList.add('active');
+
+    if(view === 'feed') {
+        loadFeed();
+    }
+}
 
 // --- UI & LOGIN / COMPTE ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
@@ -85,10 +104,7 @@ socket.on('login_success', (data) => {
     
     closeLoginModal();
     socket.emit('request_initial_data', PLAYER_ID);
-    
-    // Charger les contacts MP
     socket.emit('request_dm_contacts', USERNAME);
-    
     joinRoom('global');
 });
 
@@ -242,6 +258,7 @@ function joinRoom(roomId) {
     if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
     updateRoomListUI();
     updateDmListUI();
+    switchView('chat'); // Retour automatique au chat
 }
 socket.on('rooms_data', (rooms) => { allRooms = rooms; updateRoomListUI(); });
 
@@ -281,12 +298,10 @@ function openDm(targetUsername) {
     document.getElementById('charSelector').style.display = 'none'; 
     
     cancelContext();
-    
     socket.emit('request_dm_history', { myUsername: USERNAME, targetUsername: targetUsername });
-    
     updateRoomListUI(); 
     updateDmListUI();
-    
+    switchView('chat'); // Forcer vue chat pour voir le MP
     if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
 }
 
@@ -324,12 +339,10 @@ socket.on('dm_history_data', (data) => {
 
 socket.on('receive_dm', (msg) => {
     const otherUser = (msg.sender === USERNAME) ? msg.target : msg.sender;
-    
     if (!dmContacts.includes(otherUser)) {
         dmContacts.push(otherUser);
         updateDmListUI();
     }
-
     if (currentDmTarget === otherUser) {
         displayMessage(msg, true);
         scrollToBottom();
@@ -337,6 +350,8 @@ socket.on('receive_dm', (msg) => {
         unreadDms.add(otherUser);
         updateDmListUI();
     }
+    // Notification sonore si pas moi
+    if (msg.sender !== USERNAME) notifSound.play().catch(e=>{});
 });
 
 
@@ -388,16 +403,22 @@ function deleteCharacter(id) { if(confirm('Supprimer ?')) socket.emit('delete_ch
 socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c => c._id !== id); updateUI(); });
 
 function updateUI() {
+    // Met à jour la liste des persos (Sidebar + Selecteur Chat + Selecteur Feed)
     const list = document.getElementById('myCharList');
     const select = document.getElementById('charSelector');
+    const selectFeed = document.getElementById('feedCharSelector');
+    
     let selectedCharId = null;
     if (select.selectedIndex >= 0) selectedCharId = select.options[select.selectedIndex].dataset.id; 
 
     list.innerHTML = "";
     select.innerHTML = ""; 
+    selectFeed.innerHTML = "";
     
     if(IS_ADMIN) {
-        select.innerHTML = '<option value="Narrateur" data-id="narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
+        const narr = '<option value="Narrateur" data-id="narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
+        select.innerHTML = narr;
+        selectFeed.innerHTML = narr;
     }
 
     myCharacters.forEach(char => {
@@ -416,6 +437,7 @@ function updateUI() {
         const opt = document.createElement('option');
         opt.value = char.name; opt.text = char.name; opt.dataset.id = char._id; opt.dataset.color = char.color; opt.dataset.avatar = char.avatar; opt.dataset.role = char.role;
         select.appendChild(opt);
+        selectFeed.appendChild(opt.cloneNode(true));
     });
     
     if(selectedCharId) {
@@ -499,7 +521,7 @@ function sendMessage() {
     txt.value = ''; cancelContext();
 }
 
-// --- DISPLAY ---
+// --- DISPLAY CHAT ---
 socket.on('history_data', (msgs) => { 
     if(currentDmTarget) return; 
     const container = document.getElementById('messages');
@@ -519,10 +541,7 @@ socket.on('history_data', (msgs) => {
 });
 
 socket.on('message_rp', (msg) => { 
-    // AJOUT : Condition Sonore
-    if (msg.ownerId !== PLAYER_ID) {
-        notifSound.play().catch(e => { /* Ignore autoplay errors if user hasn't interacted */ });
-    }
+    if (msg.ownerId !== PLAYER_ID) notifSound.play().catch(e => {});
 
     if(msg.roomId === currentRoomId && !currentDmTarget) { 
         displayMessage(msg); scrollToBottom(); 
@@ -610,3 +629,118 @@ function displayMessage(msg, isDm = false) {
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
+
+// --- SOCIAL FEED LOGIC ---
+
+function loadFeed() {
+    socket.emit('request_feed');
+}
+
+function submitPost() {
+    const content = document.getElementById('postContent').value.trim();
+    if(!content) return;
+    
+    const sel = document.getElementById('feedCharSelector');
+    if(sel.options.length === 0) return alert("Créez un personnage d'abord !");
+    const opt = sel.options[sel.selectedIndex];
+
+    const postData = {
+        authorName: opt.value,
+        authorAvatar: opt.dataset.avatar,
+        authorRole: opt.dataset.role,
+        content: content,
+        date: new Date().toLocaleDateString()
+    };
+    socket.emit('new_post', postData);
+    document.getElementById('postContent').value = "";
+}
+
+function toggleLike(postId) {
+    if(!PLAYER_ID) return alert("Connectez-vous pour liker !");
+    socket.emit('like_post', { postId, userId: PLAYER_ID });
+}
+
+function submitComment(postId) {
+    if(!PLAYER_ID) return alert("Connectez-vous pour commenter !");
+    const input = document.getElementById(`comment-input-${postId}`);
+    const content = input.value.trim();
+    if(!content) return;
+
+    // On utilise le perso sélectionné actuellement pour commenter, ou le premier
+    const sel = document.getElementById('feedCharSelector');
+    if(sel.options.length === 0) return alert("Créez un personnage d'abord !");
+    const authorName = sel.options[sel.selectedIndex].value;
+
+    socket.emit('comment_post', { 
+        postId, 
+        author: authorName, 
+        content, 
+        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+    });
+}
+
+function toggleComments(postId) {
+    document.getElementById(`comments-${postId}`).classList.toggle('open');
+}
+
+// SOCKET FEED LISTENERS
+socket.on('feed_data', (posts) => {
+    const container = document.getElementById('feed-stream');
+    container.innerHTML = "";
+    posts.forEach(post => container.appendChild(createPostElement(post)));
+});
+
+socket.on('new_post_added', (post) => {
+    const container = document.getElementById('feed-stream');
+    container.prepend(createPostElement(post));
+});
+
+socket.on('post_updated', (post) => {
+    const existing = document.getElementById(`post-${post._id}`);
+    if(existing) {
+        existing.replaceWith(createPostElement(post));
+    }
+});
+
+function createPostElement(post) {
+    const div = document.createElement('div');
+    div.className = 'post-card';
+    div.id = `post-${post._id}`;
+    
+    const isLiked = post.likes.includes(PLAYER_ID);
+    const likeClass = isLiked ? 'liked' : '';
+    
+    // Rendu des commentaires
+    let commentsHTML = "";
+    post.comments.forEach(c => {
+        commentsHTML += `<div class="comment-item"><span class="comment-author">${c.author}</span>: ${c.content} <span style="color:#666; font-size:0.7em;">${c.date}</span></div>`;
+    });
+
+    div.innerHTML = `
+        <div class="post-header">
+            <img src="${post.authorAvatar}" class="post-avatar">
+            <div class="post-meta">
+                <span class="post-author">${post.authorName}</span>
+                <span class="post-role">${post.authorRole}</span>
+            </div>
+            <span class="post-date">${post.date}</span>
+        </div>
+        <div class="post-content">${formatText(post.content)}</div>
+        <div class="post-actions">
+            <button class="action-item ${likeClass}" onclick="toggleLike('${post._id}')">
+                ❤️ ${post.likes.length}
+            </button>
+            <button class="action-item" onclick="toggleComments('${post._id}')">
+                💬 ${post.comments.length}
+            </button>
+        </div>
+        <div class="comments-section" id="comments-${post._id}">
+            <div class="comments-list">${commentsHTML}</div>
+            <div class="comment-form">
+                <input type="text" class="comment-input" id="comment-input-${post._id}" placeholder="Commenter...">
+                <button class="btn-primary" style="padding:4px 10px;" onclick="submitComment('${post._id}')">Envoyer</button>
+            </div>
+        </div>
+    `;
+    return div;
+}
