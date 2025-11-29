@@ -1,8 +1,7 @@
 var socket = io();
 const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
 
-// --- CONFIGURATION CLOUDINARY (MODIFIÉ POUR VIDÉO) ---
-// Utilisation de 'auto' dans l'URL pour supporter image et video
+// --- CONFIGURATION CLOUDINARY ---
 const CLOUDINARY_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz/auto/upload'; 
 const CLOUDINARY_PRESET = 'Cosmos';
 
@@ -20,15 +19,13 @@ let unreadDms = new Set();
 let dmContacts = []; 
 let firstUnreadMap = {}; 
 let currentView = 'chat'; 
-let lastFeedVisit = 0; 
 let notificationsEnabled = true; 
 let currentSelectedChar = null; 
 
-// --- FONCTION D'UPLOAD (OPTIMISÉE) ---
+// --- FONCTION D'UPLOAD ---
 async function uploadToCloudinary(file) {
     if (!file) return null;
     
-    // Support Vidéo ajouté
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
         alert("Fichier non supporté (Image ou Vidéo uniquement).");
         return null;
@@ -55,7 +52,7 @@ async function uploadToCloudinary(file) {
     }
 }
 
-// --- NAVIGATION ---
+// --- NAVIGATION & NOTIFS POSTS ---
 function switchView(view) {
     currentView = view;
     document.querySelectorAll('.view-section').forEach(el => {
@@ -69,8 +66,11 @@ function switchView(view) {
     document.getElementById(`btn-view-${view}`).classList.add('active');
 
     if(view === 'feed') {
-        document.getElementById('feed-notif-dot').classList.add('hidden');
-        lastFeedVisit = Date.now();
+        // Reset notif
+        document.getElementById('btn-view-feed').classList.remove('nav-notify');
+        
+        // Update timestamp visite
+        localStorage.setItem('last_feed_visit', Date.now().toString());
         loadFeed();
     }
 }
@@ -108,7 +108,7 @@ function logoutUser() {
     if(confirm("Déconnexion ?")) {
         localStorage.removeItem('rp_username');
         localStorage.removeItem('rp_code');
-        localStorage.removeItem('saved_char_id'); // Clean aussi les prefs
+        localStorage.removeItem('saved_char_id'); 
         location.reload();
     }
 }
@@ -138,7 +138,7 @@ function submitUsernameChange() {
     }
 }
 
-// --- LOGIQUE LOGIN & PERSISTANCE ---
+// --- LOGIQUE LOGIN ---
 socket.on('login_success', (data) => {
     localStorage.setItem('rp_username', data.username);
     localStorage.setItem('rp_code', data.userId);
@@ -154,7 +154,6 @@ socket.on('login_success', (data) => {
     socket.emit('request_initial_data', PLAYER_ID);
     socket.emit('request_dm_contacts', USERNAME);
     
-    // RESTAURATION SALON
     const savedRoom = localStorage.getItem('saved_room_id');
     if (savedRoom) joinRoom(savedRoom);
     else joinRoom('global');
@@ -179,7 +178,6 @@ function checkAutoLogin() {
 
 socket.on('connect', () => { checkAutoLogin(); });
 
-// Mise à jour temps réel liste utilisateurs
 socket.on('update_user_list', (users) => {
     const listDiv = document.getElementById('online-users-list');
     document.getElementById('online-count').textContent = users.length;
@@ -191,8 +189,8 @@ socket.on('update_user_list', (users) => {
 
 socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId && !currentDmTarget) socket.emit('request_history', currentRoomId); });
 
-// --- GESTION MEDIAS (CLOUD) ---
-function previewFile(type) {} // Non utilisé, géré par le bouton upload
+// --- GESTION MEDIAS ---
+function previewFile(type) {}
 
 function openUrlModal() {
     const input = document.createElement('input');
@@ -256,7 +254,6 @@ function createRoomPrompt() { const name = prompt("Nom du salon :"); if (name) s
 function deleteRoom(roomId) { if(confirm("ADMIN : Supprimer ?")) socket.emit('delete_room', roomId); }
 
 function joinRoom(roomId) {
-    // Si on essaye de rejoindre une room supprimée, fallback
     if (allRooms.length > 0 && roomId !== 'global' && !allRooms.find(r => r._id === roomId)) {
         roomId = 'global';
     }
@@ -264,7 +261,6 @@ function joinRoom(roomId) {
     if (currentRoomId && currentRoomId !== roomId) socket.emit('leave_room', currentRoomId);
     currentRoomId = roomId;
     
-    // PERSISTANCE SALON
     localStorage.setItem('saved_room_id', roomId);
 
     currentDmTarget = null; 
@@ -276,7 +272,7 @@ function joinRoom(roomId) {
     document.getElementById('currentRoomName').style.color = "white";
     document.getElementById('messages').innerHTML = ""; 
     document.getElementById('typing-indicator').classList.add('hidden');
-    document.getElementById('char-dropdown-wrapper').classList.remove('hidden'); 
+    document.getElementById('char-selector-wrapper').classList.remove('hidden'); 
     document.getElementById('dm-header-actions').classList.add('hidden');
 
     socket.emit('request_history', currentRoomId);
@@ -300,7 +296,7 @@ function updateRoomListUI() {
     });
 }
 
-// --- DM / MP AVANCÉ ---
+// --- DM / MP ---
 function startDmFromList(targetUsername) {
     if (targetUsername === USERNAME) return alert("C'est vous !");
     openDm(targetUsername);
@@ -317,7 +313,7 @@ function openDm(targetUsername) {
     document.getElementById('currentRoomName').style.color = "#7d5bc4"; 
     document.getElementById('messages').innerHTML = "";
     document.getElementById('typing-indicator').classList.add('hidden');
-    document.getElementById('char-dropdown-wrapper').classList.add('hidden'); 
+    document.getElementById('char-selector-wrapper').classList.add('hidden'); 
     document.getElementById('dm-header-actions').classList.remove('hidden'); 
     
     cancelContext();
@@ -372,7 +368,6 @@ socket.on('receive_dm', (msg) => {
 
 // --- CHARACTERS ---
 async function createCharacter() {
-    // SÉCURITÉ CLIENT : Limite de 20 personnages
     if (myCharacters.length >= 20) {
         alert("Limite atteinte (20 personnages maximum). Supprimez-en pour en créer de nouveaux.");
         return;
@@ -383,7 +378,6 @@ async function createCharacter() {
     const desc = document.getElementById('newCharDesc').value.trim();
     const color = document.getElementById('newCharColor').value;
     
-    // Upload File
     const fileInput = document.getElementById('newCharFile');
     const file = fileInput.files[0];
     let avatar = null;
@@ -443,10 +437,8 @@ socket.on('my_chars_data', (chars) => {
     myCharacters = chars; 
     updateUI(); 
     
-    // RESTAURATION PERSONNAGE
     const savedCharId = localStorage.getItem('saved_char_id');
     if (savedCharId) {
-        // Vérifie si le perso existe toujours
         const charExists = myCharacters.find(c => c._id === savedCharId);
         if (charExists) selectCharacter(savedCharId);
         else if (IS_ADMIN && savedCharId === 'narrateur') selectCharacter('narrateur');
@@ -456,62 +448,51 @@ socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(
 function deleteCharacter(id) { if(confirm('Supprimer ?')) socket.emit('delete_char', id); }
 socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c => c._id !== id); updateUI(); });
 
-// LOGIQUE SELECTION (NOUVEAU DROPDOWN)
+// LOGIQUE SELECTION BARRE HORIZONTALE
 function selectCharacter(charId) {
     const narrateur = { _id: 'narrateur', name: 'Narrateur', role: 'Omniscient', color: '#ffffff', avatar: 'https://cdn-icons-png.flaticon.com/512/1144/1144760.png' };
     
     if (charId === 'narrateur') currentSelectedChar = narrateur;
     else currentSelectedChar = myCharacters.find(c => c._id === charId);
 
-    // Persistance
     if(currentSelectedChar) localStorage.setItem('saved_char_id', currentSelectedChar._id);
 
-    // Update UI Trigger
-    if (currentSelectedChar) {
-        document.getElementById('selected-char-avatar').src = currentSelectedChar.avatar;
-        document.getElementById('selected-char-name').textContent = currentSelectedChar.name;
-        document.getElementById('selected-char-name').style.color = currentSelectedChar.color;
+    // Highlight visual
+    document.querySelectorAll('.avatar-choice').forEach(el => el.classList.remove('selected'));
+    const selectedEl = document.getElementById(`avatar-opt-${charId}`);
+    if(selectedEl) {
+        selectedEl.classList.add('selected');
     }
-
-    // Highlight option
-    document.querySelectorAll('.custom-option').forEach(el => el.classList.remove('selected'));
-    const selectedEl = document.getElementById(`opt-${charId}`);
-    if(selectedEl) selectedEl.classList.add('selected');
-
-    closeCharDropdown();
 }
 
-function toggleCharDropdown() {
-    const wrapper = document.getElementById('char-dropdown-wrapper');
-    wrapper.classList.toggle('open');
-}
-
-function closeCharDropdown() {
-    document.getElementById('char-dropdown-wrapper').classList.remove('open');
-}
-
-// Fermeture dropdown au clic externe
-window.addEventListener('click', function(e) {
-    const wrapper = document.getElementById('char-dropdown-wrapper');
-    if (!wrapper.contains(e.target)) {
-        wrapper.classList.remove('open');
+function toggleCharBar() {
+    const bar = document.getElementById('char-bar-horizontal');
+    const icon = document.getElementById('toggle-icon');
+    bar.classList.toggle('hidden-bar');
+    
+    if (bar.classList.contains('hidden-bar')) {
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-up');
+    } else {
+        icon.classList.remove('fa-chevron-up');
+        icon.classList.add('fa-chevron-down');
     }
-});
+}
 
 function updateUI() {
     const list = document.getElementById('myCharList');
-    const optionsContainer = document.getElementById('char-dropdown-options');
+    const barContainer = document.getElementById('char-bar-horizontal');
     const selectFeed = document.getElementById('feedCharSelector');
 
-    list.innerHTML = ""; optionsContainer.innerHTML = ""; selectFeed.innerHTML = "";
+    list.innerHTML = ""; barContainer.innerHTML = ""; selectFeed.innerHTML = "";
 
     // Narrateur (Admin)
     if(IS_ADMIN) {
-        const narrHtml = `<div id="opt-narrateur" class="custom-option" onclick="selectCharacter('narrateur')">
-            <img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" class="mini-avatar-trigger">
-            <span>Narrateur</span>
-        </div>`;
-        optionsContainer.innerHTML += narrHtml;
+        const narrHtml = `<img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" 
+            id="avatar-opt-narrateur" class="avatar-choice" 
+            title="Narrateur" onclick="selectCharacter('narrateur')">`;
+        barContainer.innerHTML += narrHtml;
+        
         const narrOpt = '<option value="Narrateur" data-id="narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
         selectFeed.innerHTML = narrOpt;
     }
@@ -520,11 +501,10 @@ function updateUI() {
         // Sidebar List
         list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')"><i class="fa-solid fa-gear"></i></button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button></div></div>`;
         
-        // Dropdown Options
-        optionsContainer.innerHTML += `<div id="opt-${char._id}" class="custom-option" onclick="selectCharacter('${char._id}')">
-            <img src="${char.avatar}" class="mini-avatar-trigger">
-            <span style="color:${char.color}">${char.name}</span>
-        </div>`;
+        // Horizontal Bar
+        barContainer.innerHTML += `<img src="${char.avatar}" 
+            id="avatar-opt-${char._id}" class="avatar-choice" 
+            title="${char.name}" onclick="selectCharacter('${char._id}')">`;
         
         // Feed Select
         const opt = document.createElement('option');
@@ -572,7 +552,6 @@ function triggerEdit(id, content) { setContext('edit', { id, content }); }
 function triggerDelete(id) { if(confirm("Supprimer ?")) socket.emit('delete_message', id); }
 
 function sendMessage() {
-    // Note: Pas de e.preventDefault ici car déclenché par onclick ou keyup, pas submit form
     const txt = document.getElementById('txtInput');
     const content = txt.value.trim();
     if (!content) return;
@@ -683,7 +662,6 @@ async function previewPostFile() {
 }
 
 function submitPost() {
-    // Bouton de type onclick donc pas de submit form classique à preventDefault
     const content = document.getElementById('postContent').value.trim();
     const mediaUrl = document.getElementById('postMediaUrl').value.trim();
     
@@ -706,7 +684,6 @@ function submitPost() {
     };
     socket.emit('create_post', postData);
     
-    // Reset Form
     document.getElementById('postContent').value = ""; 
     document.getElementById('postMediaUrl').value = ""; 
     document.getElementById('postMediaFile').value = "";
@@ -757,13 +734,19 @@ socket.on('feed_data', (posts) => {
     const container = document.getElementById('feed-stream'); container.innerHTML = "";
     posts.forEach(post => container.appendChild(createPostElement(post)));
 });
+
+// LOGIQUE NOTIFICATION NOUVEAU POST
 socket.on('new_post', (post) => {
-    if(currentView !== 'feed') document.getElementById('feed-notif-dot').classList.remove('hidden');
+    // Si on n'est pas sur le feed, allumer l'onglet
+    if(currentView !== 'feed') {
+        document.getElementById('btn-view-feed').classList.add('nav-notify');
+    }
+
     const container = document.getElementById('feed-stream');
     const el = createPostElement(post);
-    if(currentView === 'feed' || new Date(post.timestamp) > lastFeedVisit) el.classList.add('highlight-new');
     container.prepend(el);
 });
+
 socket.on('post_updated', (post) => {
     const existing = document.getElementById(`post-${post._id}`);
     if(existing) existing.replaceWith(createPostElement(post));
@@ -797,6 +780,18 @@ function createPostElement(post) {
     const div = document.createElement('div');
     div.className = 'post-card'; div.id = `post-${post._id}`;
     
+    // Check highlight (si le post est plus récent que la dernière visite)
+    const lastVisit = parseInt(localStorage.getItem('last_feed_visit') || '0');
+    const postTime = new Date(post.timestamp).getTime();
+    
+    if (postTime > lastVisit && currentView === 'feed') {
+        // Cas rare où on est sur le feed et on reçoit en direct, on peut décider de surligner ou non.
+        // Ici on surligne.
+         div.classList.add('post-highlight');
+    } else if (postTime > lastVisit) {
+        div.classList.add('post-highlight');
+    }
+
     const isLiked = post.likes.includes(PLAYER_ID);
     const likeClass = isLiked ? 'liked' : '';
     const isOwner = (post.ownerId === PLAYER_ID);
