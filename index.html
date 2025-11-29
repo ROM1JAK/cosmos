@@ -109,6 +109,7 @@
             <div style="padding:15px; background: var(--bg-primary); border-top: 1px solid #222;">
                 <div class="comment-form">
                     <input type="text" id="post-detail-comment-input" class="comment-input" placeholder="Ajouter un commentaire...">
+                    <button class="btn-icon" id="btn-record-comment" onclick="toggleRecording('comment')" title="Vocal"><i class="fa-solid fa-microphone"></i></button>
                     <button id="btn-detail-comment" class="btn-primary">Envoyer</button>
                 </div>
             </div>
@@ -208,16 +209,14 @@
                     </div>
                     
                     <div id="input-wrapper">
-                        <!-- BARRE DE SÉLECTION HORIZONTALE AVEC TOGGLE -->
+                        <!-- BARRE DE SÉLECTION HORIZONTALE -->
                         <div id="char-selector-wrapper" class="hidden">
                             <div id="char-bar-actions">
                                 <button id="btn-toggle-chars" onclick="toggleCharBar()">
                                     <i id="toggle-icon" class="fa-solid fa-chevron-up"></i>
                                 </button>
                             </div>
-                            <div id="char-bar-horizontal" class="char-bar-content hidden-bar">
-                                <!-- Liste générée via JS -->
-                            </div>
+                            <div id="char-bar-horizontal" class="char-bar-content hidden-bar"></div>
                         </div>
 
                         <div id="context-bar" class="hidden">
@@ -230,6 +229,8 @@
 
                         <div id="input-zone">
                             <input id="txtInput" type="text" autocomplete="off" placeholder="Message..." />
+                            <!-- Ajout bouton Micro Chat -->
+                            <button class="btn-icon" id="btn-record-chat" onclick="toggleRecording('chat')" title="Vocal"><i class="fa-solid fa-microphone"></i></button>
                             <button class="btn-icon" onclick="openUrlModal()" title="Image"><i class="fa-solid fa-image"></i></button>
                             <button class="btn-icon" onclick="openVideoModal()" title="Vidéo"><i class="fa-solid fa-video"></i></button>
                             <button class="btn-send" onclick="sendMessage()"><i class="fa-solid fa-paper-plane"></i></button>
@@ -262,7 +263,11 @@
                     <p id="postFileStatus" style="font-size:0.8em; color:#aaa; margin:0; display:none;">Fichier prêt.</p>
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
-                        <span id="char-count" style="color:#666; font-size:0.8em;">0/1000</span>
+                        <!-- Ajout bouton Micro Post -->
+                        <div style="display:flex; align-items:center; gap:10px;">
+                             <button class="btn-icon" id="btn-record-post" onclick="toggleRecording('feed')" title="Vocal"><i class="fa-solid fa-microphone"></i></button>
+                             <span id="char-count" style="color:#666; font-size:0.8em;">0/1000</span>
+                        </div>
                         <button class="btn-primary" onclick="submitPost()">Publier</button>
                     </div>
                 </div>
