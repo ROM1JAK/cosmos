@@ -145,11 +145,7 @@ io.on('connection', async (socket) => {
   socket.on('create_char', async (data) => {
     // SÉCURITÉ : Limite de 20 personnages
     const count = await Character.countDocuments({ ownerId: data.ownerId });
-    if (count >= 20) {
-        // On n'envoie pas d'erreur socket spécifique ici pour simplifier, 
-        // le client doit gérer l'alerte, mais on bloque l'insertion.
-        return; 
-    }
+    if (count >= 20) return; 
 
     const user = await User.findOne({ secretCode: data.ownerId });
     if (user) data.ownerUsername = user.username;
