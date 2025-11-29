@@ -21,13 +21,19 @@ let firstUnreadMap = {};
 let currentView = 'chat'; 
 let notificationsEnabled = true; 
 let currentSelectedChar = null; 
+let mediaRecorder;
+let audioChunks = [];
+let isRecording = false;
 
 // --- FONCTION D'UPLOAD ---
 async function uploadToCloudinary(file) {
     if (!file) return null;
     
-    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-        alert("Fichier non supporté (Image ou Vidéo uniquement).");
+    // Support Blob (Audio)
+    if (file instanceof Blob) {
+        // C'est valide
+    } else if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+        alert("Fichier non supporté.");
         return null;
     }
 
@@ -55,6 +61,9 @@ async function uploadToCloudinary(file) {
 // --- NAVIGATION & NOTIFS POSTS ---
 function switchView(view) {
     currentView = view;
+    // Persistance
+    localStorage.setItem('last_tab', view);
+
     document.querySelectorAll('.view-section').forEach(el => {
         el.classList.remove('active');
         el.classList.add('hidden');
@@ -66,14 +75,79 @@ function switchView(view) {
     document.getElementById(`btn-view-${view}`).classList.add('active');
 
     if(view === 'feed') {
-        // Reset notif
         document.getElementById('btn-view-feed').classList.remove('nav-notify');
-        
-        // Update timestamp visite
         localStorage.setItem('last_feed_visit', Date.now().toString());
         loadFeed();
     }
 }
+
+// --- LOGIQUE ENREGISTREMENT VOCAL ---
+async function toggleRecording(source) { // source: 'chat', 'feed', 'comment'
+    const btnId = `btn-record-${source}`;
+    const btn = document.getElementById(btnId);
+
+    if (!isRecording) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.start();
+            isRecording = true;
+            btn.classList.add('recording');
+        } catch (err) {
+            alert("Impossible d'accéder au micro : " + err);
+        }
+    } else {
+        mediaRecorder.stop();
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            btn.classList.remove('recording');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; // Loading icon
+            
+            const url = await uploadToCloudinary(audioBlob);
+            btn.innerHTML = '<i class="fa-solid fa-microphone"></i>'; // Restore icon
+            isRecording = false;
+
+            if (url) {
+                if (source === 'chat') {
+                    sendMediaMessage(url, 'audio');
+                } else if (source === 'feed') {
+                    // Pour le feed on remplit le champ caché et on montre une preview
+                    document.getElementById('postMediaUrl').value = url;
+                    document.getElementById('postFileStatus').style.display = 'block';
+                    document.getElementById('postFileStatus').innerHTML = 'Audio enregistré <i class="fa-solid fa-check" style="color:#23a559"></i>';
+                } else if (source === 'comment') {
+                    // Pour commentaire (on l'injecte dans l'input pour l'instant ou on envoie direct ?)
+                    // Le prompt dit "zone de saisie", on va l'injecter comme un lien ou envoyer direct ?
+                    // Simplifions : on envoie direct le commentaire audio
+                    submitAudioComment(url);
+                }
+            }
+        };
+    }
+}
+
+function submitAudioComment(url) {
+    if(!currentDetailPostId) return;
+    const sel = document.getElementById('feedCharSelector');
+    if(sel.options.length === 0) return alert("Perso requis");
+    
+    // On crée un petit lecteur HTML pour le contenu
+    const content = `<audio controls src="${url}"></audio>`;
+    
+    socket.emit('post_comment', { 
+        postId: currentDetailPostId, 
+        comment: { 
+            authorName: sel.options[sel.selectedIndex].value, 
+            authorAvatar: sel.options[sel.selectedIndex].dataset.avatar, 
+            content: content, 
+            date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), 
+            ownerId: PLAYER_ID 
+        } 
+    });
+}
+
 
 // --- UI & LOGIN / COMPTE ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
@@ -154,6 +228,10 @@ socket.on('login_success', (data) => {
     socket.emit('request_initial_data', PLAYER_ID);
     socket.emit('request_dm_contacts', USERNAME);
     
+    // Restauration Onglet
+    const lastTab = localStorage.getItem('last_tab');
+    if (lastTab) switchView(lastTab);
+
     const savedRoom = localStorage.getItem('saved_room_id');
     if (savedRoom) joinRoom(savedRoom);
     else joinRoom('global');
@@ -457,7 +535,6 @@ function selectCharacter(charId) {
 
     if(currentSelectedChar) localStorage.setItem('saved_char_id', currentSelectedChar._id);
 
-    // Highlight visual
     document.querySelectorAll('.avatar-choice').forEach(el => el.classList.remove('selected'));
     const selectedEl = document.getElementById(`avatar-opt-${charId}`);
     if(selectedEl) {
@@ -498,15 +575,12 @@ function updateUI() {
     }
 
     myCharacters.forEach(char => {
-        // Sidebar List
         list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')"><i class="fa-solid fa-gear"></i></button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button></div></div>`;
         
-        // Horizontal Bar
         barContainer.innerHTML += `<img src="${char.avatar}" 
             id="avatar-opt-${char._id}" class="avatar-choice" 
             title="${char.name}" onclick="selectCharacter('${char._id}')">`;
         
-        // Feed Select
         const opt = document.createElement('option');
         opt.value = char.name; opt.text = char.name; opt.dataset.id = char._id; opt.dataset.color = char.color; opt.dataset.avatar = char.avatar; opt.dataset.role = char.role;
         selectFeed.appendChild(opt); 
@@ -629,15 +703,26 @@ function displayMessage(msg, isDm = false) {
     else if (msg.type === "video") {
         const ytId = getYoutubeId(msg.content);
         if (ytId) contentHTML = `<iframe class="video-frame" src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe>`;
-        else if (msg.content.match(/\.(mp4|webm|ogg)$/i)) contentHTML = `<video class="video-direct" controls><source src="${msg.content}"></video>`;
+        else if (msg.content.match(/\.(mp4|webm|ogg)$/i) || msg.content.includes('/video/upload')) contentHTML = `<video class="video-direct" controls><source src="${msg.content}"></video>`;
         else contentHTML = `<div class="text-body"><a href="${msg.content}" target="_blank" style="color:var(--accent)">[Lien Vidéo] ${msg.content}</a></div>`;
-    } else contentHTML = `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
+    } 
+    else if (msg.type === "audio") {
+        contentHTML = `<audio controls src="${msg.content}"></audio>`;
+    }
+    else contentHTML = `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
+    
     const editedTag = msg.edited ? '<span class="edited-tag">(modifié)</span>' : '';
     const avatarClick = isDm ? "" : `onclick="openProfile('${senderName.replace(/'/g, "\\'")}')"`;
     div.innerHTML = `${replyHTML}<div class="msg-actions">${actionsHTML}</div><div style="position:relative; ${spacingStyle}"><img src="${senderAvatar}" class="avatar-img" ${avatarClick}><div style="margin-left: 55px;"><div class="char-header"><span class="char-name" style="color: ${senderColor}" ${avatarClick}>${senderName}</span><span class="char-role">${senderRole || ""}</span><span class="timestamp">${msg.date} ${editedTag}</span></div>${contentHTML}</div></div>`;
     document.getElementById('messages').appendChild(div);
 }
-function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
+
+function scrollToBottom() { 
+    const d = document.getElementById('messages'); 
+    // Scroll intelligent : on descend même si le typing indicator prend de la place
+    // On peut utiliser scrollIntoView sur le dernier message, ou simplement :
+    d.scrollTop = d.scrollHeight; 
+}
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
 
 // --- SOCIAL FEED LOGIC ---
@@ -737,7 +822,6 @@ socket.on('feed_data', (posts) => {
 
 // LOGIQUE NOTIFICATION NOUVEAU POST
 socket.on('new_post', (post) => {
-    // Si on n'est pas sur le feed, allumer l'onglet
     if(currentView !== 'feed') {
         document.getElementById('btn-view-feed').classList.add('nav-notify');
     }
@@ -780,13 +864,10 @@ function createPostElement(post) {
     const div = document.createElement('div');
     div.className = 'post-card'; div.id = `post-${post._id}`;
     
-    // Check highlight (si le post est plus récent que la dernière visite)
     const lastVisit = parseInt(localStorage.getItem('last_feed_visit') || '0');
     const postTime = new Date(post.timestamp).getTime();
     
     if (postTime > lastVisit && currentView === 'feed') {
-        // Cas rare où on est sur le feed et on reçoit en direct, on peut décider de surligner ou non.
-        // Ici on surligne.
          div.classList.add('post-highlight');
     } else if (postTime > lastVisit) {
         div.classList.add('post-highlight');
@@ -800,7 +881,7 @@ function createPostElement(post) {
 
     let mediaHTML = "";
     if(post.mediaUrl) {
-        if(post.mediaType === 'video') {
+        if(post.mediaType === 'video' || post.mediaUrl.includes('/video/upload')) {
              const ytId = getYoutubeId(post.mediaUrl);
              if(ytId) mediaHTML = `<iframe class="post-media" src="https://www.youtube.com/embed/${ytId}" frameborder="0" allowfullscreen></iframe>`;
              else mediaHTML = `<video class="post-media" controls src="${post.mediaUrl}"></video>`;
@@ -809,11 +890,16 @@ function createPostElement(post) {
         }
     }
 
+    // Gestion Audio dans le Feed (si c'est ce type de média)
+    // On suppose que si c'est pas image/video, c'est peut-être audio si mp3 ou webm audio, 
+    // mais Cloudinary resource_type video gère l'audio.
+    // Ajoutons un check simple pour l'audio si nécessaire, ou laissons le lecteur video (qui joue l'audio)
+
     const commentsHTML = generateCommentsHTML(post.comments, post._id);
 
     div.innerHTML = `
         ${deleteBtn}
-        <div class="post-header" onclick="openProfile('${post.authorName.replace(/'/g, "\\'")}')">
+        <div class="post-header" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
             <img src="${post.authorAvatar}" class="post-avatar">
             <div class="post-meta">
                 <span class="post-author">${post.authorName}</span>
