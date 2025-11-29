@@ -5,14 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ConvSmos</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- FONT AWESOME CDN -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="icone.png">
 </head>
 <body>
 
-    <!-- TOP NAVIGATION BAR -->
     <nav id="top-nav">
         <button class="nav-btn active" id="btn-view-chat" onclick="switchView('chat')"><i class="fa-solid fa-comments"></i> Discussions</button>
         <button class="nav-btn" id="btn-view-feed" onclick="switchView('feed')"><i class="fa-solid fa-bullhorn"></i> Posts <span id="feed-notif-dot" class="hidden" style="color:#da373c; font-size:1.5em; vertical-align:middle;">•</span></button>
@@ -20,7 +18,6 @@
 
     <div id="mobile-overlay" onclick="toggleSidebar()"></div>
 
-    <!-- Modales -->
     <div id="login-modal" class="modal-overlay hidden">
         <div class="modal-box" style="position: relative;">
             <button onclick="closeLoginModal()" style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: #aaa; cursor: pointer; font-size: 1.2rem;"><i class="fa-solid fa-xmark"></i></button>
@@ -119,7 +116,6 @@
         <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
     </button>
 
-    <!-- MAIN VIEW CONTAINER -->
     <div id="main-view-wrapper">
         
         <div id="view-chat" class="view-section active">
@@ -208,7 +204,17 @@
                     </div>
                     
                     <div id="input-wrapper">
-                        <div id="char-bar" class="hidden"></div>
+                        <div id="char-dropdown-wrapper" class="custom-select-wrapper hidden">
+                            <div class="custom-select-trigger" onclick="toggleCharDropdown()">
+                                <div class="trigger-content">
+                                    <img src="" id="selected-char-avatar" class="mini-avatar-trigger">
+                                    <span id="selected-char-name">Sélectionner</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-down arrow"></i>
+                            </div>
+                            <div class="custom-options" id="char-dropdown-options">
+                                </div>
+                        </div>
 
                         <div id="context-bar" class="hidden">
                             <div class="context-info">
@@ -243,7 +249,14 @@
                         <select id="feedCharSelector" class="feed-select"></select>
                     </div>
                     <textarea id="postContent" placeholder="Quoi de neuf dans le RP Verse ?" rows="3"></textarea>
-                    <input type="text" id="postMediaUrl" placeholder="URL Image/Vidéo (Facultatif)" class="modal-input" style="margin-bottom:10px;">
+                    
+                    <label class="file-upload-label full-width" style="margin-bottom:10px;">
+                        <span><i class="fa-solid fa-cloud-arrow-up"></i> Média (Img/Vidéo)</span>
+                        <input type="file" id="postMediaFile" accept="image/*,video/*" onchange="previewPostFile()">
+                    </label>
+                    <input type="hidden" id="postMediaUrl">
+                    <p id="postFileStatus" style="font-size:0.8em; color:#aaa; margin:0; display:none;">Fichier prêt.</p>
+
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
                         <span id="char-count" style="color:#666; font-size:0.8em;">0/1000</span>
                         <button class="btn-primary" onclick="submitPost()">Publier</button>
@@ -259,7 +272,3 @@
     <script src="app.js"></script> 
 </body>
 </html>
-
-
-
-
