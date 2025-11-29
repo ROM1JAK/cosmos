@@ -25,13 +25,13 @@ const User = mongoose.model('User', UserSchema);
 
 const CharacterSchema = new mongoose.Schema({
     name: String, color: String, avatar: String, role: String, ownerId: String, ownerUsername: String, description: String,
-    followers: [String] // Liste des UserID (secretCode) qui suivent ce perso
+    followers: [String] // IDs des joueurs abonnés
 });
 const Character = mongoose.model('Character', CharacterSchema);
 
-// Nouveau Schema Notification
+// Schema Notification
 const NotificationSchema = new mongoose.Schema({
-    recipientId: String, // Le joueur qui reçoit la notif
+    recipientId: String,
     type: String, // 'like', 'comment', 'follow'
     message: String,
     read: { type: Boolean, default: false },
@@ -81,16 +81,6 @@ async function createNotification(recipientId, type, message) {
     if(!recipientId) return;
     const notif = new Notification({ recipientId, type, message });
     await notif.save();
-    
-    // Envoyer en temps réel si le joueur est connecté
-    const socketIds = Object.keys(onlineUsers).filter(id => {
-        // Attention: onlineUsers map socketId -> username. 
-        // Il faut trouver le socket via le username n'est pas fiable si multi-compte, 
-        // mais ici on n'a pas le userId dans onlineUsers facilement.
-        // Simplification: On émet à tout le monde et le client filtre, ou on améliore onlineUsers.
-        // Pour ce projet, on va émettre un event global 'new_notification' avec le recipientId
-        return true; 
-    });
     io.emit('new_notification', { recipientId, notif });
 }
 
@@ -162,14 +152,11 @@ io.on('connection', async (socket) => {
       if(userId) {
           const myChars = await Character.find({ ownerId: userId });
           socket.emit('my_chars_data', myChars);
-          
-          // Charger notifications
           const notifs = await Notification.find({ recipientId: userId }).sort({ timestamp: -1 }).limit(20);
           socket.emit('notifications_data', notifs);
       }
   });
 
-  // --- NOTIFICATIONS ---
   socket.on('mark_notifs_read', async (userId) => {
       await Notification.updateMany({ recipientId: userId, read: false }, { read: true });
   });
@@ -183,17 +170,15 @@ io.on('connection', async (socket) => {
   socket.on('follow_char', async ({ charId, followerId, followerName }) => {
       const char = await Character.findById(charId);
       if(!char) return;
-      
-      // Toggle follow
       const index = char.followers.indexOf(followerId);
       if (index === -1) {
           char.followers.push(followerId);
-          await createNotification(char.ownerId, 'follow', `${followerName} s'est abonné à ${char.name} !`);
+          if (char.ownerId !== followerId) await createNotification(char.ownerId, 'follow', `${followerName} suit ${char.name}.`);
       } else {
           char.followers.splice(index, 1);
       }
       await char.save();
-      socket.emit('char_profile_updated', char); // Pour mettre à jour l'UI du profil ouvert
+      socket.emit('char_profile_updated', char);
   });
 
   socket.on('create_char', async (data) => {
@@ -359,10 +344,7 @@ io.on('connection', async (socket) => {
       const index = post.likes.indexOf(userId);
       if(index === -1) {
           post.likes.push(userId);
-          // Notification
-          if(post.ownerId !== userId) {
-              await createNotification(post.ownerId, 'like', `${username} a aimé votre post.`);
-          }
+          if(post.ownerId !== userId) await createNotification(post.ownerId, 'like', `${username} a aimé votre post.`);
       }
       else post.likes.splice(index, 1);
       await post.save();
@@ -376,11 +358,7 @@ io.on('connection', async (socket) => {
       post.comments.push(comment);
       await post.save();
       io.emit('post_updated', post);
-
-      // Notification
-      if(post.ownerId !== comment.ownerId) {
-          await createNotification(post.ownerId, 'comment', `${comment.authorName} a commenté votre post.`);
-      }
+      if(post.ownerId !== comment.ownerId) await createNotification(post.ownerId, 'comment', `${comment.authorName} a commenté votre post.`);
   });
 
   socket.on('delete_comment', async ({ postId, commentId }) => {
