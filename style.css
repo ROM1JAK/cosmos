@@ -14,12 +14,23 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
     background: rgba(234, 179, 8, 0.15);
 }
 
-/* TOP NAV */
+/* TOP NAV & NOTIFICATIONS */
 #top-nav { height: var(--nav-height); background: #1e1f22; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #111; gap: 20px; flex-shrink: 0; z-index: 101; }
 .nav-btn { background: transparent; border: none; color: var(--text-muted); font-size: 1rem; font-weight: 600; padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; transition: 0.2s; }
 .nav-btn:hover { color: white; }
 .nav-btn.active { color: white; border-bottom: 2px solid var(--accent); }
 .nav-btn i { margin-right: 8px; font-size: 1.1em; } 
+
+/* Notification Rouge Clignotante */
+.nav-btn.nav-notify {
+    color: #ff4444 !important;
+    animation: notifyPulse 2s infinite;
+}
+@keyframes notifyPulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
 
 /* MAIN VIEW WRAPPER */
 #main-view-wrapper { flex: 1; position: relative; overflow: hidden; }
@@ -120,6 +131,11 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .post-card:hover {
     background-color: #32343a;
     border-color: #444;
+}
+/* Surbrillance nouveau post */
+.post-card.post-highlight {
+    border: 2px solid #ffd700;
+    background: rgba(255, 215, 0, 0.05);
 }
 
 .post-header { display: flex; align-items: center; margin-bottom: 10px; }
@@ -227,32 +243,36 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 /* INPUT & CONTEXT */
 #input-wrapper { background: var(--bg-primary); padding: 0 20px 20px; flex-shrink: 0; }
 
-/* NOUVEAU STYLE MENU DÉROULANT */
-.custom-select-wrapper { position: relative; user-select: none; margin-bottom: 10px; width: fit-content; min-width: 200px; }
-.custom-select-trigger {
-    background: #2b2d31; color: white; padding: 8px 12px; border-radius: 4px; 
-    display: flex; align-items: center; justify-content: space-between; cursor: pointer; border: 1px solid #222; transition: 0.2s;
-}
-.custom-select-trigger:hover { background: #35373c; }
-.trigger-content { display: flex; align-items: center; gap: 10px; }
-.mini-avatar-trigger { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
-.arrow { font-size: 0.8em; color: var(--text-muted); transition: transform 0.2s; }
-.custom-select-wrapper.open .arrow { transform: rotate(180deg); }
+/* NOUVELLE BARRE PERSONNAGE HORIZONTALE */
+#char-selector-wrapper { background: #2b2d31; border-radius: 8px; margin-bottom: 10px; border: 1px solid #222; overflow: hidden; }
+#char-bar-actions { display: flex; justify-content: center; background: #26272d; border-bottom: 1px solid #222; }
+#btn-toggle-chars { width: 100%; background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 2px; font-size: 0.8rem; transition: color 0.2s; }
+#btn-toggle-chars:hover { color: white; }
 
-.custom-options {
-    position: absolute; bottom: 110%; left: 0; width: 100%; background: #2b2d31; 
-    border-radius: 4px; border: 1px solid #222; overflow: hidden; 
-    max-height: 0; opacity: 0; transition: all 0.3s ease; box-shadow: 0 -5px 15px rgba(0,0,0,0.3); z-index: 50;
+.char-bar-content { 
+    display: flex; gap: 10px; padding: 10px; overflow-x: auto; 
+    transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+    max-height: 100px; opacity: 1;
 }
-.custom-select-wrapper.open .custom-options { max-height: 300px; opacity: 1; overflow-y: auto; }
+.char-bar-content.hidden-bar { max-height: 0; opacity: 0; padding: 0 10px; overflow: hidden; }
 
-.custom-option { 
-    padding: 10px; display: flex; align-items: center; gap: 10px; cursor: pointer; 
-    border-bottom: 1px solid #35373c; transition: 0.2s; color: var(--text-normal);
+/* Custom Scrollbar for char bar */
+.char-bar-content::-webkit-scrollbar { height: 6px; }
+.char-bar-content::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+
+.avatar-choice {
+    width: 48px; height: 48px; min-width: 48px;
+    border-radius: 50%; border: 3px solid transparent; 
+    cursor: pointer; opacity: 0.6; transition: all 0.2s;
+    object-fit: cover;
 }
-.custom-option:last-child { border-bottom: none; }
-.custom-option:hover { background: #404249; color: white; }
-.custom-option.selected { background: #383a40; color: white; }
+.avatar-choice:hover { opacity: 1; }
+.avatar-choice.selected {
+    opacity: 1;
+    border-color: var(--accent);
+    transform: scale(1.1);
+    box-shadow: 0 0 10px var(--accent);
+}
 
 /* RESTE DU CHAT INPUT */
 #context-bar { background: #2b2d31; color: var(--text-muted); padding: 8px 15px; border-radius: 8px 8px 0 0; font-size: 0.85rem; display: none; justify-content: space-between; align-items: center; border-bottom: 1px solid #383a40; margin-bottom: -5px; z-index: 2; position: relative; }
