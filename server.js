@@ -24,20 +24,9 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 
 const CharacterSchema = new mongoose.Schema({
-    name: String, color: String, avatar: String, role: String, ownerId: String, ownerUsername: String, description: String,
-    followers: [String] // IDs des joueurs abonnés
+    name: String, color: String, avatar: String, role: String, ownerId: String, ownerUsername: String, description: String 
 });
 const Character = mongoose.model('Character', CharacterSchema);
-
-// Schema Notification
-const NotificationSchema = new mongoose.Schema({
-    recipientId: String,
-    type: String, // 'like', 'comment', 'follow'
-    message: String,
-    read: { type: Boolean, default: false },
-    timestamp: { type: Date, default: Date.now }
-});
-const Notification = mongoose.model('Notification', NotificationSchema);
 
 const MessageSchema = new mongoose.Schema({
     content: String, type: String,
@@ -62,7 +51,7 @@ const PostSchema = new mongoose.Schema({
     authorName: String, authorAvatar: String, authorRole: String, authorColor: String, ownerId: String,
     likes: [String],
     comments: [{
-        id: String, authorName: String, authorAvatar: String, content: String, ownerId: String, date: String, mediaUrl: String, mediaType: String
+        id: String, authorName: String, authorAvatar: String, content: String, ownerId: String, date: String
     }],
     date: String,
     timestamp: { type: Date, default: Date.now }
@@ -74,14 +63,6 @@ let onlineUsers = {};
 function broadcastUserList() {
     const uniqueNames = [...new Set(Object.values(onlineUsers))];
     io.emit('update_user_list', uniqueNames);
-}
-
-// Helper Notification
-async function createNotification(recipientId, type, message) {
-    if(!recipientId) return;
-    const notif = new Notification({ recipientId, type, message });
-    await notif.save();
-    io.emit('new_notification', { recipientId, notif });
 }
 
 io.on('connection', async (socket) => {
@@ -152,38 +133,20 @@ io.on('connection', async (socket) => {
       if(userId) {
           const myChars = await Character.find({ ownerId: userId });
           socket.emit('my_chars_data', myChars);
-          const notifs = await Notification.find({ recipientId: userId }).sort({ timestamp: -1 }).limit(20);
-          socket.emit('notifications_data', notifs);
       }
   });
 
-  socket.on('mark_notifs_read', async (userId) => {
-      await Notification.updateMany({ recipientId: userId, read: false }, { read: true });
-  });
-
-  // --- PERSONNAGES & FOLLOW ---
+  // --- PERSONNAGES ---
   socket.on('get_char_profile', async (charName) => {
       const char = await Character.findOne({ name: charName }).sort({_id: -1});
       if(char) socket.emit('char_profile_data', char);
   });
 
-  socket.on('follow_char', async ({ charId, followerId, followerName }) => {
-      const char = await Character.findById(charId);
-      if(!char) return;
-      const index = char.followers.indexOf(followerId);
-      if (index === -1) {
-          char.followers.push(followerId);
-          if (char.ownerId !== followerId) await createNotification(char.ownerId, 'follow', `${followerName} suit ${char.name}.`);
-      } else {
-          char.followers.splice(index, 1);
-      }
-      await char.save();
-      socket.emit('char_profile_updated', char);
-  });
-
   socket.on('create_char', async (data) => {
+    // SÉCURITÉ : Limite de 20 personnages
     const count = await Character.countDocuments({ ownerId: data.ownerId });
     if (count >= 20) return; 
+
     const user = await User.findOne({ secretCode: data.ownerId });
     if (user) data.ownerUsername = user.username;
     const newChar = new Character(data);
@@ -203,6 +166,7 @@ io.on('connection', async (socket) => {
           { authorName: data.originalName, ownerId: data.ownerId },
           { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor }}
       );
+
       const myChars = await Character.find({ ownerId: data.ownerId });
       socket.emit('my_chars_data', myChars);
       io.emit('force_history_refresh', { roomId: data.currentRoomId });
@@ -233,12 +197,20 @@ io.on('connection', async (socket) => {
   socket.on('request_history', async (data) => {
       const roomId = (typeof data === 'object') ? data.roomId : data;
       const requesterId = (typeof data === 'object') ? data.userId : null;
+
       const query = { roomId: roomId };
+      
       if (requesterId) {
-          query.$or = [{ targetName: { $exists: false } }, { targetName: "" }, { ownerId: requesterId }, { targetOwnerId: requesterId }];
+          query.$or = [
+              { targetName: { $exists: false } }, 
+              { targetName: "" },                
+              { ownerId: requesterId },          
+              { targetOwnerId: requesterId }     
+          ];
       } else {
           query.$or = [{ targetName: { $exists: false } }, { targetName: "" }];
       }
+
       const history = await Message.find(query).sort({ timestamp: 1 }).limit(200);
       socket.emit('history_data', history);
   });
@@ -251,6 +223,7 @@ io.on('connection', async (socket) => {
                { senderName: targetUsername, targetName: myUsername }
            ]
       }).sort({ timestamp: 1 });
+
       socket.emit('dm_history_data', { target: targetUsername, history: messages });
   });
 
@@ -259,19 +232,30 @@ io.on('connection', async (socket) => {
           roomId: 'dm',
           $or: [{ senderName: username }, { targetName: username }]
       });
+      
       const contacts = new Set();
       messages.forEach(msg => {
           const other = (msg.senderName === username) ? msg.targetName : msg.senderName;
           if(other) contacts.add(other);
       });
+      
       socket.emit('dm_contacts_data', Array.from(contacts));
   });
 
   socket.on('dm_delete_history', async ({ userId, targetName }) => {
       const targetChar = await Character.findOne({ name: targetName });
-      let query = { $or: [{ ownerId: userId, targetName: targetName }] };
-      if(targetChar) query.$or.push({ ownerId: targetChar.ownerId, targetOwnerId: userId });
-      else query.$or.push({ targetName: targetName, ownerId: userId }); 
+      let query = {
+          $or: [
+              { ownerId: userId, targetName: targetName },
+          ]
+      };
+      
+      if(targetChar) {
+          query.$or.push({ ownerId: targetChar.ownerId, targetOwnerId: userId });
+      } else {
+           query.$or.push({ targetName: targetName, ownerId: userId }); 
+      }
+      
       await Message.deleteMany(query);
       io.emit('force_history_refresh', { roomId: 'global' }); 
   });
@@ -280,19 +264,32 @@ io.on('connection', async (socket) => {
   socket.on('send_dm', async (data) => {
       const senderUser = await User.findOne({ username: data.sender });
       const targetUser = await User.findOne({ username: data.target });
+
       const newMessage = new Message({
-          content: data.content, type: data.type, senderName: data.sender,
+          content: data.content,
+          type: data.type,
+          senderName: data.sender,
           ownerId: senderUser ? senderUser.secretCode : null,
-          targetName: data.target, targetOwnerId: targetUser ? targetUser.secretCode : null,
-          roomId: 'dm', date: data.date
+          targetName: data.target,
+          targetOwnerId: targetUser ? targetUser.secretCode : null,
+          roomId: 'dm', 
+          date: data.date
       });
+      
       const savedMsg = await newMessage.save();
+
       const payload = {
-          _id: savedMsg._id, sender: savedMsg.senderName, target: savedMsg.targetName,
-          content: savedMsg.content, type: savedMsg.type, date: savedMsg.date
+          _id: savedMsg._id,
+          sender: savedMsg.senderName,
+          target: savedMsg.targetName,
+          content: savedMsg.content,
+          type: savedMsg.type,
+          date: savedMsg.date
       };
+
       const targetSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.target);
       const senderSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.sender);
+      
       [...new Set([...targetSockets, ...senderSockets])].forEach(sockId => {
           io.to(sockId).emit('receive_dm', payload);
       });
@@ -300,14 +297,19 @@ io.on('connection', async (socket) => {
 
   socket.on('message_rp', async (msgData) => {
     if (!msgData.roomId) return; 
+    
     if (msgData.senderName === "Narrateur") {
         const user = await User.findOne({ secretCode: msgData.ownerId });
         if (!user || !user.isAdmin) return;
     }
+
     if (msgData.targetName) {
         const targetChar = await Character.findOne({ name: msgData.targetName }).sort({_id: -1});
-        if (targetChar) { msgData.targetOwnerId = targetChar.ownerId; }
+        if (targetChar) {
+            msgData.targetOwnerId = targetChar.ownerId;
+        }
     }
+
     const newMessage = new Message(msgData);
     const savedMsg = await newMessage.save();
     io.to(msgData.roomId).emit('message_rp', savedMsg); 
@@ -338,15 +340,14 @@ io.on('connection', async (socket) => {
       io.emit('post_deleted', postId);
   });
 
-  socket.on('like_post', async ({ postId, userId, username }) => {
+  socket.on('like_post', async ({ postId, userId }) => {
       const post = await Post.findById(postId);
       if(!post) return;
+      
       const index = post.likes.indexOf(userId);
-      if(index === -1) {
-          post.likes.push(userId);
-          if(post.ownerId !== userId) await createNotification(post.ownerId, 'like', `${username} a aimé votre post.`);
-      }
+      if(index === -1) post.likes.push(userId);
       else post.likes.splice(index, 1);
+      
       await post.save();
       io.emit('post_updated', post);
   });
@@ -358,7 +359,6 @@ io.on('connection', async (socket) => {
       post.comments.push(comment);
       await post.save();
       io.emit('post_updated', post);
-      if(post.ownerId !== comment.ownerId) await createNotification(post.ownerId, 'comment', `${comment.authorName} a commenté votre post.`);
   });
 
   socket.on('delete_comment', async ({ postId, commentId }) => {
