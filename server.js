@@ -128,7 +128,6 @@ io.on('connection', async (socket) => {
 
   socket.on('request_initial_data', async (userId) => {
       socket.emit('rooms_data', await Room.find());
-      // Charger les posts récents
       const posts = await Post.find().sort({ timestamp: -1 }).limit(50);
       socket.emit('feed_data', posts);
       
@@ -160,7 +159,6 @@ io.on('connection', async (socket) => {
           { senderName: data.originalName, ownerId: data.ownerId },
           { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }}
       );
-      // Mettre à jour les posts aussi
       await Post.updateMany(
           { authorName: data.originalName, ownerId: data.ownerId },
           { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor }}
@@ -169,7 +167,7 @@ io.on('connection', async (socket) => {
       const myChars = await Character.find({ ownerId: data.ownerId });
       socket.emit('my_chars_data', myChars);
       io.emit('force_history_refresh', { roomId: data.currentRoomId });
-      io.emit('reload_posts'); // Refresh feed
+      io.emit('reload_posts'); 
   });
 
   socket.on('delete_char', async (charId) => {
@@ -214,7 +212,6 @@ io.on('connection', async (socket) => {
       socket.emit('history_data', history);
   });
 
-  // --- CORRECTIF MP : Gestion de l'historique et des contacts ---
   socket.on('request_dm_history', async ({ myUsername, targetUsername }) => {
       const messages = await Message.find({
            roomId: 'dm',
@@ -241,7 +238,6 @@ io.on('connection', async (socket) => {
       
       socket.emit('dm_contacts_data', Array.from(contacts));
   });
-  // -------------------------------------------------------------
 
   socket.on('dm_delete_history', async ({ userId, targetName }) => {
       const targetChar = await Character.findOne({ name: targetName });
