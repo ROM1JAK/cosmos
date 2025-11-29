@@ -16,7 +16,7 @@ let firstUnreadMap = {};
 let currentView = 'chat'; 
 let lastFeedVisit = 0; 
 let notificationsEnabled = true; 
-let currentSelectedChar = null; // State pour le perso sélectionné
+let currentSelectedChar = null; 
 
 // --- NAVIGATION ---
 function switchView(view) {
@@ -46,7 +46,10 @@ function toggleNotifications() {
     notificationsEnabled = !notificationsEnabled;
     const btn = document.getElementById('btn-notif-toggle');
     if(btn) {
-        btn.textContent = notificationsEnabled ? "🔔 Notifications : ON" : "🔕 Notifications : OFF";
+        // Remplacement Emoji -> Icone
+        const icon = notificationsEnabled ? '<i class="fa-solid fa-bell"></i>' : '<i class="fa-solid fa-bell-slash"></i>';
+        const text = notificationsEnabled ? "Notifications : ON" : "Notifications : OFF";
+        btn.innerHTML = `${icon} ${text}`;
         btn.style.opacity = notificationsEnabled ? "1" : "0.5";
     }
 }
@@ -82,7 +85,11 @@ function openUserSettingsModal() {
 function closeUserSettingsModal() { document.getElementById('user-settings-modal').classList.add('hidden'); }
 function toggleSecretVisibility() {
     const input = document.getElementById('settingsCodeInput');
-    input.type = (input.type === "password") ? "text" : "password";
+    const isPassword = input.type === "password";
+    input.type = isPassword ? "text" : "password";
+    // Toggle Eye Icon
+    const btn = document.querySelector('.btn-eye');
+    btn.innerHTML = isPassword ? '<i class="fa-solid fa-eye-slash"></i>' : '<i class="fa-solid fa-eye"></i>';
 }
 
 function submitUsernameChange() {
@@ -103,7 +110,8 @@ socket.on('login_success', (data) => {
     IS_ADMIN = data.isAdmin;
     document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`;
     document.getElementById('player-id-display').style.color = IS_ADMIN ? "#da373c" : "var(--accent)";
-    document.getElementById('btn-account-main').textContent = "👤 Mon Profil";
+    // Remplacement Emoji -> Icone
+    document.getElementById('btn-account-main').innerHTML = '<i class="fa-solid fa-user"></i> Mon Profil';
     document.getElementById('btn-account-main').style.background = "#2b2d31"; 
     closeLoginModal();
     socket.emit('request_initial_data', PLAYER_ID);
@@ -213,7 +221,7 @@ function joinRoom(roomId) {
     document.getElementById('currentRoomName').style.color = "white";
     document.getElementById('messages').innerHTML = ""; 
     document.getElementById('typing-indicator').classList.add('hidden');
-    document.getElementById('char-bar').classList.remove('hidden'); // Afficher avatars
+    document.getElementById('char-bar').classList.remove('hidden'); 
     document.getElementById('dm-header-actions').classList.add('hidden');
 
     socket.emit('request_history', currentRoomId);
@@ -229,7 +237,8 @@ function updateRoomListUI() {
     const list = document.getElementById('roomList');
     list.innerHTML = `<div class="room-item ${(currentRoomId === 'global' && !currentDmTarget)?'active':''} ${unreadRooms.has('global')?'unread':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
     allRooms.forEach(room => {
-        const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')">✕</button>` : '';
+        // Remplacement Emoji -> Icone
+        const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
         const isUnread = unreadRooms.has(room._id) ? 'unread' : '';
         const isActive = (String(currentRoomId) === String(room._id) && !currentDmTarget) ? 'active' : '';
         list.innerHTML += `<div class="room-item ${isActive} ${isUnread}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
@@ -253,7 +262,7 @@ function openDm(targetUsername) {
     document.getElementById('currentRoomName').style.color = "#7d5bc4"; 
     document.getElementById('messages').innerHTML = "";
     document.getElementById('typing-indicator').classList.add('hidden');
-    document.getElementById('char-bar').classList.add('hidden'); // Cacher avatars en MP
+    document.getElementById('char-bar').classList.add('hidden'); 
     document.getElementById('dm-header-actions').classList.remove('hidden'); 
     
     cancelContext();
@@ -359,7 +368,6 @@ function selectCharacter(charId) {
     if (charId === 'narrateur') currentSelectedChar = narrateur;
     else currentSelectedChar = myCharacters.find(c => c._id === charId);
 
-    // Update Visuel
     document.querySelectorAll('.char-avatar-option').forEach(el => el.classList.remove('selected'));
     const selectedEl = document.getElementById(`avatar-opt-${charId}`);
     if(selectedEl) selectedEl.classList.add('selected');
@@ -372,7 +380,6 @@ function updateUI() {
 
     list.innerHTML = ""; charBar.innerHTML = ""; selectFeed.innerHTML = "";
 
-    // Narrateur (Admin)
     if(IS_ADMIN) {
         const narrHtml = `<div id="avatar-opt-narrateur" class="char-avatar-option" onclick="selectCharacter('narrateur')" title="Narrateur"><img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png"></div>`;
         charBar.innerHTML += narrHtml;
@@ -381,24 +388,20 @@ function updateUI() {
     }
 
     myCharacters.forEach(char => {
-        // Sidebar Cards
-        list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')">⚙️</button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;">✕</button></div></div>`;
+        // Remplacement Emoji -> Icone
+        list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')"><i class="fa-solid fa-gear"></i></button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button></div></div>`;
         
-        // Chat Avatar Bar
         charBar.innerHTML += `<div id="avatar-opt-${char._id}" class="char-avatar-option" onclick="selectCharacter('${char._id}')" title="${char.name}"><img src="${char.avatar}"></div>`;
         
-        // Feed Select (Gardé dropdown)
         const opt = document.createElement('option');
         opt.value = char.name; opt.text = char.name; opt.dataset.id = char._id; opt.dataset.color = char.color; opt.dataset.avatar = char.avatar; opt.dataset.role = char.role;
         selectFeed.appendChild(opt); 
     });
 
-    // Auto-select first char if none selected
     if (!currentSelectedChar) {
         if(myCharacters.length > 0) selectCharacter(myCharacters[0]._id);
         else if(IS_ADMIN) selectCharacter('narrateur');
     } else {
-        // Re-apply visual selection
         selectCharacter(currentSelectedChar._id);
     }
 }
@@ -413,7 +416,9 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
     document.getElementById('profile-modal').classList.remove('hidden');
+    // Remplacement Emoji -> Icone
     const btnDm = document.getElementById('btn-dm-profile');
+    btnDm.innerHTML = `<i class="fa-solid fa-envelope"></i> Envoyer un MP`;
     btnDm.onclick = function() { closeProfileModal(); if (char.ownerUsername) openDm(char.ownerUsername); };
 });
 
@@ -425,8 +430,9 @@ function setContext(type, data) {
     const text = document.getElementById('context-text');
     bar.className = 'visible';
     document.getElementById('txtInput').focus();
-    if (type === 'reply') { icon.textContent = "↩️"; text.innerHTML = `Répondre à <strong>${data.author}</strong>`; }
-    else if (type === 'edit') { icon.textContent = "✏️"; text.innerHTML = `Modifier message`; document.getElementById('txtInput').value = data.content; }
+    // Remplacement Emoji -> Icone
+    if (type === 'reply') { icon.innerHTML = '<i class="fa-solid fa-reply"></i>'; text.innerHTML = `Répondre à <strong>${data.author}</strong>`; }
+    else if (type === 'edit') { icon.innerHTML = '<i class="fa-solid fa-pen"></i>'; text.innerHTML = `Modifier message`; document.getElementById('txtInput').value = data.content; }
 }
 function cancelContext() { currentContext = null; document.getElementById('context-bar').className = 'hidden'; document.getElementById('txtInput').value = ""; }
 function triggerReply(id, author, content) { setContext('reply', { id, author, content }); }
@@ -500,9 +506,10 @@ function displayMessage(msg, isDm = false) {
 
     let actionsHTML = "";
     if (!isDm) {
-         actionsHTML += `<button class="action-btn" onclick="triggerReply('${msg._id}', '${senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre">↩️</button>`;
-         if (msg.type === 'text' && canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier">✏️</button>`;
-         if (canDelete) actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;">🗑️</button>`;
+         // Remplacement Emoji -> Icone
+         actionsHTML += `<button class="action-btn" onclick="triggerReply('${msg._id}', '${senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre"><i class="fa-solid fa-reply"></i></button>`;
+         if (msg.type === 'text' && canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier"><i class="fa-solid fa-pen"></i></button>`;
+         if (canDelete) actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button>`;
     }
     let replyHTML = "", spacingStyle = "";
     if (msg.replyTo && msg.replyTo.author) { spacingStyle = "margin-top: 15px;"; replyHTML = `<div class="reply-spine"></div><div class="reply-context-line" style="margin-left: 55px;"><span class="reply-name">@${msg.replyTo.author}</span><span class="reply-text">${msg.replyTo.content}</span></div>`; }
@@ -605,7 +612,7 @@ socket.on('post_updated', (post) => {
     if(existing) existing.replaceWith(createPostElement(post));
     if(currentDetailPostId === post._id) {
         const detailLikeBtn = document.querySelector('#post-detail-content .action-item');
-        if(detailLikeBtn) detailLikeBtn.innerHTML = `❤️ ${post.likes.length}`;
+        if(detailLikeBtn) detailLikeBtn.innerHTML = `<i class="fa-solid fa-heart"></i> ${post.likes.length}`;
         const list = document.getElementById('post-detail-comments-list');
         list.innerHTML = generateCommentsHTML(post.comments, post._id);
     }
@@ -618,11 +625,12 @@ socket.on('post_deleted', (postId) => {
 function generateCommentsHTML(comments, postId) {
     let html = "";
     comments.forEach(c => {
-        const delBtn = IS_ADMIN ? `<span style="color:#da373c; cursor:pointer; margin-left:10px;" onclick="deleteComment('${postId}', '${c._id}')">✕</span>` : "";
+        // Remplacement Emoji -> Icone
+        const delBtn = IS_ADMIN ? `<span style="color:#da373c; cursor:pointer; margin-left:10px;" onclick="deleteComment('${postId}', '${c._id}')"><i class="fa-solid fa-xmark"></i></span>` : "";
         html += `<div class="comment-item">
             <div class="comment-bubble">
-                <div class="comment-meta"><img src="${c.authorAvatar}" style="width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:5px;"><span class="comment-author">${c.authorName}</span><span>${c.date}</span></div>
-                <div style="margin-left:25px;">${c.content} ${delBtn}</div>
+                <div class="comment-meta"><span class="comment-author">${c.authorName}</span><span>${c.date}</span></div>
+                <div>${c.content} ${delBtn}</div>
             </div>
         </div>`;
     });
@@ -637,7 +645,8 @@ function createPostElement(post) {
     const likeClass = isLiked ? 'liked' : '';
     const isOwner = (post.ownerId === PLAYER_ID);
     const canDelete = IS_ADMIN || isOwner;
-    const deleteBtn = canDelete ? `<button class="btn-danger-small" style="position:absolute; top:10px; right:10px; border:none; background:none; cursor:pointer;" onclick="event.stopPropagation(); deletePost('${post._id}')">🗑️</button>` : '';
+    // Remplacement Emoji -> Icone
+    const deleteBtn = canDelete ? `<button class="btn-danger-small" style="position:absolute; top:10px; right:10px; border:none; background:none; cursor:pointer;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
 
     let mediaHTML = "";
     if(post.mediaUrl) {
@@ -665,8 +674,9 @@ function createPostElement(post) {
         <div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
         ${mediaHTML}
         <div class="post-actions">
-            <button class="action-item ${likeClass}" onclick="event.stopPropagation(); toggleLike('${post._id}')">❤️ ${post.likes.length}</button>
-            <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')">💬 ${post.comments.length}</button>
+            <!-- Remplacement Emoji -> Icone -->
+            <button class="action-item ${likeClass}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
+            <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
         </div>
         <div class="comments-list hidden">${commentsHTML}</div>
     `;
