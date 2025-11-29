@@ -1,5 +1,10 @@
 var socket = io();
-const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); 
+const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
+
+// --- CONFIGURATION CLOUDINARY ---
+const CLOUDINARY_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz/upload'; // Remplace A_REMPLIR par ton Cloud Name
+const CLOUDINARY_PRESET = 'Cosmos'; // Remplace A_REMPLIR par ton Upload Preset (unsigned)
+
 let myCharacters = [];
 let allRooms = []; 
 let currentRoomId = 'global'; 
@@ -17,6 +22,37 @@ let currentView = 'chat';
 let lastFeedVisit = 0; 
 let notificationsEnabled = true; 
 let currentSelectedChar = null; 
+
+// --- FONCTION D'UPLOAD ---
+async function uploadToCloudinary(file) {
+    if (!file) return null;
+    
+    // Vérification basique
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+        alert("Fichier non supporté (Image ou Vidéo uniquement).");
+        return null;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', CLOUDINARY_PRESET);
+
+    try {
+        const response = await fetch(CLOUDINARY_URL, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) throw new Error('Erreur upload Cloudinary');
+
+        const data = await response.json();
+        return data.secure_url; // L'URL publique du fichier
+    } catch (error) {
+        console.error("Erreur Upload:", error);
+        alert("Erreur lors de l'envoi de l'image. Vérifiez votre config Cloudinary.");
+        return null;
+    }
+}
 
 // --- NAVIGATION ---
 function switchView(view) {
@@ -46,7 +82,6 @@ function toggleNotifications() {
     notificationsEnabled = !notificationsEnabled;
     const btn = document.getElementById('btn-notif-toggle');
     if(btn) {
-        // Remplacement Emoji -> Icone
         const icon = notificationsEnabled ? '<i class="fa-solid fa-bell"></i>' : '<i class="fa-solid fa-bell-slash"></i>';
         const text = notificationsEnabled ? "Notifications : ON" : "Notifications : OFF";
         btn.innerHTML = `${icon} ${text}`;
@@ -87,7 +122,6 @@ function toggleSecretVisibility() {
     const input = document.getElementById('settingsCodeInput');
     const isPassword = input.type === "password";
     input.type = isPassword ? "text" : "password";
-    // Toggle Eye Icon
     const btn = document.querySelector('.btn-eye');
     btn.innerHTML = isPassword ? '<i class="fa-solid fa-eye-slash"></i>' : '<i class="fa-solid fa-eye"></i>';
 }
@@ -110,7 +144,6 @@ socket.on('login_success', (data) => {
     IS_ADMIN = data.isAdmin;
     document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`;
     document.getElementById('player-id-display').style.color = IS_ADMIN ? "#da373c" : "var(--accent)";
-    // Remplacement Emoji -> Icone
     document.getElementById('btn-account-main').innerHTML = '<i class="fa-solid fa-user"></i> Mon Profil';
     document.getElementById('btn-account-main').style.background = "#2b2d31"; 
     closeLoginModal();
@@ -150,24 +183,38 @@ socket.on('update_user_list', (users) => {
 
 socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId && !currentDmTarget) socket.emit('request_history', currentRoomId); });
 
-// --- MEDIAS CHAT ---
+// --- GESTION MEDIAS (CLOUD) ---
+
+// On surcharge la prévisualisation pour qu'elle ne fasse rien de lourd (optionnel)
 function previewFile(type) {
+    // On pourrait afficher une petite preview locale ici mais pour l'instant on laisse le champ file gérer
     const fileInput = document.getElementById(type === 'new' ? 'newCharFile' : 'editCharFile');
-    const hiddenInput = document.getElementById(type === 'new' ? 'newCharBase64' : 'editCharBase64');
-    const file = fileInput.files[0];
-    if (file) {
-        if (file.size > 2 * 1024 * 1024) { alert("Max 2 Mo"); fileInput.value = ""; return; }
-        const reader = new FileReader();
-        reader.onloadend = function() { hiddenInput.value = reader.result; }
-        reader.readAsDataURL(file);
-    }
+    // On ne stocke plus en base64 dans le hidden input
 }
-function openUrlModal() { document.getElementById('url-modal').classList.remove('hidden'); }
+
+// Fonction modifiée pour gérer l'upload chat
+function openUrlModal() {
+    // Au lieu d'ouvrir la modale URL, on crée un input file temporaire
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const url = await uploadToCloudinary(file);
+            if (url) sendMediaMessage(url, 'image');
+        }
+    };
+    input.click();
+}
+
+// Fonction conservée mais non utilisée par le bouton principal (pour compatibilité)
 function closeUrlModal() { document.getElementById('url-modal').classList.add('hidden'); }
 function submitImageUrl() {
     const url = document.getElementById('urlInput').value.trim();
     if(url) { sendMediaMessage(url, 'image'); document.getElementById('urlInput').value = ""; closeUrlModal(); }
 }
+
 function openVideoModal() { document.getElementById('video-modal').classList.remove('hidden'); }
 function closeVideoModal() { document.getElementById('video-modal').classList.add('hidden'); }
 function submitVideoUrl() {
@@ -237,7 +284,6 @@ function updateRoomListUI() {
     const list = document.getElementById('roomList');
     list.innerHTML = `<div class="room-item ${(currentRoomId === 'global' && !currentDmTarget)?'active':''} ${unreadRooms.has('global')?'unread':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
     allRooms.forEach(room => {
-        // Remplacement Emoji -> Icone
         const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
         const isUnread = unreadRooms.has(room._id) ? 'unread' : '';
         const isActive = (String(currentRoomId) === String(room._id) && !currentDmTarget) ? 'active' : '';
@@ -315,18 +361,29 @@ socket.on('receive_dm', (msg) => {
     if (msg.sender !== USERNAME && notificationsEnabled) notifSound.play().catch(e=>{});
 });
 
-// --- CHARACTERS ---
-function createCharacter() {
+// --- CHARACTERS (MODIFIÉ POUR CLOUDINARY) ---
+async function createCharacter() {
     const name = document.getElementById('newCharName').value.trim();
     const role = document.getElementById('newCharRole').value.trim();
     const desc = document.getElementById('newCharDesc').value.trim();
     const color = document.getElementById('newCharColor').value;
-    let avatar = document.getElementById('newCharBase64').value;
-    if(!avatar) avatar = `https://ui-avatars.com/api/?name=${name}&background=random`;
+    
+    // Upload File
+    const fileInput = document.getElementById('newCharFile');
+    const file = fileInput.files[0];
+    let avatar = null;
+
+    if (file) {
+        avatar = await uploadToCloudinary(file);
+        if (!avatar) return; // Erreur upload
+    } else {
+        avatar = `https://ui-avatars.com/api/?name=${name}&background=random`;
+    }
+
     if(!name || !role) return alert("Nom et Rôle requis");
     socket.emit('create_char', { name, role, color, avatar, description: desc, ownerId: PLAYER_ID });
     toggleCreateForm();
-    document.getElementById('newCharBase64').value = "";
+    fileInput.value = ""; // Reset input
 }
 
 function prepareEditCharacter(charId) {
@@ -338,23 +395,34 @@ function prepareEditCharacter(charId) {
     document.getElementById('editCharRole').value = char.role;
     document.getElementById('editCharDesc').value = char.description; 
     document.getElementById('editCharColor').value = char.color;
-    document.getElementById('editCharBase64').value = "";
+    document.getElementById('editCharBase64').value = char.avatar; // On garde l'ancien URL en backup
     document.getElementById('edit-char-form').classList.remove('hidden');
     document.getElementById('create-char-form').classList.add('hidden');
 }
 
 function cancelEditCharacter() { document.getElementById('edit-char-form').classList.add('hidden'); }
-function submitEditCharacter() {
+
+async function submitEditCharacter() {
     const charId = document.getElementById('editCharId').value;
     const originalName = document.getElementById('editCharOriginalName').value;
     const newName = document.getElementById('editCharName').value.trim();
     const newRole = document.getElementById('editCharRole').value.trim();
     const newColor = document.getElementById('editCharColor').value;
     const newDesc = document.getElementById('editCharDesc').value.trim();
-    let newAvatar = document.getElementById('editCharBase64').value;
-    if(!newAvatar) { const char = myCharacters.find(c => c._id === charId); if(char) newAvatar = char.avatar; }
+    
+    // Upload nouveau fichier si présent
+    const fileInput = document.getElementById('editCharFile');
+    const file = fileInput.files[0];
+    let newAvatar = document.getElementById('editCharBase64').value; // Par défaut l'ancien
+
+    if (file) {
+        const uploadedUrl = await uploadToCloudinary(file);
+        if (uploadedUrl) newAvatar = uploadedUrl;
+    }
+
     socket.emit('edit_char', { charId, originalName, newName, newRole, newAvatar, newColor, newDescription: newDesc, ownerId: PLAYER_ID, currentRoomId: currentRoomId });
     cancelEditCharacter();
+    fileInput.value = "";
 }
 
 socket.on('my_chars_data', (chars) => { myCharacters = chars; updateUI(); });
@@ -388,7 +456,6 @@ function updateUI() {
     }
 
     myCharacters.forEach(char => {
-        // Remplacement Emoji -> Icone
         list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')"><i class="fa-solid fa-gear"></i></button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button></div></div>`;
         
         charBar.innerHTML += `<div id="avatar-opt-${char._id}" class="char-avatar-option" onclick="selectCharacter('${char._id}')" title="${char.name}"><img src="${char.avatar}"></div>`;
@@ -416,7 +483,6 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
     document.getElementById('profile-modal').classList.remove('hidden');
-    // Remplacement Emoji -> Icone
     const btnDm = document.getElementById('btn-dm-profile');
     btnDm.innerHTML = `<i class="fa-solid fa-envelope"></i> Envoyer un MP`;
     btnDm.onclick = function() { closeProfileModal(); if (char.ownerUsername) openDm(char.ownerUsername); };
@@ -430,7 +496,6 @@ function setContext(type, data) {
     const text = document.getElementById('context-text');
     bar.className = 'visible';
     document.getElementById('txtInput').focus();
-    // Remplacement Emoji -> Icone
     if (type === 'reply') { icon.innerHTML = '<i class="fa-solid fa-reply"></i>'; text.innerHTML = `Répondre à <strong>${data.author}</strong>`; }
     else if (type === 'edit') { icon.innerHTML = '<i class="fa-solid fa-pen"></i>'; text.innerHTML = `Modifier message`; document.getElementById('txtInput').value = data.content; }
 }
@@ -506,7 +571,6 @@ function displayMessage(msg, isDm = false) {
 
     let actionsHTML = "";
     if (!isDm) {
-         // Remplacement Emoji -> Icone
          actionsHTML += `<button class="action-btn" onclick="triggerReply('${msg._id}', '${senderName.replace(/'/g, "\\'")}', '${msg.content.replace(/'/g, "\\'")}')" title="Répondre"><i class="fa-solid fa-reply"></i></button>`;
          if (msg.type === 'text' && canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier"><i class="fa-solid fa-pen"></i></button>`;
          if (canDelete) actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button>`;
@@ -625,12 +689,11 @@ socket.on('post_deleted', (postId) => {
 function generateCommentsHTML(comments, postId) {
     let html = "";
     comments.forEach(c => {
-        // Remplacement Emoji -> Icone
-        const delBtn = IS_ADMIN ? `<span style="color:#da373c; cursor:pointer; margin-left:10px;" onclick="deleteComment('${postId}', '${c._id}')"><i class="fa-solid fa-xmark"></i></span>` : "";
+        const delBtn = IS_ADMIN ? `<span style="color:#da373c; cursor:pointer; margin-left:10px;" onclick="deleteComment('${postId}', '${c.id}')"><i class="fa-solid fa-xmark"></i></span>` : "";
         html += `<div class="comment-item">
             <div class="comment-bubble">
-                <div class="comment-meta"><span class="comment-author">${c.authorName}</span><span>${c.date}</span></div>
-                <div>${c.content} ${delBtn}</div>
+                <div class="comment-meta"><img src="${c.authorAvatar}" style="width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:5px;"><span class="comment-author">${c.authorName}</span><span>${c.date}</span></div>
+                <div style="margin-left:25px;">${c.content} ${delBtn}</div>
             </div>
         </div>`;
     });
@@ -645,7 +708,6 @@ function createPostElement(post) {
     const likeClass = isLiked ? 'liked' : '';
     const isOwner = (post.ownerId === PLAYER_ID);
     const canDelete = IS_ADMIN || isOwner;
-    // Remplacement Emoji -> Icone
     const deleteBtn = canDelete ? `<button class="btn-danger-small" style="position:absolute; top:10px; right:10px; border:none; background:none; cursor:pointer;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
 
     let mediaHTML = "";
@@ -674,7 +736,6 @@ function createPostElement(post) {
         <div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
         ${mediaHTML}
         <div class="post-actions">
-            <!-- Remplacement Emoji -> Icone -->
             <button class="action-item ${likeClass}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
             <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
         </div>
