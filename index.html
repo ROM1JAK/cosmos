@@ -130,7 +130,6 @@
                 <div id="comment-staging-area" class="media-staging hidden"></div>
                 <div class="comment-form">
                     <input type="text" id="post-detail-comment-input" class="comment-input" placeholder="Ajouter un commentaire...">
-                    <!-- Upload Image Commentaire -->
                     <label class="btn-icon" style="cursor:pointer;" title="Image">
                         <i class="fa-solid fa-image"></i>
                         <input type="file" id="commentMediaFile" accept="image/*" style="display:none;" onchange="handleCommentMediaSelect()">
@@ -246,9 +245,7 @@
                         </div>
 
                         <!-- ZONE STAGING MÉDIA -->
-                        <div id="media-staging-area" class="media-staging hidden">
-                            <!-- Contenu injecté JS -->
-                        </div>
+                        <div id="media-staging-area" class="media-staging hidden"></div>
 
                         <div id="context-bar" class="hidden">
                             <div class="context-info">
@@ -261,7 +258,7 @@
                         <div id="input-zone">
                             <input id="txtInput" type="text" autocomplete="off" placeholder="Message..." />
                             <button class="btn-icon" id="btn-record-chat" onclick="toggleRecording('chat')" title="Vocal"><i class="fa-solid fa-microphone"></i></button>
-                            <!-- Changement Image: Input File directement ici pour Staging -->
+                            <!-- Input File pour Image Staging -->
                             <label class="btn-icon" title="Image" style="cursor:pointer;">
                                 <i class="fa-solid fa-image"></i>
                                 <input type="file" id="chatImageInput" accept="image/*" style="display:none;" onchange="handleChatImageSelect()">
