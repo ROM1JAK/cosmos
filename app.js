@@ -15,6 +15,8 @@ let dmContacts = [];
 let firstUnreadMap = {}; 
 let currentView = 'chat'; 
 let lastFeedVisit = 0; 
+let notificationsEnabled = true; 
+let currentSelectedChar = null; // State pour le perso sélectionné
 
 // --- NAVIGATION ---
 function switchView(view) {
@@ -39,6 +41,15 @@ function switchView(view) {
 // --- UI & LOGIN / COMPTE ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
 function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
+
+function toggleNotifications() {
+    notificationsEnabled = !notificationsEnabled;
+    const btn = document.getElementById('btn-notif-toggle');
+    if(btn) {
+        btn.textContent = notificationsEnabled ? "🔔 Notifications : ON" : "🔕 Notifications : OFF";
+        btn.style.opacity = notificationsEnabled ? "1" : "0.5";
+    }
+}
 
 function openAccountUI() {
     if (PLAYER_ID) openUserSettingsModal();
@@ -161,12 +172,14 @@ function sendMediaMessage(content, type) {
          socket.emit('send_dm', { sender: USERNAME, target: currentDmTarget, content: content, type: type, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) });
         return;
     }
-    const sel = document.getElementById('charSelector'); 
-    if(sel.options.length === 0) return alert("Créez un personnage d'abord !");
-    const opt = sel.options[sel.selectedIndex];
+    if(!currentSelectedChar) return alert("Sélectionnez un personnage d'abord !");
+    
     socket.emit('message_rp', { 
         content: content, type: type, 
-        senderName: opt.value, senderColor: opt.dataset.color, senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role, 
+        senderName: currentSelectedChar.name, 
+        senderColor: currentSelectedChar.color, 
+        senderAvatar: currentSelectedChar.avatar, 
+        senderRole: currentSelectedChar.role, 
         ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, 
         date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: null 
     });
@@ -176,8 +189,7 @@ function sendMediaMessage(content, type) {
 const txtInput = document.getElementById('txtInput');
 txtInput.addEventListener('input', () => {
     if(currentDmTarget) return; 
-    const sel = document.getElementById('charSelector');
-    const name = sel.options[sel.selectedIndex]?.text || "Quelqu'un";
+    const name = currentSelectedChar ? currentSelectedChar.name : "Quelqu'un";
     socket.emit('typing_start', { roomId: currentRoomId, charName: name });
     clearTimeout(typingTimeout);
     typingTimeout = setTimeout(() => { socket.emit('typing_stop', { roomId: currentRoomId, charName: name }); }, 1000);
@@ -201,8 +213,8 @@ function joinRoom(roomId) {
     document.getElementById('currentRoomName').style.color = "white";
     document.getElementById('messages').innerHTML = ""; 
     document.getElementById('typing-indicator').classList.add('hidden');
-    document.getElementById('charSelector').style.display = 'block'; 
-    document.getElementById('dm-header-actions').classList.add('hidden'); // Cacher actions DM
+    document.getElementById('char-bar').classList.remove('hidden'); // Afficher avatars
+    document.getElementById('dm-header-actions').classList.add('hidden');
 
     socket.emit('request_history', currentRoomId);
     cancelContext();
@@ -241,8 +253,8 @@ function openDm(targetUsername) {
     document.getElementById('currentRoomName').style.color = "#7d5bc4"; 
     document.getElementById('messages').innerHTML = "";
     document.getElementById('typing-indicator').classList.add('hidden');
-    document.getElementById('charSelector').style.display = 'none'; 
-    document.getElementById('dm-header-actions').classList.remove('hidden'); // Afficher actions DM
+    document.getElementById('char-bar').classList.add('hidden'); // Cacher avatars en MP
+    document.getElementById('dm-header-actions').classList.remove('hidden'); 
     
     cancelContext();
     socket.emit('request_dm_history', { myUsername: USERNAME, targetUsername: targetUsername });
@@ -291,7 +303,7 @@ socket.on('receive_dm', (msg) => {
     if (!dmContacts.includes(otherUser)) { dmContacts.push(otherUser); updateDmListUI(); }
     if (currentDmTarget === otherUser) { displayMessage(msg, true); scrollToBottom(); } 
     else { unreadDms.add(otherUser); updateDmListUI(); }
-    if (msg.sender !== USERNAME) notifSound.play().catch(e=>{});
+    if (msg.sender !== USERNAME && notificationsEnabled) notifSound.play().catch(e=>{});
 });
 
 // --- CHARACTERS ---
@@ -341,28 +353,53 @@ socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(
 function deleteCharacter(id) { if(confirm('Supprimer ?')) socket.emit('delete_char', id); }
 socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c => c._id !== id); updateUI(); });
 
+function selectCharacter(charId) {
+    const narrateur = { _id: 'narrateur', name: 'Narrateur', role: 'Omniscient', color: '#ffffff', avatar: 'https://cdn-icons-png.flaticon.com/512/1144/1144760.png' };
+    
+    if (charId === 'narrateur') currentSelectedChar = narrateur;
+    else currentSelectedChar = myCharacters.find(c => c._id === charId);
+
+    // Update Visuel
+    document.querySelectorAll('.char-avatar-option').forEach(el => el.classList.remove('selected'));
+    const selectedEl = document.getElementById(`avatar-opt-${charId}`);
+    if(selectedEl) selectedEl.classList.add('selected');
+}
+
 function updateUI() {
     const list = document.getElementById('myCharList');
-    const select = document.getElementById('charSelector');
+    const charBar = document.getElementById('char-bar');
     const selectFeed = document.getElementById('feedCharSelector');
-    let selectedCharId = null;
-    if (select.selectedIndex >= 0) selectedCharId = select.options[select.selectedIndex].dataset.id; 
 
-    list.innerHTML = ""; select.innerHTML = ""; selectFeed.innerHTML = "";
+    list.innerHTML = ""; charBar.innerHTML = ""; selectFeed.innerHTML = "";
+
+    // Narrateur (Admin)
     if(IS_ADMIN) {
-        const narr = '<option value="Narrateur" data-id="narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
-        select.innerHTML = narr; selectFeed.innerHTML = narr;
+        const narrHtml = `<div id="avatar-opt-narrateur" class="char-avatar-option" onclick="selectCharacter('narrateur')" title="Narrateur"><img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png"></div>`;
+        charBar.innerHTML += narrHtml;
+        const narrOpt = '<option value="Narrateur" data-id="narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
+        selectFeed.innerHTML = narrOpt;
     }
+
     myCharacters.forEach(char => {
+        // Sidebar Cards
         list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')">⚙️</button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;">✕</button></div></div>`;
+        
+        // Chat Avatar Bar
+        charBar.innerHTML += `<div id="avatar-opt-${char._id}" class="char-avatar-option" onclick="selectCharacter('${char._id}')" title="${char.name}"><img src="${char.avatar}"></div>`;
+        
+        // Feed Select (Gardé dropdown)
         const opt = document.createElement('option');
         opt.value = char.name; opt.text = char.name; opt.dataset.id = char._id; opt.dataset.color = char.color; opt.dataset.avatar = char.avatar; opt.dataset.role = char.role;
-        select.appendChild(opt); selectFeed.appendChild(opt.cloneNode(true));
+        selectFeed.appendChild(opt); 
     });
-    if(selectedCharId) {
-        const optionToSelect = Array.from(select.options).find(o => o.dataset.id === selectedCharId);
-        if(optionToSelect) optionToSelect.selected = true;
-        else if (select.options.length > 0) select.selectedIndex = 0;
+
+    // Auto-select first char if none selected
+    if (!currentSelectedChar) {
+        if(myCharacters.length > 0) selectCharacter(myCharacters[0]._id);
+        else if(IS_ADMIN) selectCharacter('narrateur');
+    } else {
+        // Re-apply visual selection
+        selectCharacter(currentSelectedChar._id);
     }
 }
 
@@ -406,10 +443,19 @@ function sendMessage() {
     }
     if (content === "/clear") { if(IS_ADMIN) socket.emit('admin_clear_room', currentRoomId); txt.value = ''; return; }
     if (currentContext && currentContext.type === 'edit') { socket.emit('edit_message', { id: currentContext.data.id, newContent: content }); txt.value = ''; cancelContext(); return; }
-    const sel = document.getElementById('charSelector');
-    if (sel.options.length === 0) { alert("Créez un personnage d'abord !"); return; }
-    const opt = sel.options[sel.selectedIndex];
-    socket.emit('message_rp', { content, type: "text", senderName: opt.value, senderColor: opt.dataset.color || "#fff", senderAvatar: opt.dataset.avatar, senderRole: opt.dataset.role, ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null });
+    
+    if(!currentSelectedChar) return alert("Sélectionnez un personnage !");
+
+    socket.emit('message_rp', { 
+        content, type: "text", 
+        senderName: currentSelectedChar.name, 
+        senderColor: currentSelectedChar.color || "#fff", 
+        senderAvatar: currentSelectedChar.avatar, 
+        senderRole: currentSelectedChar.role, 
+        ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, 
+        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), 
+        replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null 
+    });
     txt.value = ''; cancelContext();
 }
 
@@ -423,7 +469,7 @@ socket.on('history_data', (msgs) => {
     scrollToBottom(); 
 });
 socket.on('message_rp', (msg) => { 
-    if (msg.ownerId !== PLAYER_ID) notifSound.play().catch(e => {});
+    if (msg.ownerId !== PLAYER_ID && notificationsEnabled) notifSound.play().catch(e => {});
     if(msg.roomId === currentRoomId && !currentDmTarget) { displayMessage(msg); scrollToBottom(); } 
     else { unreadRooms.add(msg.roomId); if (!firstUnreadMap[msg.roomId]) firstUnreadMap[msg.roomId] = msg._id; updateRoomListUI(); }
 });
@@ -439,15 +485,17 @@ function displayMessage(msg, isDm = false) {
     let senderName, senderAvatar, senderColor, senderRole, canEdit = false, canDelete = false;
     
     if (isDm) {
-        // CORRECTION "UNDEFINED" : 
-        // On vérifie si c'est 'sender' (live) ou 'senderName' (historique DB)
-        const realSender = msg.sender || msg.senderName;
+        const realSender = msg.sender || msg.senderName; 
         senderName = realSender; 
         senderAvatar = `https://ui-avatars.com/api/?name=${realSender}&background=random&color=fff&size=64`; 
         senderColor = "#dbdee1"; 
         senderRole = "Utilisateur";
     } else {
         senderName = msg.senderName; senderAvatar = msg.senderAvatar; senderColor = msg.senderColor; senderRole = msg.senderRole; canEdit = (msg.ownerId === PLAYER_ID); canDelete = (msg.ownerId === PLAYER_ID) || IS_ADMIN;
+    }
+
+    if (!isDm && USERNAME && msg.content && msg.content.includes(`@${USERNAME}`)) {
+        div.classList.add('mentioned');
     }
 
     let actionsHTML = "";
@@ -495,14 +543,8 @@ function submitPost() {
     const opt = sel.options[sel.selectedIndex];
 
     const postData = {
-        authorName: opt.value, 
-        authorAvatar: opt.dataset.avatar, 
-        authorRole: opt.dataset.role,
-        ownerId: PLAYER_ID, // AJOUT : Envoi de l'ID propriétaire
-        content: content, 
-        mediaUrl: mediaUrl, 
-        mediaType: mediaType, 
-        date: new Date().toLocaleDateString()
+        authorName: opt.value, authorAvatar: opt.dataset.avatar, authorRole: opt.dataset.role,
+        content: content, mediaUrl: mediaUrl, mediaType: mediaType, date: new Date().toLocaleDateString(), ownerId: PLAYER_ID
     };
     socket.emit('create_post', postData);
     document.getElementById('postContent').value = ""; document.getElementById('postMediaUrl').value = ""; document.getElementById('char-count').textContent = "0/1000";
@@ -516,25 +558,19 @@ let currentDetailPostId = null;
 function openPostDetail(postId) {
     const postEl = document.getElementById(`post-${postId}`);
     if(!postEl) return;
-    
     currentDetailPostId = postId;
     const contentClone = postEl.cloneNode(true);
     contentClone.onclick = null; 
     contentClone.style.border = "none"; contentClone.classList.remove('highlight-new');
-    
     const oldComments = contentClone.querySelector('.comments-section');
     if(oldComments) oldComments.remove(); 
-    
     const detailContent = document.getElementById('post-detail-content');
     detailContent.innerHTML = "";
     detailContent.appendChild(contentClone);
-    
     const commentsListDiv = document.getElementById('post-detail-comments-list');
     commentsListDiv.innerHTML = "";
-    
     const feedComments = postEl.querySelector('.comments-list')?.innerHTML || "";
     commentsListDiv.innerHTML = feedComments;
-    
     document.getElementById('post-detail-modal').classList.remove('hidden');
     
     document.getElementById('btn-detail-comment').onclick = () => {
@@ -557,7 +593,6 @@ socket.on('feed_data', (posts) => {
     const container = document.getElementById('feed-stream'); container.innerHTML = "";
     posts.forEach(post => container.appendChild(createPostElement(post)));
 });
-
 socket.on('new_post', (post) => {
     if(currentView !== 'feed') document.getElementById('feed-notif-dot').classList.remove('hidden');
     const container = document.getElementById('feed-stream');
@@ -583,7 +618,7 @@ socket.on('post_deleted', (postId) => {
 function generateCommentsHTML(comments, postId) {
     let html = "";
     comments.forEach(c => {
-        const delBtn = IS_ADMIN ? `<span style="color:#da373c; cursor:pointer; margin-left:10px;" onclick="deleteComment('${postId}', '${c.id}')">✕</span>` : "";
+        const delBtn = IS_ADMIN ? `<span style="color:#da373c; cursor:pointer; margin-left:10px;" onclick="deleteComment('${postId}', '${c._id}')">✕</span>` : "";
         html += `<div class="comment-item">
             <div class="comment-bubble">
                 <div class="comment-meta"><img src="${c.authorAvatar}" style="width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:5px;"><span class="comment-author">${c.authorName}</span><span>${c.date}</span></div>
@@ -600,8 +635,6 @@ function createPostElement(post) {
     
     const isLiked = post.likes.includes(PLAYER_ID);
     const likeClass = isLiked ? 'liked' : '';
-
-    // AJOUT : Vérification du propriétaire pour le bouton supprimer
     const isOwner = (post.ownerId === PLAYER_ID);
     const canDelete = IS_ADMIN || isOwner;
     const deleteBtn = canDelete ? `<button class="btn-danger-small" style="position:absolute; top:10px; right:10px; border:none; background:none; cursor:pointer;" onclick="event.stopPropagation(); deletePost('${post._id}')">🗑️</button>` : '';
