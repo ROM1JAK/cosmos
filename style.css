@@ -5,7 +5,7 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 /* UTILITAIRES */
 .hidden { display: none !important; }
 
-/* STYLE MENTIONS (Ajouté pour la fonctionnalité @Pseudo) */
+/* STYLE MENTIONS */
 .message-container.mentioned {
     background: rgba(234, 179, 8, 0.1); 
     border-left: 3px solid #eab308;
@@ -60,13 +60,27 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .room-item:hover .btn-del-room { display: block; }
 .btn-add-room { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; padding: 0; }
 
-.char-item { display: flex; align-items: center; padding: 6px; background: #35373c; border-radius: 4px; margin-bottom: 5px; }
-.mini-avatar { width: 32px; height: 32px; border-radius: 50%; margin-right: 10px; object-fit: cover; }
+/* CARTE PERSONNAGE (Refonte) */
+.char-item { 
+    display: flex; 
+    align-items: center; 
+    padding: 10px; 
+    background: #35373c; 
+    border-radius: 8px; 
+    margin-bottom: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    transition: transform 0.2s, background-color 0.2s;
+}
+.char-item:hover {
+    transform: translateY(-2px);
+    background-color: #404249;
+}
+.mini-avatar { width: 40px; height: 40px; border-radius: 50%; margin-right: 12px; object-fit: cover; }
 .char-info { flex: 1; min-width: 0; }
-.char-name-list { font-weight: 600; font-size: 0.9rem; }
-.char-role-list { font-size: 0.7rem; color: var(--text-muted); }
+.char-name-list { font-weight: 700; font-size: 0.95rem; }
+.char-role-list { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
 .char-actions { display: flex; gap: 5px; }
-.btn-mini-action { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1rem; padding: 2px; }
+.btn-mini-action { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1rem; padding: 4px; }
 .btn-mini-action:hover { color: white; }
 
 .create-form-toggle { color: var(--accent); cursor: pointer; font-size: 0.85rem; margin-top: 10px; font-weight: 500; }
@@ -202,13 +216,17 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 
 /* INPUT & CONTEXT */
 #input-wrapper { background: var(--bg-primary); padding: 0 20px 20px; flex-shrink: 0; }
+#char-bar { display: flex; gap: 10px; padding: 10px 0; overflow-x: auto; }
+.char-avatar-option { width: 40px; height: 40px; border-radius: 50%; opacity: 0.6; cursor: pointer; border: 2px solid transparent; transition: all 0.2s; overflow:hidden; }
+.char-avatar-option img { width:100%; height:100%; object-fit:cover; }
+.char-avatar-option.selected { opacity: 1; border-color: var(--accent); transform: scale(1.1); }
+
 #context-bar { background: #2b2d31; color: var(--text-muted); padding: 8px 15px; border-radius: 8px 8px 0 0; font-size: 0.85rem; display: none; justify-content: space-between; align-items: center; border-bottom: 1px solid #383a40; margin-bottom: -5px; z-index: 2; position: relative; }
 #context-bar.dm-context { background: #1a1624; border: 1px solid var(--dm-color); border-bottom: none; color: #d0bfff; }
 .btn-close-reply { background: none; border: none; color: var(--text-muted); cursor: pointer; font-weight: bold; }
 #context-bar.visible { display: flex; }
 #input-zone { background: var(--bg-tertiary); border-radius: 8px; padding: 0 10px 0 0; display: flex; align-items: center; min-height: 44px; }
-select#charSelector { background: #2b2d31; color: white; border: none; padding: 12px 15px; border-radius: 8px 0 0 8px; font-weight: 600; cursor: pointer; border-right: 1px solid #313338; margin-right: 10px; max-width: 140px; }
-#txtInput { flex: 1; background: transparent; border: none; color: white; font-size: 1rem; padding: 12px 5px; height: 100%; }
+#txtInput { flex: 1; background: transparent; border: none; color: white; font-size: 1rem; padding: 12px 15px; height: 100%; }
 #txtInput:focus { outline: none; }
 .btn-icon { background: none; border: none; font-size: 1.2rem; cursor: pointer; padding: 5px; opacity: 0.7; }
 .btn-send { background: var(--accent); color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; margin-left: 5px; margin-right: 5px;}
