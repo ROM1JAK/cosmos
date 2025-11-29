@@ -1,9 +1,10 @@
 var socket = io();
 const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
 
-// --- CONFIGURATION CLOUDINARY ---
-const CLOUDINARY_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz/upload'; // Remplace A_REMPLIR par ton Cloud Name
-const CLOUDINARY_PRESET = 'Cosmos'; // Remplace A_REMPLIR par ton Upload Preset (unsigned)
+// --- CONFIGURATION CLOUDINARY (MODIFIÉ POUR VIDÉO) ---
+// Utilisation de 'auto' dans l'URL pour supporter image et video
+const CLOUDINARY_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz/auto/upload'; 
+const CLOUDINARY_PRESET = 'Cosmos';
 
 let myCharacters = [];
 let allRooms = []; 
@@ -23,11 +24,11 @@ let lastFeedVisit = 0;
 let notificationsEnabled = true; 
 let currentSelectedChar = null; 
 
-// --- FONCTION D'UPLOAD ---
+// --- FONCTION D'UPLOAD (OPTIMISÉE) ---
 async function uploadToCloudinary(file) {
     if (!file) return null;
     
-    // Vérification basique
+    // Support Vidéo ajouté
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
         alert("Fichier non supporté (Image ou Vidéo uniquement).");
         return null;
@@ -46,10 +47,10 @@ async function uploadToCloudinary(file) {
         if (!response.ok) throw new Error('Erreur upload Cloudinary');
 
         const data = await response.json();
-        return data.secure_url; // L'URL publique du fichier
+        return data.secure_url; 
     } catch (error) {
         console.error("Erreur Upload:", error);
-        alert("Erreur lors de l'envoi de l'image. Vérifiez votre config Cloudinary.");
+        alert("Erreur lors de l'envoi du média.");
         return null;
     }
 }
@@ -107,6 +108,7 @@ function logoutUser() {
     if(confirm("Déconnexion ?")) {
         localStorage.removeItem('rp_username');
         localStorage.removeItem('rp_code');
+        localStorage.removeItem('saved_char_id'); // Clean aussi les prefs
         location.reload();
     }
 }
@@ -136,6 +138,7 @@ function submitUsernameChange() {
     }
 }
 
+// --- LOGIQUE LOGIN & PERSISTANCE ---
 socket.on('login_success', (data) => {
     localStorage.setItem('rp_username', data.username);
     localStorage.setItem('rp_code', data.userId);
@@ -147,9 +150,14 @@ socket.on('login_success', (data) => {
     document.getElementById('btn-account-main').innerHTML = '<i class="fa-solid fa-user"></i> Mon Profil';
     document.getElementById('btn-account-main').style.background = "#2b2d31"; 
     closeLoginModal();
+    
     socket.emit('request_initial_data', PLAYER_ID);
     socket.emit('request_dm_contacts', USERNAME);
-    joinRoom('global');
+    
+    // RESTAURATION SALON
+    const savedRoom = localStorage.getItem('saved_room_id');
+    if (savedRoom) joinRoom(savedRoom);
+    else joinRoom('global');
 });
 
 socket.on('login_error', (msg) => { const el = document.getElementById('login-error-msg'); el.textContent = msg; el.style.display = 'block'; });
@@ -184,17 +192,9 @@ socket.on('update_user_list', (users) => {
 socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId && !currentDmTarget) socket.emit('request_history', currentRoomId); });
 
 // --- GESTION MEDIAS (CLOUD) ---
+function previewFile(type) {} // Non utilisé, géré par le bouton upload
 
-// On surcharge la prévisualisation pour qu'elle ne fasse rien de lourd (optionnel)
-function previewFile(type) {
-    // On pourrait afficher une petite preview locale ici mais pour l'instant on laisse le champ file gérer
-    const fileInput = document.getElementById(type === 'new' ? 'newCharFile' : 'editCharFile');
-    // On ne stocke plus en base64 dans le hidden input
-}
-
-// Fonction modifiée pour gérer l'upload chat
 function openUrlModal() {
-    // Au lieu d'ouvrir la modale URL, on crée un input file temporaire
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -208,7 +208,6 @@ function openUrlModal() {
     input.click();
 }
 
-// Fonction conservée mais non utilisée par le bouton principal (pour compatibilité)
 function closeUrlModal() { document.getElementById('url-modal').classList.add('hidden'); }
 function submitImageUrl() {
     const url = document.getElementById('urlInput').value.trim();
@@ -257,8 +256,17 @@ function createRoomPrompt() { const name = prompt("Nom du salon :"); if (name) s
 function deleteRoom(roomId) { if(confirm("ADMIN : Supprimer ?")) socket.emit('delete_room', roomId); }
 
 function joinRoom(roomId) {
+    // Si on essaye de rejoindre une room supprimée, fallback
+    if (allRooms.length > 0 && roomId !== 'global' && !allRooms.find(r => r._id === roomId)) {
+        roomId = 'global';
+    }
+
     if (currentRoomId && currentRoomId !== roomId) socket.emit('leave_room', currentRoomId);
     currentRoomId = roomId;
+    
+    // PERSISTANCE SALON
+    localStorage.setItem('saved_room_id', roomId);
+
     currentDmTarget = null; 
     socket.emit('join_room', currentRoomId);
     if (unreadRooms.has(currentRoomId)) unreadRooms.delete(currentRoomId);
@@ -268,7 +276,7 @@ function joinRoom(roomId) {
     document.getElementById('currentRoomName').style.color = "white";
     document.getElementById('messages').innerHTML = ""; 
     document.getElementById('typing-indicator').classList.add('hidden');
-    document.getElementById('char-bar').classList.remove('hidden'); 
+    document.getElementById('char-dropdown-wrapper').classList.remove('hidden'); 
     document.getElementById('dm-header-actions').classList.add('hidden');
 
     socket.emit('request_history', currentRoomId);
@@ -279,6 +287,7 @@ function joinRoom(roomId) {
     switchView('chat'); 
 }
 socket.on('rooms_data', (rooms) => { allRooms = rooms; updateRoomListUI(); });
+socket.on('force_room_exit', (roomId) => { if(currentRoomId === roomId) joinRoom('global'); });
 
 function updateRoomListUI() {
     const list = document.getElementById('roomList');
@@ -308,7 +317,7 @@ function openDm(targetUsername) {
     document.getElementById('currentRoomName').style.color = "#7d5bc4"; 
     document.getElementById('messages').innerHTML = "";
     document.getElementById('typing-indicator').classList.add('hidden');
-    document.getElementById('char-bar').classList.add('hidden'); 
+    document.getElementById('char-dropdown-wrapper').classList.add('hidden'); 
     document.getElementById('dm-header-actions').classList.remove('hidden'); 
     
     cancelContext();
@@ -327,7 +336,7 @@ function closeCurrentDm() {
 
 function deleteCurrentDmHistory() {
     if(!currentDmTarget) return;
-    if(confirm(`Supprimer TOUT l'historique avec ${currentDmTarget} ? (Irréversible pour les deux)`)) {
+    if(confirm(`Supprimer TOUT l'historique avec ${currentDmTarget} ?`)) {
         socket.emit('delete_dm_history', { myUsername: USERNAME, targetUsername: currentDmTarget });
     }
 }
@@ -361,8 +370,14 @@ socket.on('receive_dm', (msg) => {
     if (msg.sender !== USERNAME && notificationsEnabled) notifSound.play().catch(e=>{});
 });
 
-// --- CHARACTERS (MODIFIÉ POUR CLOUDINARY) ---
+// --- CHARACTERS ---
 async function createCharacter() {
+    // SÉCURITÉ CLIENT : Limite de 20 personnages
+    if (myCharacters.length >= 20) {
+        alert("Limite atteinte (20 personnages maximum). Supprimez-en pour en créer de nouveaux.");
+        return;
+    }
+
     const name = document.getElementById('newCharName').value.trim();
     const role = document.getElementById('newCharRole').value.trim();
     const desc = document.getElementById('newCharDesc').value.trim();
@@ -375,7 +390,7 @@ async function createCharacter() {
 
     if (file) {
         avatar = await uploadToCloudinary(file);
-        if (!avatar) return; // Erreur upload
+        if (!avatar) return; 
     } else {
         avatar = `https://ui-avatars.com/api/?name=${name}&background=random`;
     }
@@ -383,7 +398,7 @@ async function createCharacter() {
     if(!name || !role) return alert("Nom et Rôle requis");
     socket.emit('create_char', { name, role, color, avatar, description: desc, ownerId: PLAYER_ID });
     toggleCreateForm();
-    fileInput.value = ""; // Reset input
+    fileInput.value = ""; 
 }
 
 function prepareEditCharacter(charId) {
@@ -395,7 +410,7 @@ function prepareEditCharacter(charId) {
     document.getElementById('editCharRole').value = char.role;
     document.getElementById('editCharDesc').value = char.description; 
     document.getElementById('editCharColor').value = char.color;
-    document.getElementById('editCharBase64').value = char.avatar; // On garde l'ancien URL en backup
+    document.getElementById('editCharBase64').value = char.avatar; 
     document.getElementById('edit-char-form').classList.remove('hidden');
     document.getElementById('create-char-form').classList.add('hidden');
 }
@@ -410,10 +425,9 @@ async function submitEditCharacter() {
     const newColor = document.getElementById('editCharColor').value;
     const newDesc = document.getElementById('editCharDesc').value.trim();
     
-    // Upload nouveau fichier si présent
     const fileInput = document.getElementById('editCharFile');
     const file = fileInput.files[0];
-    let newAvatar = document.getElementById('editCharBase64').value; // Par défaut l'ancien
+    let newAvatar = document.getElementById('editCharBase64').value; 
 
     if (file) {
         const uploadedUrl = await uploadToCloudinary(file);
@@ -425,41 +439,94 @@ async function submitEditCharacter() {
     fileInput.value = "";
 }
 
-socket.on('my_chars_data', (chars) => { myCharacters = chars; updateUI(); });
+socket.on('my_chars_data', (chars) => { 
+    myCharacters = chars; 
+    updateUI(); 
+    
+    // RESTAURATION PERSONNAGE
+    const savedCharId = localStorage.getItem('saved_char_id');
+    if (savedCharId) {
+        // Vérifie si le perso existe toujours
+        const charExists = myCharacters.find(c => c._id === savedCharId);
+        if (charExists) selectCharacter(savedCharId);
+        else if (IS_ADMIN && savedCharId === 'narrateur') selectCharacter('narrateur');
+    }
+});
 socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(); });
 function deleteCharacter(id) { if(confirm('Supprimer ?')) socket.emit('delete_char', id); }
 socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c => c._id !== id); updateUI(); });
 
+// LOGIQUE SELECTION (NOUVEAU DROPDOWN)
 function selectCharacter(charId) {
     const narrateur = { _id: 'narrateur', name: 'Narrateur', role: 'Omniscient', color: '#ffffff', avatar: 'https://cdn-icons-png.flaticon.com/512/1144/1144760.png' };
     
     if (charId === 'narrateur') currentSelectedChar = narrateur;
     else currentSelectedChar = myCharacters.find(c => c._id === charId);
 
-    document.querySelectorAll('.char-avatar-option').forEach(el => el.classList.remove('selected'));
-    const selectedEl = document.getElementById(`avatar-opt-${charId}`);
+    // Persistance
+    if(currentSelectedChar) localStorage.setItem('saved_char_id', currentSelectedChar._id);
+
+    // Update UI Trigger
+    if (currentSelectedChar) {
+        document.getElementById('selected-char-avatar').src = currentSelectedChar.avatar;
+        document.getElementById('selected-char-name').textContent = currentSelectedChar.name;
+        document.getElementById('selected-char-name').style.color = currentSelectedChar.color;
+    }
+
+    // Highlight option
+    document.querySelectorAll('.custom-option').forEach(el => el.classList.remove('selected'));
+    const selectedEl = document.getElementById(`opt-${charId}`);
     if(selectedEl) selectedEl.classList.add('selected');
+
+    closeCharDropdown();
 }
+
+function toggleCharDropdown() {
+    const wrapper = document.getElementById('char-dropdown-wrapper');
+    wrapper.classList.toggle('open');
+}
+
+function closeCharDropdown() {
+    document.getElementById('char-dropdown-wrapper').classList.remove('open');
+}
+
+// Fermeture dropdown au clic externe
+window.addEventListener('click', function(e) {
+    const wrapper = document.getElementById('char-dropdown-wrapper');
+    if (!wrapper.contains(e.target)) {
+        wrapper.classList.remove('open');
+    }
+});
 
 function updateUI() {
     const list = document.getElementById('myCharList');
-    const charBar = document.getElementById('char-bar');
+    const optionsContainer = document.getElementById('char-dropdown-options');
     const selectFeed = document.getElementById('feedCharSelector');
 
-    list.innerHTML = ""; charBar.innerHTML = ""; selectFeed.innerHTML = "";
+    list.innerHTML = ""; optionsContainer.innerHTML = ""; selectFeed.innerHTML = "";
 
+    // Narrateur (Admin)
     if(IS_ADMIN) {
-        const narrHtml = `<div id="avatar-opt-narrateur" class="char-avatar-option" onclick="selectCharacter('narrateur')" title="Narrateur"><img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png"></div>`;
-        charBar.innerHTML += narrHtml;
+        const narrHtml = `<div id="opt-narrateur" class="custom-option" onclick="selectCharacter('narrateur')">
+            <img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" class="mini-avatar-trigger">
+            <span>Narrateur</span>
+        </div>`;
+        optionsContainer.innerHTML += narrHtml;
         const narrOpt = '<option value="Narrateur" data-id="narrateur" data-color="#ffffff" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
         selectFeed.innerHTML = narrOpt;
     }
 
     myCharacters.forEach(char => {
+        // Sidebar List
         list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')"><i class="fa-solid fa-gear"></i></button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button></div></div>`;
         
-        charBar.innerHTML += `<div id="avatar-opt-${char._id}" class="char-avatar-option" onclick="selectCharacter('${char._id}')" title="${char.name}"><img src="${char.avatar}"></div>`;
+        // Dropdown Options
+        optionsContainer.innerHTML += `<div id="opt-${char._id}" class="custom-option" onclick="selectCharacter('${char._id}')">
+            <img src="${char.avatar}" class="mini-avatar-trigger">
+            <span style="color:${char.color}">${char.name}</span>
+        </div>`;
         
+        // Feed Select
         const opt = document.createElement('option');
         opt.value = char.name; opt.text = char.name; opt.dataset.id = char._id; opt.dataset.color = char.color; opt.dataset.avatar = char.avatar; opt.dataset.role = char.role;
         selectFeed.appendChild(opt); 
@@ -505,6 +572,7 @@ function triggerEdit(id, content) { setContext('edit', { id, content }); }
 function triggerDelete(id) { if(confirm("Supprimer ?")) socket.emit('delete_message', id); }
 
 function sendMessage() {
+    // Note: Pas de e.preventDefault ici car déclenché par onclick ou keyup, pas submit form
     const txt = document.getElementById('txtInput');
     const content = txt.value.trim();
     if (!content) return;
@@ -598,14 +666,33 @@ document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key 
 function loadFeed() { socket.emit('request_feed'); }
 document.getElementById('postContent').addEventListener('input', (e) => { document.getElementById('char-count').textContent = `${e.target.value.length}/1000`; });
 
+async function previewPostFile() {
+    const file = document.getElementById('postMediaFile').files[0];
+    if(file) {
+        document.getElementById('postFileStatus').style.display = 'block';
+        document.getElementById('postFileStatus').textContent = "Upload en cours...";
+        const url = await uploadToCloudinary(file);
+        if(url) {
+            document.getElementById('postMediaUrl').value = url;
+            document.getElementById('postFileStatus').textContent = "Média prêt !";
+            document.getElementById('postFileStatus').style.color = "#23a559";
+        } else {
+            document.getElementById('postFileStatus').textContent = "Erreur upload.";
+        }
+    }
+}
+
 function submitPost() {
+    // Bouton de type onclick donc pas de submit form classique à preventDefault
     const content = document.getElementById('postContent').value.trim();
-    if(!content || content.length > 1000) return alert("Message vide ou trop long (max 1000).");
     const mediaUrl = document.getElementById('postMediaUrl').value.trim();
     
+    if(!content && !mediaUrl) return alert("Écrivez quelque chose ou mettez un média.");
+    if(content.length > 1000) return alert("Trop long.");
+
     let mediaType = null;
     if(mediaUrl) {
-        if(getYoutubeId(mediaUrl) || mediaUrl.match(/\.(mp4|webm|ogg)$/i)) mediaType = 'video';
+        if(getYoutubeId(mediaUrl) || mediaUrl.match(/\.(mp4|webm|ogg)$/i) || mediaUrl.includes('/video/upload')) mediaType = 'video';
         else mediaType = 'image';
     }
 
@@ -618,7 +705,13 @@ function submitPost() {
         content: content, mediaUrl: mediaUrl, mediaType: mediaType, date: new Date().toLocaleDateString(), ownerId: PLAYER_ID
     };
     socket.emit('create_post', postData);
-    document.getElementById('postContent').value = ""; document.getElementById('postMediaUrl').value = ""; document.getElementById('char-count').textContent = "0/1000";
+    
+    // Reset Form
+    document.getElementById('postContent').value = ""; 
+    document.getElementById('postMediaUrl').value = ""; 
+    document.getElementById('postMediaFile').value = "";
+    document.getElementById('postFileStatus').style.display = 'none';
+    document.getElementById('char-count').textContent = "0/1000";
 }
 
 function toggleLike(postId) { if(!PLAYER_ID) return alert("Connectez-vous !"); socket.emit('like_post', { postId, userId: PLAYER_ID }); }
