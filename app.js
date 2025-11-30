@@ -1,8 +1,8 @@
+
 var socket = io();
 const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
 
 // --- CONFIGURATION CLOUDINARY ---
-// CORRECTION BUG 1 : URL de base sans le resource_type 'auto' en dur pour pouvoir le changer dynamiquement
 const CLOUDINARY_BASE_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz'; 
 const CLOUDINARY_PRESET = 'm';
 
@@ -31,24 +31,30 @@ let pendingAttachment = null; // { file: Blob/File, type: 'image'|'video'|'audio
 let pendingCommentAttachment = null;
 let lastMessageData = { author: null, time: 0, ownerId: null }; // For Grouping
 
-// --- FONCTION D'UPLOAD (CORRIGÉE) ---
-// Ajout du paramètre resourceType (par défaut 'auto', mais 'video' requis pour l'audio sur Cloudinary)
-async function uploadToCloudinary(file, resourceType = 'auto') {
+// --- FONCTION D'UPLOAD (ROBUSTE) ---
+async function uploadToCloudinary(file, resourceType) {
     if (!file) return null;
+    
+    // Détection automatique du type si non spécifié
+    // Cela évite d'utiliser 'auto' qui peut causer des erreurs CORS ou de preset
+    if (!resourceType) {
+        if (file.type.startsWith('image/')) resourceType = 'image';
+        else if (file.type.startsWith('video/') || file.type.startsWith('audio/')) resourceType = 'video';
+        else resourceType = 'auto';
+    }
     
     const formData = new FormData();
     
-    // CORRECTION BUG 1 : Gestion spécifique des Blobs (Audio)
-    // Cloudinary a besoin d'un nom de fichier pour détecter le type MIME correctement si c'est un Blob brut
+    // Gestion spécifique des Blobs (Audio/Video raw)
     if (file instanceof Blob && !file.name) {
-        formData.append('file', file, 'audio_record.webm');
+        const ext = file.type.split('/')[1] || 'dat';
+        formData.append('file', file, `upload.${ext}`);
     } else {
         formData.append('file', file);
     }
     
     formData.append('upload_preset', CLOUDINARY_PRESET);
 
-    // Construction de l'URL dynamique (image/video/auto)
     const uploadUrl = `${CLOUDINARY_BASE_URL}/${resourceType}/upload`;
 
     try {
@@ -58,15 +64,23 @@ async function uploadToCloudinary(file, resourceType = 'auto') {
         });
 
         if (!response.ok) {
-            const errData = await response.json();
-            throw new Error(errData.error ? errData.error.message : 'Erreur upload Cloudinary');
+            let errorMsg = `Erreur HTTP ${response.status}`;
+            try {
+                const errData = await response.json();
+                if (errData.error && errData.error.message) errorMsg = errData.error.message;
+            } catch (e) {
+                // Si ce n'est pas du JSON, on tente le texte brut
+                const text = await response.text();
+                if (text) errorMsg = text;
+            }
+            throw new Error(errorMsg);
         }
 
         const data = await response.json();
         return data.secure_url; 
     } catch (error) {
         console.error("Erreur Upload:", error);
-        alert("Erreur lors de l'envoi du média : " + error.message);
+        alert("Erreur envoi média : " + error.message);
         return null;
     }
 }
@@ -124,7 +138,7 @@ async function toggleRecording(source) { // source: 'chat', 'feed', 'comment'
                 document.getElementById('postFileStatus').style.display = 'block';
                 document.getElementById('postFileStatus').innerHTML = 'Envoi audio en cours...';
                 
-                // CORRECTION BUG 1 : On force 'video' pour l'audio sur Cloudinary
+                // Pour l'audio, on force 'video' car Cloudinary traite l'audio comme video
                 const url = await uploadToCloudinary(audioBlob, 'video');
                 
                 if (url) {
@@ -346,11 +360,9 @@ socket.on('force_room_exit', (roomId) => { if(currentRoomId === roomId) joinRoom
 
 function updateRoomListUI() {
     const list = document.getElementById('roomList');
-    // CORRECTION BUG 2: Vérifier l'état de 'global' dans unreadRooms
     list.innerHTML = `<div class="room-item ${(currentRoomId === 'global' && !currentDmTarget)?'active':''} ${unreadRooms.has('global')?'unread':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
     allRooms.forEach(room => {
         const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
-        // CORRECTION BUG 2: Vérification correcte des unread
         const isUnread = unreadRooms.has(String(room._id)) ? 'unread' : '';
         const isActive = (String(currentRoomId) === String(room._id) && !currentDmTarget) ? 'active' : '';
         list.innerHTML += `<div class="room-item ${isActive} ${isUnread}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
@@ -448,7 +460,7 @@ async function createCharacter() {
     let avatar = null;
 
     if (file) {
-        avatar = await uploadToCloudinary(file); // Default auto is fine for images
+        avatar = await uploadToCloudinary(file); 
         if (!avatar) return; 
     } else {
         avatar = `https://ui-avatars.com/api/?name=${name}&background=random`;
@@ -717,8 +729,11 @@ async function sendMessage() {
     if (pendingAttachment) {
         document.getElementById('chat-staging').innerHTML = '<div style="color:white;">Envoi en cours...</div>';
         
-        // CORRECTION BUG 1 : Si c'est de l'audio, on force 'video'
-        const resourceType = pendingAttachment.type === 'audio' ? 'video' : 'auto';
+        // CORRECTION BUG 1 : Laisser la fonction upload détecter le bon type
+        // On force seulement si c'est de l'audio (pour être sûr que c'est traité comme video)
+        let resourceType = undefined;
+        if(pendingAttachment.type === 'audio') resourceType = 'video';
+        
         finalMediaUrl = await uploadToCloudinary(pendingAttachment.file, resourceType);
         
         finalMediaType = pendingAttachment.type;
@@ -791,8 +806,6 @@ socket.on('message_rp', (msg) => {
         scrollToBottom(); 
     } 
     else { 
-        // CORRECTION BUG 2: Logique de notification de salon
-        // On s'assure d'ajouter l'ID en string et d'appeler l'update UI
         unreadRooms.add(String(msg.roomId)); 
         if (!firstUnreadMap[msg.roomId]) firstUnreadMap[msg.roomId] = msg._id; 
         updateRoomListUI(); 
@@ -1016,8 +1029,9 @@ function openPostDetail(postId) {
         if(pendingCommentAttachment) {
             document.getElementById('comment-staging').innerHTML = "Envoi...";
             if(pendingCommentAttachment.files && pendingCommentAttachment.files[0]) {
-                 // CORRECTION BUG 1 : Gestion type audio
-                 const rType = pendingCommentAttachment.type === 'audio' ? 'video' : 'auto';
+                 let rType = undefined;
+                 if(pendingCommentAttachment.type === 'audio') rType = 'video';
+                 
                  mediaUrl = await uploadToCloudinary(pendingCommentAttachment.files[0], rType);
             }
             mediaType = pendingCommentAttachment.type;
