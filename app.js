@@ -130,7 +130,7 @@ async function toggleRecording(source) {
     }
 }
 
-// --- STANDARD APP LOGIC (RESTORED) ---
+// --- STANDARD APP LOGIC ---
 function switchView(view) {
     currentView = view;
     document.querySelectorAll('.view-section').forEach(el => { el.classList.remove('active'); el.classList.add('hidden'); });
@@ -141,7 +141,10 @@ function switchView(view) {
 }
 
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
-function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
+function toggleCreateForm() { 
+    document.getElementById('create-char-form').classList.toggle('hidden'); 
+    document.getElementById('edit-char-form').classList.add('hidden'); // Cache edit si on ouvre create
+}
 function toggleCharBar() { 
     const bar = document.getElementById('char-bar-horizontal');
     const icon = document.getElementById('toggle-icon');
@@ -164,6 +167,8 @@ function toggleSecretVisibility() {
     input.type = input.type === "password" ? "text" : "password";
 }
 
+// --- GESTION PERSONNAGES (CRÉATION / ÉDITION) ---
+
 function createCharacter() {
     const name = document.getElementById('newCharName').value.trim();
     const role = document.getElementById('newCharRole').value.trim();
@@ -176,15 +181,64 @@ function createCharacter() {
     if(file) uploadToCloudinary(file).then(url => emitChar(name, role, desc, color, url));
     else emitChar(name, role, desc, color, `https://ui-avatars.com/api/?name=${name}`);
 }
+
 function emitChar(name, role, description, color, avatar) {
     socket.emit('create_char', { name, role, description, color, avatar, ownerId: PLAYER_ID });
     toggleCreateForm();
 }
-function previewFile(mode) {
-    // vide mais nécessaire pour l'attribut onchange HTML
+
+// EDIT CHARACTER LOGIC
+function prepareEditCharacter(id) {
+    const char = myCharacters.find(c => c._id === id);
+    if(!char) return;
+    
+    document.getElementById('editCharId').value = char._id;
+    document.getElementById('editCharOriginalName').value = char.name;
+    document.getElementById('editCharName').value = char.name;
+    document.getElementById('editCharRole').value = char.role;
+    document.getElementById('editCharDesc').value = char.description || "";
+    document.getElementById('editCharColor').value = char.color;
+    document.getElementById('editCharBase64').value = char.avatar;
+    
+    document.getElementById('edit-char-form').classList.remove('hidden');
+    document.getElementById('create-char-form').classList.add('hidden');
 }
 
-// SOCKET
+function cancelEditCharacter() {
+    document.getElementById('edit-char-form').classList.add('hidden');
+}
+
+function submitEditCharacter() {
+    const charId = document.getElementById('editCharId').value;
+    const originalName = document.getElementById('editCharOriginalName').value;
+    const newName = document.getElementById('editCharName').value.trim();
+    const newRole = document.getElementById('editCharRole').value.trim();
+    const newDesc = document.getElementById('editCharDesc').value.trim();
+    const newColor = document.getElementById('editCharColor').value;
+    let newAvatar = document.getElementById('editCharBase64').value;
+    
+    const file = document.getElementById('editCharFile').files[0];
+    
+    if(file) {
+        uploadToCloudinary(file).then(url => {
+            socket.emit('edit_char', { charId, originalName, newName, newRole, newDescription: newDesc, newColor, newAvatar: url, ownerId: PLAYER_ID, currentRoomId });
+            cancelEditCharacter();
+        });
+    } else {
+        socket.emit('edit_char', { charId, originalName, newName, newRole, newDescription: newDesc, newColor, newAvatar, ownerId: PLAYER_ID, currentRoomId });
+        cancelEditCharacter();
+    }
+}
+
+function deleteCharacter(id) {
+    if(confirm("Supprimer ce personnage ?")) socket.emit('delete_char', id);
+}
+
+function previewFile(mode) {
+    // Nécessaire pour l'attribut onchange HTML, même si vide ici
+}
+
+// SOCKET CONNECT
 socket.on('login_success', (data) => {
     USERNAME = data.username; PLAYER_ID = data.userId; IS_ADMIN = data.isAdmin;
     localStorage.setItem('rp_username', USERNAME); localStorage.setItem('rp_code', PLAYER_ID);
@@ -210,6 +264,8 @@ socket.on('update_user_list', (users) => {
     document.getElementById('online-count').textContent = users.length;
     document.getElementById('online-users-list').innerHTML = users.map(u=>`<div class="online-user" onclick="openDm('${u}')"><span class="status-dot"></span>${u}</div>`).join('');
 });
+
+// --- AFFICHAGE LISTE PERSO + ACTIONS ---
 socket.on('my_chars_data', (chars) => {
     myCharacters = chars;
     const list = document.getElementById('myCharList');
@@ -222,18 +278,41 @@ socket.on('my_chars_data', (chars) => {
         sel.innerHTML += `<option value="Narrateur" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png">Narrateur</option>`;
     }
     chars.forEach(c => {
-        list.innerHTML += `<div class="char-item"><img src="${c.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${c.color}">${c.name}</div></div></div>`;
-        bar.innerHTML += `<img src="${c.avatar}" class="avatar-choice" onclick="selectCharacter('${c._id}')" id="avatar-opt-${c._id}">`;
+        // Liste Sidebar avec BOUTONS D'ACTION RESTAURÉS
+        list.innerHTML += `
+            <div class="char-item" onclick="selectCharacter('${c._id}')">
+                <img src="${c.avatar}" class="mini-avatar">
+                <div class="char-info">
+                    <div class="char-name-list" style="color:${c.color}">${c.name}</div>
+                    <div class="char-role-list">${c.role}</div>
+                </div>
+                <div class="char-actions">
+                    <button class="btn-mini-action" onclick="event.stopPropagation(); prepareEditCharacter('${c._id}')"><i class="fa-solid fa-gear"></i></button>
+                    <button class="btn-mini-action" onclick="event.stopPropagation(); deleteCharacter('${c._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            </div>`;
+        
+        // Barre horizontale
+        bar.innerHTML += `<img src="${c.avatar}" class="avatar-choice" onclick="selectCharacter('${c._id}')" id="avatar-opt-${c._id}" title="${c.name}">`;
+        
+        // Select Feed
         sel.innerHTML += `<option value="${c.name}" data-id="${c._id}" data-avatar="${c.avatar}">${c.name}</option>`;
     });
+
+    // Auto-select si rien de sélectionné
+    if(!currentSelectedChar && myCharacters.length > 0) selectCharacter(myCharacters[0]._id);
 });
 
 function selectCharacter(id) {
     if(id === 'narrateur') currentSelectedChar = { name: 'Narrateur', role: 'Omniscient', color: '#fff', avatar: 'https://cdn-icons-png.flaticon.com/512/1144/1144760.png' };
     else currentSelectedChar = myCharacters.find(c => c._id === id);
+    
+    // Visuel sélection
     document.querySelectorAll('.avatar-choice').forEach(el => el.classList.remove('selected'));
     const el = document.getElementById(`avatar-opt-${id}`);
     if(el) el.classList.add('selected');
+    
+    // Visuel sélection Sidebar (optionnel, ajout d'une classe .active si vous voulez, sinon juste feedback visuel)
 }
 
 // CHAT
@@ -247,7 +326,6 @@ async function sendMessage() {
         const url = await uploadToCloudinary(staged.file);
         if(!url) return;
         content = url; type = staged.type;
-        // Si texte + fichier, on envoie d'abord le fichier
         if(txt) {
              sendMsgInternal(content, type);
              content = txt; type = 'text';
@@ -322,6 +400,7 @@ function displayMessage(msg) {
     let replyHTML = "";
     if(msg.replyTo) replyHTML = `<div class="reply-context-line" style="margin-left: 55px;"><span class="reply-name">@${msg.replyTo.author}</span></div>`;
 
+    // Si groupé, on masque header mais garde structure
     div.innerHTML = `
         <div class="msg-actions">
             <button class="action-btn" onclick="triggerReply('${msg._id}', '${senderName}', '${msg.content}')"><i class="fa-solid fa-reply"></i></button>
@@ -412,6 +491,12 @@ socket.on('notifications_data', (list) => {
 function openNotifications() { document.getElementById('notifications-modal').classList.remove('hidden'); }
 function closeNotifications() { document.getElementById('notifications-modal').classList.add('hidden'); }
 function markNotificationsRead() { socket.emit('mark_notifications_read', PLAYER_ID); }
-
-// Follow
-function toggleFollow() { /* logique follow simplifiée */ }
+function toggleFollow() { if(!currentProfileCharId) return; socket.emit('follow_char', { charId: currentProfileCharId, userId: PLAYER_ID }); }
+let currentProfileCharId = null; 
+socket.on('char_profile_data', (char) => { 
+    currentProfileCharId = char._id; 
+    document.getElementById('profileName').textContent=char.name; 
+    document.getElementById('profileDesc').textContent=char.description; 
+    document.getElementById('profileAvatar').src=char.avatar; 
+    document.getElementById('profile-modal').classList.remove('hidden'); 
+});
