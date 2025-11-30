@@ -1,4 +1,5 @@
 
+
 var socket = io();
 const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
 
@@ -6,6 +7,7 @@ const notifSound = new Audio('https://cdn.discordapp.com/attachments/13234880872
 const CLOUDINARY_BASE_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz'; 
 const CLOUDINARY_PRESET = 'Cosmos';
 
+// --- DATA ---
 let myCharacters = [];
 let allRooms = []; 
 let currentRoomId = 'global'; 
@@ -25,18 +27,25 @@ let currentSelectedChar = null;
 let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
+let allOnlineUsers = []; // New: For Mentions
 
 // Staging Vars
 let pendingAttachment = null; // { file: Blob/File, type: 'image'|'video'|'audio', url: null }
 let pendingCommentAttachment = null;
 let lastMessageData = { author: null, time: 0, ownerId: null }; // For Grouping
 
+// --- EMOJIS & MENTIONS DATA ---
+const COMMON_EMOJIS = [
+    "😀", "😂", "😉", "😍", "😎", "🥳", "😭", "😡", "🤔", "👍", "👎", 
+    "❤️", "💔", "🔥", "✨", "🎉", "💩", "👻", "💀", "👽", "🤖", "👋", 
+    "🙌", "🙏", "💪", "👀", "🍕", "🍻", "🚀", "💯"
+];
+
 // --- FONCTION D'UPLOAD (ROBUSTE) ---
 async function uploadToCloudinary(file, resourceType) {
     if (!file) return null;
     
     // Détection automatique du type si non spécifié
-    // Cela évite d'utiliser 'auto' qui peut causer des erreurs CORS ou de preset
     if (!resourceType) {
         if (file.type.startsWith('image/')) resourceType = 'image';
         else if (file.type.startsWith('video/') || file.type.startsWith('audio/')) resourceType = 'video';
@@ -69,7 +78,6 @@ async function uploadToCloudinary(file, resourceType) {
                 const errData = await response.json();
                 if (errData.error && errData.error.message) errorMsg = errData.error.message;
             } catch (e) {
-                // Si ce n'est pas du JSON, on tente le texte brut
                 const text = await response.text();
                 if (text) errorMsg = text;
             }
@@ -190,6 +198,89 @@ function clearStaging() {
     document.getElementById('chat-staging').innerHTML = "";
 }
 
+// --- EMOJI PICKER LOGIC ---
+function setupEmojiPicker() {
+    const picker = document.getElementById('emoji-picker');
+    picker.innerHTML = '';
+    COMMON_EMOJIS.forEach(emoji => {
+        const span = document.createElement('span');
+        span.className = 'emoji-item';
+        span.textContent = emoji;
+        span.onclick = () => insertEmoji(emoji);
+        picker.appendChild(span);
+    });
+}
+
+function toggleEmojiPicker() {
+    const picker = document.getElementById('emoji-picker');
+    picker.classList.toggle('hidden');
+}
+
+function insertEmoji(emoji) {
+    const input = document.getElementById('txtInput');
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const text = input.value;
+    
+    input.value = text.substring(0, start) + emoji + text.substring(end);
+    input.selectionStart = input.selectionEnd = start + emoji.length;
+    input.focus();
+    
+    // Hide picker after selection
+    document.getElementById('emoji-picker').classList.add('hidden');
+}
+
+// --- MENTION AUTO-COMPLETION ---
+document.getElementById('txtInput').addEventListener('input', function(e) {
+    const input = e.target;
+    const cursor = input.selectionStart;
+    const text = input.value;
+    
+    // Detect word at cursor
+    const textBeforeCursor = text.substring(0, cursor);
+    const lastWord = textBeforeCursor.split(/\s/).pop();
+    
+    const suggestionsBox = document.getElementById('mention-suggestions');
+    
+    if (lastWord.startsWith('@')) {
+        const query = lastWord.substring(1).toLowerCase();
+        
+        // Filter users (and maybe char names later if available in myCharacters or room data)
+        const matches = allOnlineUsers.filter(u => u.toLowerCase().startsWith(query));
+        
+        if (matches.length > 0) {
+            suggestionsBox.innerHTML = '';
+            matches.forEach(match => {
+                const div = document.createElement('div');
+                div.className = 'mention-item';
+                div.textContent = match;
+                div.onclick = () => selectMention(match, lastWord);
+                suggestionsBox.appendChild(div);
+            });
+            suggestionsBox.classList.remove('hidden');
+        } else {
+            suggestionsBox.classList.add('hidden');
+        }
+    } else {
+        suggestionsBox.classList.add('hidden');
+    }
+});
+
+function selectMention(name, typedWord) {
+    const input = document.getElementById('txtInput');
+    const cursor = input.selectionStart;
+    const text = input.value;
+    const textBefore = text.substring(0, cursor - typedWord.length);
+    const textAfter = text.substring(cursor);
+    
+    const newText = textBefore + '@' + name + ' ' + textAfter;
+    input.value = newText;
+    input.selectionStart = input.selectionEnd = textBefore.length + name.length + 2; // +2 for @ and space
+    input.focus();
+    
+    document.getElementById('mention-suggestions').classList.add('hidden');
+}
+
 // --- UI & LOGIN / COMPTE ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
 function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
@@ -295,9 +386,13 @@ function checkAutoLogin() {
     else openLoginModal();
 }
 
-socket.on('connect', () => { checkAutoLogin(); });
+socket.on('connect', () => { 
+    checkAutoLogin(); 
+    setupEmojiPicker(); // Initialize emojis
+});
 
 socket.on('update_user_list', (users) => {
+    allOnlineUsers = users; // Store for mentions
     const listDiv = document.getElementById('online-users-list');
     document.getElementById('online-count').textContent = users.length;
     listDiv.innerHTML = "";
@@ -1190,4 +1285,3 @@ function createPostElement(post) {
     `;
     return div;
 }
-
