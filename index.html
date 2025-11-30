@@ -236,13 +236,22 @@
                             </div>
                             <button class="btn-close-reply" onclick="cancelContext()"><i class="fa-solid fa-xmark"></i></button>
                         </div>
+                        
+                        <!-- NEW: Mention Suggestions Container -->
+                        <div id="mention-suggestions" class="hidden"></div>
 
                         <!-- STAGING AREA (PREVIEW AVANT ENVOI) -->
                         <div id="chat-staging" class="chat-staging hidden"></div>
+                        
+                        <!-- NEW: Emoji Picker Container -->
+                        <div id="emoji-picker" class="hidden"></div>
 
                         <div id="input-zone">
                             <input id="txtInput" type="text" autocomplete="off" placeholder="Message..." />
                             
+                            <!-- NEW: Emoji Button -->
+                            <button class="btn-icon" id="btn-emoji" onclick="toggleEmojiPicker()" title="Emojis"><i class="fa-regular fa-face-smile"></i></button>
+
                             <button class="btn-icon" id="btn-record-chat" onclick="toggleRecording('chat')" title="Vocal"><i class="fa-solid fa-microphone"></i></button>
                             
                             <button class="btn-icon" onclick="document.getElementById('chat-img-input').click()" title="Image"><i class="fa-solid fa-image"></i></button>
