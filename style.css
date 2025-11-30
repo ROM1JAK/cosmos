@@ -57,7 +57,13 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .room-item { padding: 8px; border-radius: 4px; cursor: pointer; color: var(--text-muted); font-weight: 500; display: flex; align-items: center; justify-content: space-between; transition: 0.2s; }
 .room-item:hover { background: #35373c; color: var(--text-normal); }
 .room-item.active { background: #404249; color: white; }
-.room-item.unread { color: #ff6b6b !important; font-weight: bold; background: rgba(255, 107, 107, 0.1); }
+
+/* CORRECTION BUG 2: Specificity !important on color and background */
+.room-item.unread { 
+    color: #ff6b6b !important; 
+    font-weight: bold; 
+    background: rgba(255, 107, 107, 0.1) !important; 
+}
 .room-item.unread::after { content: "●"; font-size: 0.8em; margin-left: 5px; }
 .room-name::before { content: "#"; margin-right: 8px; font-size: 1.2em; color: #6d6f78; }
 
