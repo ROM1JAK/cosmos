@@ -4,7 +4,7 @@ const notifSound = new Audio('https://cdn.discordapp.com/attachments/13234880872
 
 // --- CONFIGURATION CLOUDINARY ---
 const CLOUDINARY_BASE_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz'; 
-const CLOUDINARY_PRESET = 'm';
+const CLOUDINARY_PRESET = 'Cosmos';
 
 let myCharacters = [];
 let allRooms = []; 
@@ -1190,3 +1190,4 @@ function createPostElement(post) {
     `;
     return div;
 }
+
