@@ -8,7 +8,7 @@ const path = require('path');
 // --- CONFIGURATION ---
 const PORT = process.env.PORT || 3000;
 // Remplace par ton URI MongoDB
-const MONGO_URI = 'mongodb://127.0.0.1:27017/rp_platform'; 
+const MONGO_URI = 'mongodb+srv://billaout63_db_user:billaout63_db_user@rom1jak.7uu0ru8.mongodb.net/?appName=ROM1JAK'; 
 
 const app = express();
 const server = http.createServer(app);
@@ -254,3 +254,4 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
