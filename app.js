@@ -2,7 +2,7 @@ var socket = io();
 const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
 
 // --- CONFIGURATION CLOUDINARY ---
-const CLOUDINARY_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz/auto/upload'; 
+const CLOUDINARY_BASE_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz'; 
 const CLOUDINARY_PRESET = 'm';
 
 let myCharacters = [];
@@ -31,10 +31,10 @@ let pendingCommentAttachment = null;
 let lastMessageData = { author: null, time: 0, ownerId: null }; // For Grouping
 
 // --- FONCTION D'UPLOAD ---
-async function uploadToCloudinary(file) {
+async function uploadToCloudinary(file, resourceType = 'auto') {
     if (!file) return null;
     
-    // Support Blob (Audio)
+    // Support Blob (Audio) - allow 'auto' or 'video' usually for audio in Cloudinary
     if (file instanceof Blob) {
         // C'est valide
     } else if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
@@ -43,11 +43,19 @@ async function uploadToCloudinary(file) {
     }
 
     const formData = new FormData();
-    formData.append('file', file);
+    // Ensure filename for audio blobs so Cloudinary detects type correctly
+    if (file instanceof Blob && !file.name) {
+        formData.append('file', file, 'recording.webm');
+    } else {
+        formData.append('file', file);
+    }
     formData.append('upload_preset', CLOUDINARY_PRESET);
 
+    // Construct correct URL based on resource type
+    const uploadUrl = `${CLOUDINARY_BASE_URL}/${resourceType}/upload`;
+
     try {
-        const response = await fetch(CLOUDINARY_URL, {
+        const response = await fetch(uploadUrl, {
             method: 'POST',
             body: formData
         });
@@ -116,9 +124,8 @@ async function toggleRecording(source) { // source: 'chat', 'feed', 'comment'
             } else if (source === 'feed') {
                 document.getElementById('postFileStatus').style.display = 'block';
                 document.getElementById('postFileStatus').innerHTML = 'Audio prêt à être envoyé (upload au clic sur Publier)...';
-                // Store in a global variable for feed or upload now? 
-                // For feed, we usually upload then populate hidden field.
-                const url = await uploadToCloudinary(audioBlob);
+                // Upload immediately for feed as per original design, but use 'video' resource type for audio
+                const url = await uploadToCloudinary(audioBlob, 'video');
                 document.getElementById('postMediaUrl').value = url;
                 document.getElementById('postFileStatus').innerHTML = 'Audio enregistré <i class="fa-solid fa-check" style="color:#23a559"></i>';
             } else if (source === 'comment') {
@@ -337,7 +344,8 @@ function updateRoomListUI() {
     list.innerHTML = `<div class="room-item ${(currentRoomId === 'global' && !currentDmTarget)?'active':''} ${unreadRooms.has('global')?'unread':''}" onclick="joinRoom('global')"><span class="room-name">Salon Global</span></div>`;
     allRooms.forEach(room => {
         const delBtn = IS_ADMIN ? `<button class="btn-del-room" onclick="event.stopPropagation(); deleteRoom('${room._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
-        const isUnread = unreadRooms.has(room._id) ? 'unread' : '';
+        // Ensure type consistency for unread logic
+        const isUnread = unreadRooms.has(String(room._id)) ? 'unread' : '';
         const isActive = (String(currentRoomId) === String(room._id) && !currentDmTarget) ? 'active' : '';
         list.innerHTML += `<div class="room-item ${isActive} ${isUnread}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span>${delBtn}</div>`;
     });
@@ -434,7 +442,7 @@ async function createCharacter() {
     let avatar = null;
 
     if (file) {
-        avatar = await uploadToCloudinary(file);
+        avatar = await uploadToCloudinary(file, 'image');
         if (!avatar) return; 
     } else {
         avatar = `https://ui-avatars.com/api/?name=${name}&background=random`;
@@ -475,7 +483,7 @@ async function submitEditCharacter() {
     let newAvatar = document.getElementById('editCharBase64').value; 
 
     if (file) {
-        const uploadedUrl = await uploadToCloudinary(file);
+        const uploadedUrl = await uploadToCloudinary(file, 'image');
         if (uploadedUrl) newAvatar = uploadedUrl;
     }
 
@@ -702,7 +710,9 @@ async function sendMessage() {
 
     if (pendingAttachment) {
         document.getElementById('chat-staging').innerHTML = '<div style="color:white;">Envoi en cours...</div>';
-        finalMediaUrl = await uploadToCloudinary(pendingAttachment.file);
+        // Force 'video' for audio files to Cloudinary
+        const resourceType = pendingAttachment.type === 'audio' ? 'video' : pendingAttachment.type;
+        finalMediaUrl = await uploadToCloudinary(pendingAttachment.file, resourceType);
         finalMediaType = pendingAttachment.type;
         if (!finalMediaUrl) {
              clearStaging();
@@ -730,11 +740,6 @@ async function sendMessage() {
     
     if(!currentSelectedChar) return alert("Sélectionnez un personnage !");
 
-    // If we have text AND media, sends as two messages or prioritize media as type?
-    // Current schema supports one content/type per msg. 
-    // Strategy: If both, send media message first, then text message? Or embed?
-    // Let's send 1 message if only one exists. If both, send media msg then text.
-    
     const baseMsg = {
         senderName: currentSelectedChar.name, 
         senderColor: currentSelectedChar.color || "#fff", 
@@ -750,8 +755,6 @@ async function sendMessage() {
     }
     
     if (content) {
-        // If we sent media, clear reply context for the text to avoid double reply?
-        // Or keep it? Let's keep logic simple.
         socket.emit('message_rp', { ...baseMsg, content: content, type: "text" });
     }
 
@@ -775,7 +778,12 @@ socket.on('history_data', (msgs) => {
 socket.on('message_rp', (msg) => { 
     if (msg.ownerId !== PLAYER_ID && notificationsEnabled) notifSound.play().catch(e => {});
     if(msg.roomId === currentRoomId && !currentDmTarget) { displayMessage(msg); scrollToBottom(); } 
-    else { unreadRooms.add(msg.roomId); if (!firstUnreadMap[msg.roomId]) firstUnreadMap[msg.roomId] = msg._id; updateRoomListUI(); }
+    else { 
+        // Force string conversion to prevent Type confusion (ObjectId vs String)
+        unreadRooms.add(String(msg.roomId)); 
+        if (!firstUnreadMap[msg.roomId]) firstUnreadMap[msg.roomId] = msg._id; 
+        updateRoomListUI(); 
+    }
 });
 socket.on('message_deleted', (msgId) => { const el = document.getElementById(`msg-${msgId}`); if(el) el.remove(); });
 socket.on('message_updated', (data) => { const el = document.getElementById(`content-${data.id}`); if(el) { el.innerHTML = formatText(data.newContent); const meta = el.parentElement.parentElement.querySelector('.timestamp'); if(meta && !meta.textContent.includes('(modifié)')) meta.textContent += ' (modifié)'; } });
@@ -1003,7 +1011,9 @@ function openPostDetail(postId) {
             document.getElementById('comment-staging').innerHTML = "Envoi...";
             // If it's files (input)
             if(pendingCommentAttachment.files && pendingCommentAttachment.files[0]) {
-                 mediaUrl = await uploadToCloudinary(pendingCommentAttachment.files[0]);
+                 // Audio should be video for cloudinary
+                 const resourceType = pendingCommentAttachment.type === 'audio' ? 'video' : pendingCommentAttachment.type;
+                 mediaUrl = await uploadToCloudinary(pendingCommentAttachment.files[0], resourceType);
             }
             mediaType = pendingCommentAttachment.type;
         }
