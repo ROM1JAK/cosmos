@@ -298,7 +298,7 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .new-msg-separator::before, .new-msg-separator::after { content: ""; flex: 1; height: 1px; background: #ff6b6b; opacity: 0.5; margin: 0 10px; }
 
 /* INPUT & CONTEXT */
-#input-wrapper { background: var(--bg-primary); padding: 0 20px 20px; flex-shrink: 0; }
+#input-wrapper { background: var(--bg-primary); padding: 0 20px 20px; flex-shrink: 0; position: relative; }
 
 /* BARRE PERSONNAGE HORIZONTALE */
 #char-selector-wrapper { background: #2b2d31; border-radius: 8px; margin-bottom: 10px; border: 1px solid #222; overflow: hidden; }
@@ -340,6 +340,40 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .staging-preview { height: 60px; border-radius: 4px; object-fit: cover; }
 .staging-info { color: #dbdee1; font-size: 0.9rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
 .btn-clear-stage { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 1.1rem; }
+
+/* EMOJI PICKER & MENTIONS */
+#emoji-picker {
+    position: absolute; bottom: 100%; right: 20px;
+    background: #2b2d31; border: 1px solid #1e1f22;
+    border-radius: 8px; padding: 10px;
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    z-index: 100;
+    margin-bottom: 10px;
+}
+.emoji-item {
+    font-size: 1.5rem; cursor: pointer;
+    text-align: center; padding: 5px;
+    border-radius: 4px; transition: 0.2s;
+}
+.emoji-item:hover { background: #404249; transform: scale(1.1); }
+
+#mention-suggestions {
+    position: absolute; bottom: 100%; left: 20px;
+    background: #2b2d31; border: 1px solid #1e1f22;
+    border-radius: 8px; width: 200px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    z-index: 100; overflow: hidden;
+    margin-bottom: 5px;
+}
+.mention-item {
+    padding: 8px 12px; cursor: pointer;
+    color: var(--text-normal); font-size: 0.9rem;
+    border-bottom: 1px solid #222; transition: 0.2s;
+}
+.mention-item:hover { background: var(--accent); color: white; }
+.mention-item:last-child { border-bottom: none; }
+
 
 /* RESTE DU CHAT INPUT */
 #context-bar { background: #2b2d31; color: var(--text-muted); padding: 8px 15px; border-radius: 8px 8px 0 0; font-size: 0.85rem; display: none; justify-content: space-between; align-items: center; border-bottom: 1px solid #383a40; margin-bottom: -5px; z-index: 2; position: relative; }
