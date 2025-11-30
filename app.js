@@ -1,502 +1,388 @@
-var socket = io();
-const CLOUDINARY_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz/auto/upload'; 
-const CLOUDINARY_PRESET = 'Cosmos';
+// app.js
+const socket = io();
 
-let myCharacters = [];
-let allRooms = []; 
-let currentRoomId = 'global'; 
-let currentDmTarget = null; 
-let PLAYER_ID, USERNAME, IS_ADMIN = false;
-let currentContext = null; 
-let currentSelectedChar = null; 
-let currentView = 'chat';
-let notificationsEnabled = true;
+// --- CONFIG CLOUDINARY ---
+const CLOUD_NAME = 'demo'; // REMPLACE PAR TON CLOUD NAME
+const UPLOAD_PRESET = 'docs_upload_example_us_preset'; // REMPLACE PAR TON PRESET
 
-// Grouping logic
-let lastMsgAuthorId = null; 
-let lastMsgTime = 0;
-
-// Media
-let mediaRecorder;
+// --- STATE ---
+let currentUser = null;
+let currentRoom = 'Général';
+let myChars = [];
+let selectedCharId = null;
+let privateTarget = null; // { id, name }
+let replyTarget = null; // messageId
+let mediaStaged = null; // File object
+let mediaRecorder = null;
 let audioChunks = [];
-let isRecording = false;
-let stagedFiles = { chat: null, post: null, comment: null };
+let lastViewedTimes = JSON.parse(localStorage.getItem('rp_last_viewed')) || {};
 
-// --- STAGING & MEDIA ---
-function triggerFileSelect(source) {
-    const map = { 'chat': 'chatFileInput', 'post': 'postFileInput', 'comment': 'commentFileInput' };
-    document.getElementById(map[source]).click();
+// --- AUTH ---
+const savedUser = JSON.parse(localStorage.getItem('rp_user'));
+if (savedUser) {
+    document.getElementById('loginPseudo').value = savedUser.pseudo;
+    document.getElementById('loginCode').value = savedUser.code;
+    login();
 }
 
-function handleFileSelect(input, source) {
-    const file = input.files[0];
-    if(!file) return;
-    let type = 'image';
-    if(file.type.startsWith('video/')) type = 'video';
-    stageContent(source, file, type);
-    input.value = ""; 
+function login() {
+    const pseudo = document.getElementById('loginPseudo').value;
+    const code = document.getElementById('loginCode').value;
+    if (!pseudo || !code) return alert('Champs requis');
+    socket.emit('login', { pseudo, code });
 }
 
-function stageContent(source, fileOrBlob, type) {
-    const url = URL.createObjectURL(fileOrBlob);
-    stagedFiles[source] = { file: fileOrBlob, type: type, url: url };
-    renderStaging(source);
+function logout() {
+    localStorage.removeItem('rp_user');
+    location.reload();
 }
 
-function clearStaging(source = 'chat') {
-    stagedFiles[source] = null;
-    const map = { 'chat': 'chat-staging', 'post': 'post-staging', 'comment': 'comment-staging' };
-    document.getElementById(map[source]).classList.add('hidden');
-}
-function clearPostStaging() { clearStaging('post'); }
-function clearCommentStaging() { clearStaging('comment'); }
-
-function renderStaging(source) {
-    const data = stagedFiles[source];
-    if(!data) return;
-    let html = "";
-    if(data.type === 'image') html = `<img src="${data.url}" class="staging-preview-img" style="max-height:60px;">`;
-    else if(data.type === 'video') html = `<video src="${data.url}" style="max-height:60px; border-radius:4px;"></video>`;
-    else if(data.type === 'audio') html = renderCustomAudio(data.url);
-
-    if(source === 'chat') {
-        document.getElementById('staging-content').innerHTML = html;
-        document.getElementById('staging-filename').textContent = (data.type === 'audio' ? "Note vocale" : "Fichier média");
-        document.getElementById('chat-staging').classList.remove('hidden');
-    } else if (source === 'post') {
-        document.getElementById('post-staging-content').innerHTML = html;
-        document.getElementById('post-staging').classList.remove('hidden');
-    } else if (source === 'comment') {
-        document.getElementById('comment-staging-preview').innerHTML = html;
-        document.getElementById('comment-staging').classList.remove('hidden');
-    }
-}
-
-// Custom Audio
-function renderCustomAudio(src) {
-    const id = "audio-" + Math.random().toString(36).substr(2, 9);
-    return `<div class="custom-audio-player">
-        <button class="audio-btn" onclick="togglePlayAudio('${id}')"><i id="icon-${id}" class="fa-solid fa-play"></i></button>
-        <div class="audio-progress-bar"><div id="bar-${id}" class="audio-progress-fill"></div></div>
-        <audio id="${id}" src="${src}" ontimeupdate="updateAudioUI('${id}')" onended="resetAudioUI('${id}')"></audio>
-    </div>`;
-}
-window.togglePlayAudio = function(id) {
-    const audio = document.getElementById(id);
-    const icon = document.getElementById(`icon-${id}`);
-    if(audio.paused) { document.querySelectorAll('audio').forEach(a=>{if(a.id!==id){a.pause();resetAudioUI(a.id)}}); audio.play(); icon.className="fa-solid fa-pause"; }
-    else { audio.pause(); icon.className="fa-solid fa-play"; }
-};
-window.updateAudioUI = function(id) {
-    const a = document.getElementById(id), b = document.getElementById(`bar-${id}`);
-    if(a && b) b.style.width = ((a.currentTime/a.duration)*100)+"%";
-};
-window.resetAudioUI = function(id) {
-    const i = document.getElementById(`icon-${id}`), b = document.getElementById(`bar-${id}`);
-    if(i) i.className="fa-solid fa-play"; if(b) b.style.width="0%";
-};
-
-async function uploadToCloudinary(file) {
-    if(!file) return null;
-    const fd = new FormData(); fd.append('file', file); fd.append('upload_preset', CLOUDINARY_PRESET);
-    try { const r=await fetch(CLOUDINARY_URL,{method:'POST',body:fd}); const d=await r.json(); return d.secure_url; }
-    catch(e){console.error(e);return null;}
-}
-
-// --- RECORDING ---
-async function toggleRecording(source) {
-    const btnId = `btn-record-${source}`;
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-
-    if (!isRecording) {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
-            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-            mediaRecorder.start();
-            isRecording = true;
-            btn.classList.add('recording');
-        } catch (err) { alert("Micro inaccessible"); }
+// --- SOCKET LISTENERS ---
+socket.on('login_success', (user) => {
+    currentUser = user;
+    localStorage.setItem('rp_user', JSON.stringify({ pseudo: user.pseudo, code: document.getElementById('loginCode').value }));
+    document.getElementById('loginModal').classList.remove('active');
+    document.getElementById('app').style.display = 'grid';
+    document.getElementById('myPseudo').innerText = user.pseudo;
+    
+    // Admin features
+    if(user.isAdmin) {
+        document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'inline-block');
     } else {
-        mediaRecorder.stop();
-        mediaRecorder.onstop = () => {
-            const blob = new Blob(audioChunks, { type: 'audio/webm' });
-            btn.classList.remove('recording');
-            isRecording = false;
-            stageContent(source, blob, 'audio');
-        };
+        document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
     }
-}
-
-// --- STANDARD APP LOGIC ---
-function switchView(view) {
-    currentView = view;
-    document.querySelectorAll('.view-section').forEach(el => { el.classList.remove('active'); el.classList.add('hidden'); });
-    document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
-    document.getElementById(`view-${view}`).classList.remove('hidden');
-    document.getElementById(`view-${view}`).classList.add('active');
-    document.getElementById(`btn-view-${view}`).classList.add('active');
-}
-
-function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
-function toggleCreateForm() { 
-    document.getElementById('create-char-form').classList.toggle('hidden'); 
-    document.getElementById('edit-char-form').classList.add('hidden'); // Cache edit si on ouvre create
-}
-function toggleCharBar() { 
-    const bar = document.getElementById('char-bar-horizontal');
-    const icon = document.getElementById('toggle-icon');
-    bar.classList.toggle('hidden-bar');
-    icon.className = bar.classList.contains('hidden-bar') ? "fa-solid fa-chevron-up" : "fa-solid fa-chevron-down";
-}
-
-function openAccountUI() { document.getElementById('user-settings-modal').classList.remove('hidden'); }
-function closeUserSettingsModal() { document.getElementById('user-settings-modal').classList.add('hidden'); }
-function openLoginModal() { document.getElementById('login-modal').classList.remove('hidden'); }
-function closeLoginModal() { document.getElementById('login-modal').classList.add('hidden'); }
-function submitLogin() {
-    const pseudo = document.getElementById('loginPseudoInput').value.trim();
-    const code = document.getElementById('loginCodeInput').value.trim();
-    if(pseudo && code) socket.emit('login_request', { username: pseudo, code });
-}
-function logoutUser() { localStorage.clear(); location.reload(); }
-function toggleSecretVisibility() {
-    const input = document.getElementById('settingsCodeInput');
-    input.type = input.type === "password" ? "text" : "password";
-}
-
-// --- GESTION PERSONNAGES (CRÉATION / ÉDITION) ---
-
-function createCharacter() {
-    const name = document.getElementById('newCharName').value.trim();
-    const role = document.getElementById('newCharRole').value.trim();
-    const desc = document.getElementById('newCharDesc').value.trim();
-    const color = document.getElementById('newCharColor').value;
-    const file = document.getElementById('newCharFile').files[0];
     
-    if(!name || !role) return alert("Nom/Rôle requis");
-    
-    if(file) uploadToCloudinary(file).then(url => emitChar(name, role, desc, color, url));
-    else emitChar(name, role, desc, color, `https://ui-avatars.com/api/?name=${name}`);
-}
-
-function emitChar(name, role, description, color, avatar) {
-    socket.emit('create_char', { name, role, description, color, avatar, ownerId: PLAYER_ID });
-    toggleCreateForm();
-}
-
-// EDIT CHARACTER LOGIC
-function prepareEditCharacter(id) {
-    const char = myCharacters.find(c => c._id === id);
-    if(!char) return;
-    
-    document.getElementById('editCharId').value = char._id;
-    document.getElementById('editCharOriginalName').value = char.name;
-    document.getElementById('editCharName').value = char.name;
-    document.getElementById('editCharRole').value = char.role;
-    document.getElementById('editCharDesc').value = char.description || "";
-    document.getElementById('editCharColor').value = char.color;
-    document.getElementById('editCharBase64').value = char.avatar;
-    
-    document.getElementById('edit-char-form').classList.remove('hidden');
-    document.getElementById('create-char-form').classList.add('hidden');
-}
-
-function cancelEditCharacter() {
-    document.getElementById('edit-char-form').classList.add('hidden');
-}
-
-function submitEditCharacter() {
-    const charId = document.getElementById('editCharId').value;
-    const originalName = document.getElementById('editCharOriginalName').value;
-    const newName = document.getElementById('editCharName').value.trim();
-    const newRole = document.getElementById('editCharRole').value.trim();
-    const newDesc = document.getElementById('editCharDesc').value.trim();
-    const newColor = document.getElementById('editCharColor').value;
-    let newAvatar = document.getElementById('editCharBase64').value;
-    
-    const file = document.getElementById('editCharFile').files[0];
-    
-    if(file) {
-        uploadToCloudinary(file).then(url => {
-            socket.emit('edit_char', { charId, originalName, newName, newRole, newDescription: newDesc, newColor, newAvatar: url, ownerId: PLAYER_ID, currentRoomId });
-            cancelEditCharacter();
-        });
-    } else {
-        socket.emit('edit_char', { charId, originalName, newName, newRole, newDescription: newDesc, newColor, newAvatar, ownerId: PLAYER_ID, currentRoomId });
-        cancelEditCharacter();
-    }
-}
-
-function deleteCharacter(id) {
-    if(confirm("Supprimer ce personnage ?")) socket.emit('delete_char', id);
-}
-
-function previewFile(mode) {
-    // Nécessaire pour l'attribut onchange HTML, même si vide ici
-}
-
-// SOCKET CONNECT
-socket.on('login_success', (data) => {
-    USERNAME = data.username; PLAYER_ID = data.userId; IS_ADMIN = data.isAdmin;
-    localStorage.setItem('rp_username', USERNAME); localStorage.setItem('rp_code', PLAYER_ID);
-    closeLoginModal();
-    document.getElementById('player-id-display').textContent = USERNAME;
-    socket.emit('request_initial_data', PLAYER_ID);
-    joinRoom('global');
+    socket.emit('join_room', 'Général');
 });
-socket.on('connect', () => {
-    const u = localStorage.getItem('rp_username'), c = localStorage.getItem('rp_code');
-    if(u && c) socket.emit('login_request', { username: u, code: c });
-    else openLoginModal();
-});
-socket.on('rooms_data', (r) => { 
-    allRooms = r; 
+
+socket.on('login_error', (msg) => alert(msg));
+
+socket.on('room_list', (rooms) => {
     const list = document.getElementById('roomList');
-    list.innerHTML = `<div class="room-item ${(currentRoomId==='global'&&!currentDmTarget)?'active':''}" onclick="joinRoom('global')"><span class="room-name">Global</span></div>`;
-    allRooms.forEach(room => {
-        list.innerHTML += `<div class="room-item ${(currentRoomId===room._id)?'active':''}" onclick="joinRoom('${room._id}')"><span class="room-name">${room.name}</span></div>`;
+    list.innerHTML = '';
+    rooms.forEach(r => {
+        const li = document.createElement('li');
+        li.innerHTML = `# ${r.name} ${currentUser.isAdmin ? `<i class="fas fa-trash" onclick="deleteRoom('${r._id}')" style="margin-left:auto;font-size:10px;color:red"></i>` : ''}`;
+        li.onclick = (e) => { if(e.target.tagName !== 'I') joinRoom(r.name); };
+        if(r.name === currentRoom) li.classList.add('active');
+        // Unread logic could go here
+        list.appendChild(li);
     });
 });
-socket.on('update_user_list', (users) => {
-    document.getElementById('online-count').textContent = users.length;
-    document.getElementById('online-users-list').innerHTML = users.map(u=>`<div class="online-user" onclick="openDm('${u}')"><span class="status-dot"></span>${u}</div>`).join('');
+
+socket.on('update_users', (users) => {
+    const list = document.getElementById('userList');
+    list.innerHTML = users.map(u => `
+        <li onclick="startDM('${u.userId}', '${u.pseudo}')">
+            <i class="fas fa-circle" style="color:${u.online?'var(--success)':'gray'};font-size:8px;"></i> ${u.pseudo}
+        </li>`).join('');
 });
 
-// --- AFFICHAGE LISTE PERSO + ACTIONS ---
-socket.on('my_chars_data', (chars) => {
-    myCharacters = chars;
-    const list = document.getElementById('myCharList');
-    const bar = document.getElementById('char-bar-horizontal');
-    const sel = document.getElementById('feedCharSelector');
-    list.innerHTML = ""; bar.innerHTML = ""; sel.innerHTML = "";
-    
-    if(IS_ADMIN) {
-        bar.innerHTML += `<img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" class="avatar-choice" onclick="selectCharacter('narrateur')" id="avatar-opt-narrateur">`;
-        sel.innerHTML += `<option value="Narrateur" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png">Narrateur</option>`;
-    }
-    chars.forEach(c => {
-        // Liste Sidebar avec BOUTONS D'ACTION RESTAURÉS
-        list.innerHTML += `
-            <div class="char-item" onclick="selectCharacter('${c._id}')">
-                <img src="${c.avatar}" class="mini-avatar">
-                <div class="char-info">
-                    <div class="char-name-list" style="color:${c.color}">${c.name}</div>
-                    <div class="char-role-list">${c.role}</div>
-                </div>
-                <div class="char-actions">
-                    <button class="btn-mini-action" onclick="event.stopPropagation(); prepareEditCharacter('${c._id}')"><i class="fa-solid fa-gear"></i></button>
-                    <button class="btn-mini-action" onclick="event.stopPropagation(); deleteCharacter('${c._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button>
-                </div>
-            </div>`;
-        
-        // Barre horizontale
-        bar.innerHTML += `<img src="${c.avatar}" class="avatar-choice" onclick="selectCharacter('${c._id}')" id="avatar-opt-${c._id}" title="${c.name}">`;
-        
-        // Select Feed
-        sel.innerHTML += `<option value="${c.name}" data-id="${c._id}" data-avatar="${c.avatar}">${c.name}</option>`;
-    });
-
-    // Auto-select si rien de sélectionné
-    if(!currentSelectedChar && myCharacters.length > 0) selectCharacter(myCharacters[0]._id);
+socket.on('my_chars', (chars) => {
+    myChars = chars;
+    renderCharList();
+    renderCharSelector();
 });
 
-function selectCharacter(id) {
-    if(id === 'narrateur') currentSelectedChar = { name: 'Narrateur', role: 'Omniscient', color: '#fff', avatar: 'https://cdn-icons-png.flaticon.com/512/1144/1144760.png' };
-    else currentSelectedChar = myCharacters.find(c => c._id === id);
-    
-    // Visuel sélection
-    document.querySelectorAll('.avatar-choice').forEach(el => el.classList.remove('selected'));
-    const el = document.getElementById(`avatar-opt-${id}`);
-    if(el) el.classList.add('selected');
-    
-    // Visuel sélection Sidebar (optionnel, ajout d'une classe .active si vous voulez, sinon juste feedback visuel)
+// --- CHAT LOGIC ---
+function joinRoom(name) {
+    currentRoom = name;
+    lastViewedTimes[name] = Date.now(); // Mark as read on enter
+    localStorage.setItem('rp_last_viewed', JSON.stringify(lastViewedTimes));
+    socket.emit('join_room', name);
+    document.getElementById('currentRoomTitle').innerText = '# ' + name;
 }
 
-// CHAT
-async function sendMessage() {
-    const txt = document.getElementById('txtInput').value.trim();
-    const staged = stagedFiles['chat'];
-    if(!txt && !staged) return;
+socket.on('load_messages', ({ room, messages }) => {
+    const container = document.getElementById('chatMessages');
+    container.innerHTML = '';
+    let lastUser = null;
+    
+    // New messages separator logic
+    let separatorDrawn = false;
+    const lastRead = lastViewedTimes[room] || 0;
 
-    let content = txt, type = 'text';
-    if(staged) {
-        const url = await uploadToCloudinary(staged.file);
-        if(!url) return;
-        content = url; type = staged.type;
-        if(txt) {
-             sendMsgInternal(content, type);
-             content = txt; type = 'text';
+    messages.forEach(msg => {
+        if (!separatorDrawn && new Date(msg.timestamp).getTime() > lastRead) {
+            const div = document.createElement('div');
+            div.className = 'new-messages-bar';
+            div.innerHTML = '<span>Nouveaux Messages</span>';
+            container.appendChild(div);
+            separatorDrawn = true;
         }
-    }
-    sendMsgInternal(content, type);
-    document.getElementById('txtInput').value = "";
-    clearStaging('chat');
-    cancelContext();
-}
-
-function sendMsgInternal(content, type) {
-    const data = {
-        content, type, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
-        ownerId: PLAYER_ID,
-        replyTo: currentContext?.data
-    };
-    if(currentDmTarget) {
-        socket.emit('send_dm', { ...data, sender: USERNAME, target: currentDmTarget });
-    } else {
-        if(!currentSelectedChar) return alert("Perso requis");
-        socket.emit('message_rp', { ...data, roomId: currentRoomId, senderName: currentSelectedChar.name, senderAvatar: currentSelectedChar.avatar, senderRole: currentSelectedChar.role, senderColor: currentSelectedChar.color });
-    }
-}
-
-function joinRoom(id) {
-    if(currentRoomId !== id) { socket.emit('leave_room', currentRoomId); lastMsgAuthorId = null; }
-    currentRoomId = id; currentDmTarget = null;
-    socket.emit('join_room', id);
-    socket.emit('request_history', id);
-    document.getElementById('messages').innerHTML = "";
-    document.getElementById('currentRoomName').textContent = id === 'global' ? 'Salon Global' : 'Salon';
-    document.getElementById('char-selector-wrapper').classList.remove('hidden');
-    document.getElementById('dm-header-actions').classList.add('hidden');
-}
-
-function openDm(target) {
-    currentDmTarget = target;
-    document.getElementById('messages').innerHTML = "";
-    document.getElementById('currentRoomName').textContent = `@${target}`;
-    document.getElementById('char-selector-wrapper').classList.add('hidden');
-    document.getElementById('dm-header-actions').classList.remove('hidden');
-    socket.emit('request_dm_history', { myUsername: USERNAME, targetUsername: target });
-    lastMsgAuthorId = null;
-}
-function closeCurrentDm() { joinRoom('global'); }
-
-// DISPLAY MSG
-function displayMessage(msg) {
-    const container = document.getElementById('messages');
-    const msgTime = new Date(msg.timestamp).getTime();
+        renderMessage(msg, container, lastUser === msg.character.name);
+        lastUser = msg.character.name;
+    });
+    scrollToBottom();
     
-    // Grouping
-    const isSameAuthor = (msg.ownerId === lastMsgAuthorId);
-    const isRecent = (msgTime - lastMsgTime) < 120000;
-    const isGrouped = isSameAuthor && isRecent && !msg.replyTo && msg.type === 'text';
+    // Update last viewed
+    lastViewedTimes[room] = Date.now();
+    localStorage.setItem('rp_last_viewed', JSON.stringify(lastViewedTimes));
+});
 
+socket.on('new_message', (msg) => {
+    if ((msg.roomId === currentRoom) || (msg.isPrivate && (msg.targetId === currentUser.userId || msg.character.userId === currentUser.userId))) {
+        renderMessage(msg, document.getElementById('chatMessages'));
+        scrollToBottom();
+    } else {
+        // Notification in room list (simple logic)
+        const roomItems = document.querySelectorAll('#roomList li');
+        roomItems.forEach(li => {
+            if(li.innerText.includes(msg.roomId)) li.classList.add('unread');
+        });
+    }
+});
+
+function renderMessage(msg, container, isGrouped = false) {
     const div = document.createElement('div');
-    div.className = 'message-container';
-    if(isGrouped) div.classList.add('msg-group-followup');
-    div.id = `msg-${msg._id}`;
+    div.className = `message ${msg.isPrivate ? 'private-msg' : ''}`;
+    
+    // Markdown
+    let contentHtml = marked.parse(msg.content || '');
+    // Spoiler
+    contentHtml = contentHtml.replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.remove(\'spoiler\')">$1</span>');
 
-    let contentHTML = "";
-    if (msg.type === 'image') contentHTML = `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">`;
-    else if (msg.type === 'video') contentHTML = `<video src="${msg.content}" class="video-direct" controls></video>`;
-    else if (msg.type === 'audio') contentHTML = renderCustomAudio(msg.content);
-    else contentHTML = `<div class="text-body">${formatText(msg.content)}</div>`;
+    let mediaHtml = '';
+    if (msg.media) {
+        if (msg.media.type.startsWith('image')) mediaHtml = `<img src="${msg.media.url}">`;
+        else if (msg.media.type.startsWith('video')) mediaHtml = `<video src="${msg.media.url}" controls></video>`;
+        else if (msg.media.type.startsWith('audio')) mediaHtml = `<audio src="${msg.media.url}" controls></audio>`;
+    }
 
-    const senderName = msg.senderName || msg.sender;
-    const avatar = msg.senderAvatar || `https://ui-avatars.com/api/?name=${senderName}`;
+    const header = isGrouped ? '' : `
+        <div class="msg-header">
+            <img src="${msg.character.avatar}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;border:2px solid ${msg.character.color}" onclick="viewProfile('${msg.character.id}')">
+            <span class="char-name" style="color:${msg.character.color}" onclick="viewProfile('${msg.character.id}')">${msg.character.name}</span>
+            <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+             ${msg.isPrivate ? '<i class="fas fa-lock" title="Privé"></i>' : ''}
+        </div>`;
 
-    let replyHTML = "";
-    if(msg.replyTo) replyHTML = `<div class="reply-context-line" style="margin-left: 55px;"><span class="reply-name">@${msg.replyTo.author}</span></div>`;
-
-    // Si groupé, on masque header mais garde structure
     div.innerHTML = `
-        <div class="msg-actions">
-            <button class="action-btn" onclick="triggerReply('${msg._id}', '${senderName}', '${msg.content}')"><i class="fa-solid fa-reply"></i></button>
-            ${(msg.ownerId === PLAYER_ID || IS_ADMIN) ? `<button class="action-btn" onclick="socket.emit('delete_message', '${msg._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button>` : ''}
+        ${header}
+        <div class="msg-content" style="margin-left:${isGrouped?38:0}px">
+            ${contentHtml}
+            ${mediaHtml}
         </div>
-        ${replyHTML}
-        <img src="${avatar}" class="avatar-img" onclick="openProfile('${senderName}')">
-        <div style="margin-left: 55px;">
-            <div class="char-header">
-                <span class="char-name" style="color:${msg.senderColor||'white'}" onclick="openProfile('${senderName}')">${senderName}</span>
-                <span class="timestamp">${msg.date}</span>
-            </div>
-            ${contentHTML}
+        <div class="msg-actions">
+            ${currentUser.isAdmin ? `<i class="fas fa-trash" onclick="deleteMessage('${msg._id}')"></i>` : ''}
+            <i class="fas fa-envelope" onclick="startDM('${msg.character.userId}', '${msg.character.name} (User)')"></i>
         </div>
     `;
     container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
+}
+
+socket.on('message_deleted', ({id}) => {
+    // Reload room is simplest to remove from UI properly
+    socket.emit('join_room', currentRoom);
+});
+
+// --- INPUT & SEND ---
+async function sendMessage() {
+    if (!selectedCharId && !privateTarget) return alert('Choisis un personnage !');
+    const input = document.getElementById('msgInput');
+    const content = input.value;
     
-    lastMsgAuthorId = msg.ownerId;
-    lastMsgTime = msgTime;
-}
+    if (!content.trim() && !mediaStaged) return;
 
-socket.on('history_data', (msgs) => { document.getElementById('messages').innerHTML = ""; lastMsgAuthorId=null; msgs.forEach(m => displayMessage(m)); });
-socket.on('message_rp', (msg) => { if(msg.roomId === currentRoomId && !currentDmTarget) displayMessage(msg); });
-socket.on('receive_dm', (msg) => { if(currentDmTarget === (msg.sender===USERNAME?msg.target:msg.sender)) displayMessage(msg); else { /* notif DM */ } });
-socket.on('dm_history_data', (d) => { if(currentDmTarget===d.target) { d.history.forEach(m=>displayMessage(m)); }});
-socket.on('message_deleted', (id) => { const el=document.getElementById(`msg-${id}`); if(el) el.remove(); });
-
-// POSTS
-function submitPost() {
-    const txt = document.getElementById('postContent').value.trim();
-    const staged = stagedFiles['post'];
-    if(!txt && !staged) return;
-    
-    if(staged) {
-        uploadToCloudinary(staged.file).then(url => emitPost(txt, url, staged.type));
-    } else emitPost(txt, null, null);
-    clearPostStaging();
-}
-function emitPost(content, mediaUrl, mediaType) {
-    const sel = document.getElementById('feedCharSelector');
-    const opt = sel.options[sel.selectedIndex];
-    socket.emit('create_post', { content, mediaUrl, mediaType, authorName: opt.value, authorAvatar: opt.dataset.avatar, authorRole: "RP", ownerId: PLAYER_ID, date: new Date().toLocaleDateString() });
-    document.getElementById('postContent').value = "";
-}
-
-// Feed rendering
-socket.on('feed_data', (posts) => { const s=document.getElementById('feed-stream'); s.innerHTML=""; posts.forEach(p=>s.appendChild(createPostEl(p))); });
-socket.on('new_post', (p) => document.getElementById('feed-stream').prepend(createPostEl(p)));
-socket.on('post_updated', (p) => { const el=document.getElementById(`post-${p._id}`); if(el) el.replaceWith(createPostEl(p)); });
-
-function createPostEl(post) {
-    const d = document.createElement('div'); d.className='post-card'; d.id=`post-${post._id}`;
-    let media = "";
-    if(post.mediaUrl) {
-        if(post.mediaType==='video') media = `<video src="${post.mediaUrl}" controls class="post-media"></video>`;
-        else if(post.mediaType==='audio') media = renderCustomAudio(post.mediaUrl);
-        else media = `<img src="${post.mediaUrl}" class="post-media">`;
+    let mediaData = null;
+    if (mediaStaged) {
+        const url = await uploadToCloudinary(mediaStaged);
+        mediaData = { type: mediaStaged.type, url };
+        resetMediaStage();
     }
-    d.innerHTML = `
-        <div class="post-header" onclick="openProfile('${post.authorName}')">
-            <img src="${post.authorAvatar}" class="post-avatar">
-            <div><div class="post-author">${post.authorName}</div><div class="post-date">${post.date}</div></div>
-        </div>
-        <div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
-        ${media}
-        <div class="post-actions">
-            <button class="action-item" onclick="socket.emit('like_post', {postId:'${post._id}', userId:PLAYER_ID})"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
-            <button class="action-item" onclick="openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
-        </div>
-    `;
-    return d;
+
+    socket.emit('send_message', {
+        roomId: currentRoom,
+        charId: selectedCharId,
+        content: content,
+        media: mediaData,
+        replyTo: replyTarget,
+        isPrivate: !!privateTarget,
+        targetId: privateTarget ? privateTarget.id : null
+    });
+
+    input.value = '';
+    clearContext();
 }
 
-// Helpers
-function triggerReply(id, auth, txt) { currentContext={data:{id,author:auth}}; document.getElementById('context-bar').classList.remove('hidden'); document.getElementById('context-text').textContent=`Réponse à ${auth}`; }
-function cancelContext() { currentContext=null; document.getElementById('context-bar').classList.add('hidden'); }
-function formatText(t) { return t ? t.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') : ""; }
-function openPostDetail(id) { document.getElementById('post-detail-modal').classList.remove('hidden'); } // Simplifié
+// --- CLOUDINARY & MEDIA ---
+async function uploadToCloudinary(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', UPLOAD_PRESET);
+    
+    // NOTE: Pour audio/video, changer 'image' en 'video' ou 'auto' dans l'URL si besoin
+    const resourceType = file.type.includes('image') ? 'image' : 'video'; 
+    
+    try {
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        return data.secure_url;
+    } catch (e) {
+        console.error(e);
+        alert('Upload failed');
+        return null;
+    }
+}
 
-// Notifs
-socket.on('notifications_data', (list) => {
-    const c = document.getElementById('notif-modal-content'); c.innerHTML="";
-    let unread=0;
-    list.forEach(n=>{ if(!n.read) unread++; c.innerHTML+=`<div class="notif-item ${!n.read?'unread':''}">${n.content}</div>`; });
-    const b = document.getElementById('notif-badge'); b.textContent=unread; b.classList.toggle('visible', unread>0);
+function handleFileSelect(input) {
+    if(input.files && input.files[0]) {
+        mediaStaged = input.files[0];
+        document.getElementById('mediaPreview').innerHTML = `<span>${mediaStaged.name}</span> <i class="fas fa-times" onclick="resetMediaStage()"></i>`;
+    }
+}
+
+function resetMediaStage() {
+    mediaStaged = null;
+    document.getElementById('mediaPreview').innerHTML = '';
+    document.getElementById('mediaInput').value = '';
+}
+
+// --- AUDIO RECORDING ---
+function toggleRecord() {
+    const btn = document.getElementById('btnRecord');
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        btn.style.color = 'inherit';
+    } else {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.start();
+            btn.style.color = 'red';
+            audioChunks = [];
+            
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
+                mediaStaged = new File([audioBlob], 'voice_message.mp3', { type: 'audio/mp3' });
+                document.getElementById('mediaPreview').innerHTML = `<span>Audio enregistré</span> <i class="fas fa-times" onclick="resetMediaStage()"></i>`;
+            };
+        });
+    }
+}
+
+// --- CHARACTERS ---
+function saveCharacter() {
+    const name = document.getElementById('charName').value;
+    const role = document.getElementById('charRole').value;
+    const color = document.getElementById('charColor').value;
+    const bio = document.getElementById('charBio').value;
+    const file = document.getElementById('charAvatarFile').files[0];
+
+    if(!name || !file) return alert('Nom et Avatar requis');
+
+    uploadToCloudinary(file).then(url => {
+        socket.emit('create_char', { name, role, color, bio, avatar: url });
+        closeModal('charModal');
+    });
+}
+
+function renderCharList() {
+    const list = document.getElementById('myCharList');
+    list.innerHTML = myChars.map(c => `
+        <div class="char-card" style="display:flex;align-items:center;gap:10px;padding:5px;">
+            <img src="${c.avatar}" style="width:30px;height:30px;border-radius:50%">
+            <span>${c.name}</span>
+        </div>
+    `).join('');
+}
+
+function renderCharSelector() {
+    const bar = document.getElementById('charSelectorBar');
+    bar.innerHTML = myChars.map(c => `
+        <img src="${c.avatar}" class="mini-char ${selectedCharId === c._id ? 'selected' : ''}" 
+        onclick="selectChar('${c._id}')" title="${c.name}">
+    `).join('');
+    // Auto select first
+    if(!selectedCharId && myChars.length > 0) selectChar(myChars[0]._id);
+}
+
+function selectChar(id) {
+    selectedCharId = id;
+    renderCharSelector();
+}
+
+function toggleCharBar() {
+    const bar = document.getElementById('charSelectorBar');
+    bar.style.display = bar.style.display === 'none' ? 'flex' : 'none';
+}
+
+// --- DMS ---
+function startDM(userId, pseudo) {
+    privateTarget = { id: userId, name: pseudo };
+    document.getElementById('contextBar').classList.remove('hidden');
+    document.getElementById('contextText').innerText = `Message privé pour ${pseudo}`;
+}
+
+function clearContext() {
+    privateTarget = null;
+    document.getElementById('contextBar').classList.add('hidden');
+}
+
+// --- FEED & MODALS & UTILS ---
+function switchTab(tab) {
+    if(tab === 'chat') {
+        document.getElementById('chatView').classList.remove('hidden');
+        document.getElementById('feedView').classList.add('hidden');
+    } else {
+        document.getElementById('chatView').classList.add('hidden');
+        document.getElementById('feedView').classList.remove('hidden');
+        socket.emit('get_feed');
+    }
+}
+
+socket.on('feed_data', (posts) => {
+    const container = document.getElementById('feedContent');
+    container.innerHTML = posts.map(p => `
+        <div class="post-card">
+            <div class="post-header">
+                <img src="${p.character.avatar}" class="post-avatar">
+                <div>
+                    <strong>${p.character.name}</strong>
+                    <div style="font-size:0.8em;color:gray">${new Date(p.timestamp).toLocaleString()}</div>
+                </div>
+            </div>
+            <div class="post-body">${marked.parse(p.content || '')}</div>
+            ${p.media ? `<img src="${p.media.url}" style="max-width:100%;margin-top:10px;border-radius:8px;">` : ''}
+            <div class="post-actions">
+                <span onclick="socket.emit('like_post', {postId:'${p._id}', charId: selectedCharId})">
+                    <i class="fas fa-heart ${p.likes.includes(selectedCharId)?'liked':''}"></i> ${p.likes.length}
+                </span>
+                <span><i class="fas fa-comment"></i> ${p.comments.length}</span>
+            </div>
+        </div>
+    `).join('');
 });
-function openNotifications() { document.getElementById('notifications-modal').classList.remove('hidden'); }
-function closeNotifications() { document.getElementById('notifications-modal').classList.add('hidden'); }
-function markNotificationsRead() { socket.emit('mark_notifications_read', PLAYER_ID); }
-function toggleFollow() { if(!currentProfileCharId) return; socket.emit('follow_char', { charId: currentProfileCharId, userId: PLAYER_ID }); }
-let currentProfileCharId = null; 
-socket.on('char_profile_data', (char) => { 
-    currentProfileCharId = char._id; 
-    document.getElementById('profileName').textContent=char.name; 
-    document.getElementById('profileDesc').textContent=char.description; 
-    document.getElementById('profileAvatar').src=char.avatar; 
-    document.getElementById('profile-modal').classList.remove('hidden'); 
+
+// UI Helpers
+function openCharModal() { document.getElementById('charModal').classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function createRoomPrompt() { const n = prompt('Nom du salon?'); if(n) socket.emit('create_room', n); }
+function deleteRoom(id) { if(confirm('Supprimer?')) socket.emit('delete_room', id); }
+function scrollToBottom() { const d = document.getElementById('chatMessages'); d.scrollTop = d.scrollHeight; }
+
+function viewProfile(charId) {
+    socket.emit('get_char_details', charId);
+}
+socket.on('char_details', ({char, playedBy}) => {
+    document.getElementById('viewAvatar').src = char.avatar;
+    document.getElementById('viewName').innerText = char.name;
+    document.getElementById('viewRole').innerText = char.role;
+    document.getElementById('viewPlayer').innerText = playedBy;
+    document.getElementById('viewBio').innerText = char.bio;
+    document.getElementById('profileModal').classList.add('active');
 });
+
+// Key events
+function checkEnter(e) {
+    if(e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+}
+function emitTyping() {
+    socket.emit('typing', { room: currentRoom, user: currentUser.pseudo });
+}
