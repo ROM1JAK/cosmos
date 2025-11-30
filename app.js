@@ -2,8 +2,8 @@
 const socket = io();
 
 // --- CONFIG CLOUDINARY ---
-const CLOUD_NAME = 'demo'; // REMPLACE PAR TON CLOUD NAME
-const UPLOAD_PRESET = 'docs_upload_example_us_preset'; // REMPLACE PAR TON PRESET
+const CLOUD_NAME = 'https://api.cloudinary.com/v1_1/dllr3ugxz/auto/upload'; // REMPLACE PAR TON CLOUD NAME
+const UPLOAD_PRESET = 'Cosmos'; // REMPLACE PAR TON PRESET
 
 // --- STATE ---
 let currentUser = null;
@@ -386,3 +386,4 @@ function checkEnter(e) {
 function emitTyping() {
     socket.emit('typing', { room: currentRoom, user: currentUser.pseudo });
 }
+
