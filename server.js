@@ -26,7 +26,6 @@ const User = mongoose.model('User', UserSchema);
 const CharacterSchema = new mongoose.Schema({
     name: String, color: String, avatar: String, role: String, 
     ownerId: String, ownerUsername: String, description: String,
-    // followers contient les IDs des PERSONNAGES qui suivent ce perso
     followers: [String] 
 });
 const Character = mongoose.model('Character', CharacterSchema);
@@ -51,12 +50,9 @@ const PostSchema = new mongoose.Schema({
     content: String,
     mediaUrl: String,
     mediaType: String,
-    // On stocke l'ID du perso auteur pour faciliter les liens
     authorCharId: String,
     authorName: String, authorAvatar: String, authorRole: String, authorColor: String, ownerId: String,
-    likes: [String], // IDs des Joueurs (User IDs) ou Persos ? Restons sur User ID pour les likes pour éviter le spam, ou Perso ID ? 
-    // Pour simplifier et respecter la demande "interactions au nom du personnage", on va stocker les Char IDs dans les likes dorénavant, 
-    // mais on garde la compatibilité string.
+    likes: [String], 
     comments: [{
         id: String, authorCharId: String, authorName: String, authorAvatar: String, content: String, 
         mediaUrl: String, mediaType: String,
@@ -154,7 +150,13 @@ io.on('connection', async (socket) => {
   // --- PERSONNAGES & FOLLOWERS ---
   socket.on('get_char_profile', async (charName) => {
       const char = await Character.findOne({ name: charName }).sort({_id: -1});
-      if(char) socket.emit('char_profile_data', char);
+      if(char) {
+          // Calcul du nombre de posts
+          const postCount = await Post.countDocuments({ authorCharId: char._id });
+          const charData = char.toObject();
+          charData.postCount = postCount;
+          socket.emit('char_profile_data', charData);
+      }
   });
 
   socket.on('create_char', async (data) => {
@@ -171,7 +173,6 @@ io.on('connection', async (socket) => {
       await Character.findByIdAndUpdate(data.charId, { 
           name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor, description: data.newDescription 
       });
-      // Update denormalized data
       await Message.updateMany({ senderName: data.originalName, ownerId: data.ownerId }, { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }});
       await Post.updateMany({ authorName: data.originalName, ownerId: data.ownerId }, { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor }});
       
@@ -186,37 +187,40 @@ io.on('connection', async (socket) => {
       socket.emit('char_deleted_success', charId);
   });
 
-  // NOUVEAU SYSTEME D'ABONNEMENT (Personnage suit Personnage)
+  // NOUVEAU SYSTEME D'ABONNEMENT
   socket.on('follow_character', async ({ followerCharId, targetCharId }) => {
       const targetChar = await Character.findById(targetCharId);
       const followerChar = await Character.findById(followerCharId);
       
       if(!targetChar || !followerChar) return;
-      if(followerCharId === targetCharId) return; // Self follow check
+      
+      // Anti-Self-Follow (Même ID de personnage)
+      // Mais on AUTORISE le même OwnerId (pour qu'un joueur puisse faire suivre ses propres persos entre eux)
+      if(String(followerChar._id) === String(targetChar._id)) return;
 
       const index = targetChar.followers.indexOf(followerCharId);
-      let isFollowing = false;
-
+      
       if(index === -1) {
           targetChar.followers.push(followerCharId);
-          isFollowing = true;
           // Notif
           await createNotification(targetChar.ownerId, 'follow', `(${followerChar.name}) vous suit désormais`, followerChar.ownerUsername);
       } else {
           targetChar.followers.splice(index, 1);
-          isFollowing = false;
       }
       
       await targetChar.save();
       
       // Renvoie le profil mis à jour pour rafraîchir le bouton
-      socket.emit('char_profile_updated', targetChar);
+      // Recalcul post count pour l'objet retourné
+      const postCount = await Post.countDocuments({ authorCharId: targetChar._id });
+      const charData = targetChar.toObject();
+      charData.postCount = postCount;
+      socket.emit('char_profile_updated', charData);
   });
 
   socket.on('get_followers_list', async (targetCharId) => {
       const char = await Character.findById(targetCharId);
       if(char && char.followers.length > 0) {
-          // Récupérer les infos des followers
           const followers = await Character.find({ _id: { $in: char.followers } }).select('name avatar role ownerUsername');
           socket.emit('followers_list_data', followers);
       } else {
@@ -250,7 +254,7 @@ io.on('connection', async (socket) => {
       socket.emit('dm_contacts_data', Array.from(contacts));
   });
   socket.on('dm_delete_history', async ({ userId, targetName }) => {
-      await Message.deleteMany({ $or: [ { ownerId: userId, targetName: targetName }, { targetName: targetName, ownerId: userId } ] }); // Simplified logic
+      await Message.deleteMany({ $or: [ { ownerId: userId, targetName: targetName }, { targetName: targetName, ownerId: userId } ] }); 
       io.emit('force_history_refresh', { roomId: 'global' }); 
   });
 
@@ -289,14 +293,10 @@ io.on('connection', async (socket) => {
       const savedPost = await newPost.save();
       io.emit('new_post', savedPost);
       
-      // Notify Character Followers
-      // On retrouve le perso auteur par son ID s'il est fourni
       let authorChar = null;
       if(postData.authorCharId) authorChar = await Character.findById(postData.authorCharId);
       
       if(authorChar && authorChar.followers.length > 0) {
-          // On notifie les proprios des persos qui suivent
-          // Pour simplifier, on récupère tous les persos followers
           const followersChars = await Character.find({ _id: { $in: authorChar.followers } });
           const notifiedOwners = new Set();
           for(const f of followersChars) {
@@ -310,7 +310,7 @@ io.on('connection', async (socket) => {
 
   socket.on('delete_post', async (postId) => { await Post.findByIdAndDelete(postId); io.emit('post_deleted', postId); });
 
-  socket.on('like_post', async ({ postId, charId }) => { // charId remplace userId
+  socket.on('like_post', async ({ postId, charId }) => { 
       const post = await Post.findById(postId);
       if(!post) return;
       
