@@ -61,8 +61,8 @@
         </div>
     </div>
     
-    <!-- LISTE ABONNÉS MODAL -->
-    <div id="followers-modal" class="modal-overlay hidden" onclick="document.getElementById('followers-modal').classList.add('hidden')">
+    <!-- LISTE ABONNÉS MODAL (Z-Index élevé) -->
+    <div id="followers-modal" class="modal-overlay hidden" style="z-index:300;" onclick="document.getElementById('followers-modal').classList.add('hidden')">
         <div class="modal-box" style="max-width:350px;" onclick="event.stopPropagation()">
             <h3 style="margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:10px;">Abonnés</h3>
             <div id="followers-list-container" style="max-height:300px; overflow-y:auto;"></div>
@@ -73,23 +73,36 @@
     <input type="file" id="chat-img-input" accept="image/*" class="hidden" onchange="handleChatFileSelect(this, 'image')">
     <input type="file" id="chat-video-input" accept="video/*" class="hidden" onchange="handleChatFileSelect(this, 'video')">
 
-    <div id="profile-modal" class="modal-overlay hidden" onclick="closeProfileModal()">
-        <div class="modal-box profile-box" onclick="event.stopPropagation()">
-            <div class="profile-header">
-                <img id="profileAvatar" src="" class="profile-avatar-large">
-                <div class="profile-title">
-                    <h2 id="profileName">Nom</h2>
-                    <span id="profileRole" class="profile-role-tag">Rôle</span>
-                    <div id="profileOwner" style="margin-top:5px; color:#aaa; font-size:0.8em;"></div>
-                    <!-- Compteur abonnés -->
-                    <div id="profileFollowersCount" class="follower-count" title="Voir les abonnés">0 Abonnés</div>
-                </div>
+    <!-- PROFIL SLIDE-IN (Gauche) -->
+    <div id="profile-overlay" class="modal-overlay hidden" onclick="closeProfileModal()"></div>
+    <div id="profile-slide-panel">
+        <button onclick="closeProfileModal()" class="btn-close-profile"><i class="fa-solid fa-xmark"></i></button>
+        <div class="profile-header-slide">
+            <img id="profileAvatar" src="" class="profile-avatar-large">
+            <h2 id="profileName">Nom</h2>
+            <span id="profileRole" class="profile-role-tag">Rôle</span>
+        </div>
+        
+        <div class="profile-stats">
+            <div class="stat-item">
+                <span id="profilePostCount" class="stat-value">0</span>
+                <span class="stat-label">Posts</span>
             </div>
-            <div class="profile-body"><p id="profileDesc" class="profile-desc-text"></p></div>
-            <div style="display:flex; gap:10px; margin-top:15px;">
-                <button id="btn-dm-profile" class="btn-primary full-width">MP</button>
-                <button id="btn-sub-profile" class="btn-secondary full-width">Suivre</button>
+            <div class="stat-item" id="btn-view-followers" style="cursor:pointer;">
+                <span id="profileFollowersCount" class="stat-value">0</span>
+                <span class="stat-label">Abonnés</span>
             </div>
+        </div>
+
+        <div class="profile-body">
+            <div style="font-size:0.8rem; color:#666; margin-bottom:10px; font-weight:bold;">À PROPOS</div>
+            <p id="profileDesc" class="profile-desc-text"></p>
+            <div id="profileOwner" style="margin-top:10px; color:#444; font-size:0.8em;"></div>
+        </div>
+
+        <div class="profile-actions-footer">
+            <button id="btn-dm-profile" class="btn-primary full-width">Message Privé</button>
+            <button id="btn-sub-profile" class="btn-secondary full-width">Suivre</button>
         </div>
     </div>
     
