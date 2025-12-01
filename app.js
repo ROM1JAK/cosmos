@@ -3,7 +3,6 @@
 var socket = io();
 const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
 
-// --- CONFIGURATION CLOUDINARY ---
 const CLOUDINARY_BASE_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz'; 
 const CLOUDINARY_PRESET = 'Cosmos';
 
@@ -29,28 +28,23 @@ let audioChunks = [];
 let isRecording = false;
 let allOnlineUsers = []; 
 
+// FEED IDENTITY
+let currentFeedCharId = null;
+
 // Staging Vars
 let pendingAttachment = null; 
 let pendingCommentAttachment = null;
 let lastMessageData = { author: null, time: 0, ownerId: null }; 
 
-// --- EMOJIS & MENTIONS DATA ---
-const COMMON_EMOJIS = [
-    "😀", "😂", "😉", "😍", "😎", "🥳", "😭", "😡", "🤔", "👍", "👎", 
-    "❤️", "💔", "🔥", "✨", "🎉", "💩", "👻", "💀", "👽", "🤖", "👋", 
-    "🙌", "🙏", "💪", "👀", "🍕", "🍻", "🚀", "💯"
-];
+const COMMON_EMOJIS = ["😀", "😂", "😉", "😍", "😎", "🥳", "😭", "😡", "🤔", "👍", "👎", "❤️", "💔", "🔥", "✨", "🎉", "💩", "👻", "💀", "👽", "🤖", "👋", "🙌", "🙏", "💪", "👀", "🍕", "🍻", "🚀", "💯"];
 
-// --- FONCTION D'UPLOAD ---
 async function uploadToCloudinary(file, resourceType) {
     if (!file) return null;
-    
     if (!resourceType) {
         if (file.type.startsWith('image/')) resourceType = 'image';
         else if (file.type.startsWith('video/') || file.type.startsWith('audio/')) resourceType = 'video';
         else resourceType = 'auto';
     }
-    
     const formData = new FormData();
     if (file instanceof Blob && !file.name) {
         const ext = file.type.split('/')[1] || 'dat';
@@ -59,9 +53,7 @@ async function uploadToCloudinary(file, resourceType) {
         formData.append('file', file);
     }
     formData.append('upload_preset', CLOUDINARY_PRESET);
-
     const uploadUrl = `${CLOUDINARY_BASE_URL}/${resourceType}/upload`;
-
     try {
         const response = await fetch(uploadUrl, { method: 'POST', body: formData });
         if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`);
@@ -74,21 +66,14 @@ async function uploadToCloudinary(file, resourceType) {
     }
 }
 
-// --- NAVIGATION ---
 function switchView(view) {
     currentView = view;
     localStorage.setItem('last_tab', view);
-
-    document.querySelectorAll('.view-section').forEach(el => {
-        el.classList.remove('active');
-        el.classList.add('hidden');
-    });
+    document.querySelectorAll('.view-section').forEach(el => { el.classList.remove('active'); el.classList.add('hidden'); });
     document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
-
     document.getElementById(`view-${view}`).classList.remove('hidden');
     document.getElementById(`view-${view}`).classList.add('active');
     document.getElementById(`btn-view-${view}`).classList.add('active');
-
     if(view === 'feed') {
         document.getElementById('btn-view-feed').classList.remove('nav-notify');
         localStorage.setItem('last_feed_visit', Date.now().toString());
@@ -96,12 +81,10 @@ function switchView(view) {
     }
 }
 
-// --- VOCAL ---
 async function toggleRecording(source) { 
     const btnId = `btn-record-${source}`;
     const btn = document.getElementById(btnId);
     if (!btn) return; 
-
     if (!isRecording) {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -111,144 +94,90 @@ async function toggleRecording(source) {
             mediaRecorder.start();
             isRecording = true;
             btn.classList.add('recording');
-        } catch (err) {
-            alert("Impossible d'accéder au micro : " + err);
-        }
+        } catch (err) { alert("Impossible d'accéder au micro : " + err); }
     } else {
         mediaRecorder.stop();
         mediaRecorder.onstop = async () => {
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
             btn.classList.remove('recording');
             isRecording = false;
-
-            if (source === 'chat') {
-                stageAttachment(audioBlob, 'audio');
-            } else if (source === 'feed') {
+            if (source === 'chat') { stageAttachment(audioBlob, 'audio'); } 
+            else if (source === 'feed') {
                 document.getElementById('postFileStatus').style.display = 'block';
                 document.getElementById('postFileStatus').innerHTML = 'Envoi audio...';
                 const url = await uploadToCloudinary(audioBlob, 'video');
                 if (url) {
                     document.getElementById('postMediaUrl').value = url;
                     document.getElementById('postFileStatus').innerHTML = 'Audio prêt <i class="fa-solid fa-check" style="color:#23a559"></i>';
-                } else {
-                    document.getElementById('postFileStatus').innerHTML = 'Erreur envoi.';
-                }
-            } else if (source === 'comment') {
-                stageCommentMedia({ files: [audioBlob] }, 'audio'); 
-            }
+                } else { document.getElementById('postFileStatus').innerHTML = 'Erreur envoi.'; }
+            } else if (source === 'comment') { stageCommentMedia({ files: [audioBlob] }, 'audio'); }
         };
     }
 }
 
-// --- STAGING ---
-function handleChatFileSelect(input, type) {
-    if (input.files && input.files[0]) {
-        stageAttachment(input.files[0], type);
-        input.value = ""; 
-    }
-}
-
+function handleChatFileSelect(input, type) { if (input.files && input.files[0]) { stageAttachment(input.files[0], type); input.value = ""; } }
 function stageAttachment(file, type) {
     pendingAttachment = { file, type };
     const stagingDiv = document.getElementById('chat-staging');
     stagingDiv.classList.remove('hidden');
-    
     let previewHTML = '';
-    if (type === 'image') {
-        const url = URL.createObjectURL(file);
-        previewHTML = `<img src="${url}" class="staging-preview">`;
-    } else if (type === 'video') {
-        previewHTML = `<div class="staging-preview" style="background:#000; color:white; display:flex; align-items:center; justify-content:center;"><i class="fa-solid fa-video"></i></div>`;
-    } else if (type === 'audio') {
-        previewHTML = `<div class="staging-preview" style="background:#222; color:white; display:flex; align-items:center; justify-content:center;"><i class="fa-solid fa-microphone"></i></div>`;
-    }
-
-    stagingDiv.innerHTML = `
-        ${previewHTML}
-        <span class="staging-info">${type === 'audio' ? 'Message Vocal' : file.name}</span>
-        <button class="btn-clear-stage" onclick="clearStaging()"><i class="fa-solid fa-xmark"></i></button>
-    `;
+    if (type === 'image') { const url = URL.createObjectURL(file); previewHTML = `<img src="${url}" class="staging-preview">`; } 
+    else if (type === 'video') { previewHTML = `<div class="staging-preview" style="background:#000; color:white; display:flex; align-items:center; justify-content:center;"><i class="fa-solid fa-video"></i></div>`; } 
+    else if (type === 'audio') { previewHTML = `<div class="staging-preview" style="background:#222; color:white; display:flex; align-items:center; justify-content:center;"><i class="fa-solid fa-microphone"></i></div>`; }
+    stagingDiv.innerHTML = `${previewHTML}<span class="staging-info">${type === 'audio' ? 'Message Vocal' : file.name}</span><button class="btn-clear-stage" onclick="clearStaging()"><i class="fa-solid fa-xmark"></i></button>`;
 }
+function clearStaging() { pendingAttachment = null; document.getElementById('chat-staging').classList.add('hidden'); document.getElementById('chat-staging').innerHTML = ""; }
 
-function clearStaging() {
-    pendingAttachment = null;
-    document.getElementById('chat-staging').classList.add('hidden');
-    document.getElementById('chat-staging').innerHTML = "";
-}
-
-// --- EMOJIS ---
 function setupEmojiPicker() {
     const picker = document.getElementById('emoji-picker');
     picker.innerHTML = '';
     COMMON_EMOJIS.forEach(emoji => {
-        const span = document.createElement('span');
-        span.className = 'emoji-item';
-        span.textContent = emoji;
-        span.onclick = () => insertEmoji(emoji);
-        picker.appendChild(span);
+        const span = document.createElement('span'); span.className = 'emoji-item'; span.textContent = emoji;
+        span.onclick = () => insertEmoji(emoji); picker.appendChild(span);
     });
 }
 function toggleEmojiPicker() { document.getElementById('emoji-picker').classList.toggle('hidden'); }
 function insertEmoji(emoji) {
     const input = document.getElementById('txtInput');
-    const start = input.selectionStart;
-    const end = input.selectionEnd;
+    const start = input.selectionStart; const end = input.selectionEnd;
     input.value = input.value.substring(0, start) + emoji + input.value.substring(end);
-    input.selectionStart = input.selectionEnd = start + emoji.length;
-    input.focus();
+    input.selectionStart = input.selectionEnd = start + emoji.length; input.focus();
     document.getElementById('emoji-picker').classList.add('hidden');
 }
 
-// --- MENTIONS ---
 document.getElementById('txtInput').addEventListener('input', function(e) {
     const input = e.target;
     const cursor = input.selectionStart;
     const textBefore = input.value.substring(0, cursor);
     const lastWord = textBefore.split(/\s/).pop();
     const suggestionsBox = document.getElementById('mention-suggestions');
-    
     if (lastWord.startsWith('@')) {
         const query = lastWord.substring(1).toLowerCase();
         const matches = allOnlineUsers.filter(u => u.toLowerCase().startsWith(query));
-        
         if (matches.length > 0) {
             suggestionsBox.innerHTML = '';
             matches.forEach(match => {
-                const div = document.createElement('div');
-                div.className = 'mention-item';
-                div.textContent = match;
+                const div = document.createElement('div'); div.className = 'mention-item'; div.textContent = match;
                 div.onclick = () => {
                     const newText = textBefore.substring(0, textBefore.length - lastWord.length) + '@' + match + ' ' + input.value.substring(cursor);
-                    input.value = newText;
-                    input.focus();
-                    suggestionsBox.classList.add('hidden');
-                };
-                suggestionsBox.appendChild(div);
-            });
-            suggestionsBox.classList.remove('hidden');
+                    input.value = newText; input.focus(); suggestionsBox.classList.add('hidden');
+                }; suggestionsBox.appendChild(div);
+            }); suggestionsBox.classList.remove('hidden');
         } else { suggestionsBox.classList.add('hidden'); }
     } else { suggestionsBox.classList.add('hidden'); }
 });
 
-// --- UI LOGIN/COMPTE ---
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
 function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
 function toggleNotifications() {
     notificationsEnabled = !notificationsEnabled;
     const btn = document.getElementById('btn-notif-toggle');
-    if(btn) {
-        btn.innerHTML = notificationsEnabled ? '<i class="fa-solid fa-bell"></i> Notifs : ON' : '<i class="fa-solid fa-bell-slash"></i> Notifs : OFF';
-        btn.style.opacity = notificationsEnabled ? "1" : "0.5";
-    }
+    if(btn) { btn.innerHTML = notificationsEnabled ? '<i class="fa-solid fa-bell"></i> Notifs : ON' : '<i class="fa-solid fa-bell-slash"></i> Notifs : OFF'; btn.style.opacity = notificationsEnabled ? "1" : "0.5"; }
 }
 function openAccountUI() { if (PLAYER_ID) openUserSettingsModal(); else openLoginModal(); }
 function openLoginModal() { document.getElementById('login-modal').classList.remove('hidden'); document.getElementById('login-error-msg').style.display = "none"; }
 function closeLoginModal() { document.getElementById('login-modal').classList.add('hidden'); }
-function submitLogin() {
-    const pseudo = document.getElementById('loginPseudoInput').value.trim();
-    const code = document.getElementById('loginCodeInput').value.trim();
-    if (pseudo && code) socket.emit('login_request', { username: pseudo, code: code });
-}
+function submitLogin() { const pseudo = document.getElementById('loginPseudoInput').value.trim(); const code = document.getElementById('loginCodeInput').value.trim(); if (pseudo && code) socket.emit('login_request', { username: pseudo, code: code }); }
 function logoutUser() { if(confirm("Déconnexion ?")) { localStorage.removeItem('rp_username'); localStorage.removeItem('rp_code'); localStorage.removeItem('saved_char_id'); location.reload(); } }
 function openUserSettingsModal() { document.getElementById('settingsUsernameInput').value = USERNAME || ""; document.getElementById('settingsCodeInput').value = PLAYER_ID || ""; document.getElementById('settings-msg').textContent = ""; document.getElementById('user-settings-modal').classList.remove('hidden'); }
 function closeUserSettingsModal() { document.getElementById('user-settings-modal').classList.add('hidden'); }
@@ -259,7 +188,6 @@ function submitUsernameChange() {
     else document.getElementById('settings-msg').textContent = "Pas de changement.";
 }
 
-// --- SOCKET LOGIN ---
 socket.on('login_success', (data) => {
     localStorage.setItem('rp_username', data.username);
     localStorage.setItem('rp_code', data.userId);
@@ -297,7 +225,6 @@ socket.on('update_user_list', (users) => {
 });
 socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId && !currentDmTarget) socket.emit('request_history', currentRoomId); });
 
-// --- TYPING ---
 const txtInput = document.getElementById('txtInput');
 txtInput.addEventListener('input', () => {
     if(currentDmTarget) return; 
@@ -309,7 +236,6 @@ txtInput.addEventListener('input', () => {
 socket.on('display_typing', (data) => { if(data.roomId === currentRoomId && !currentDmTarget) { document.getElementById('typing-indicator').classList.remove('hidden'); document.getElementById('typing-text').textContent = `${data.charName} écrit...`; } });
 socket.on('hide_typing', (data) => { if(data.roomId === currentRoomId) document.getElementById('typing-indicator').classList.add('hidden'); });
 
-// --- ROOMS ---
 function createRoomPrompt() { const name = prompt("Nom du salon :"); if (name) socket.emit('create_room', { name, creatorId: PLAYER_ID, allowedCharacters: [] }); }
 function deleteRoom(roomId) { if(confirm("ADMIN : Supprimer ?")) socket.emit('delete_room', roomId); }
 function joinRoom(roomId) {
@@ -346,7 +272,6 @@ function updateRoomListUI() {
     });
 }
 
-// --- DM ---
 function startDmFromList(target) { if (target !== USERNAME) openDm(target); }
 socket.on('open_dm_ui', (target) => openDm(target));
 function openDm(target) {
@@ -385,7 +310,6 @@ socket.on('receive_dm', (msg) => {
     if (msg.sender !== USERNAME && notificationsEnabled) notifSound.play().catch(e=>{});
 });
 
-// --- CHARACTERS ---
 async function createCharacter() {
     if (myCharacters.length >= 20) return alert("Limite 20 persos.");
     const name = document.getElementById('newCharName').value.trim();
@@ -448,43 +372,110 @@ function toggleCharBar() {
     if (bar.classList.contains('hidden-bar')) { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-up'); } 
     else { icon.classList.remove('fa-chevron-up'); icon.classList.add('fa-chevron-down'); }
 }
+
+// UPDATE UI (Includes Feed Selector)
 function updateUI() {
     const list = document.getElementById('myCharList');
     const bar = document.getElementById('char-bar-horizontal');
-    const sel = document.getElementById('feedCharSelector');
-    list.innerHTML = ""; bar.innerHTML = ""; sel.innerHTML = "";
+    const feedSel = document.getElementById('activeFeedCharSelect');
+    list.innerHTML = ""; bar.innerHTML = ""; feedSel.innerHTML = "";
+    
+    // Narrateur Admin
     if(IS_ADMIN) {
         bar.innerHTML += `<img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" id="avatar-opt-narrateur" class="avatar-choice" title="Narrateur" onclick="selectCharacter('narrateur')">`;
-        sel.innerHTML = '<option value="Narrateur" data-id="narrateur" data-avatar="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" data-role="Omniscient">Narrateur</option>';
     }
-    myCharacters.forEach(char => {
+    
+    // Feed Dropdown Default
+    if (myCharacters.length === 0) {
+        feedSel.innerHTML = '<option value="">Aucun perso</option>';
+        currentFeedCharId = null;
+    }
+
+    myCharacters.forEach((char, index) => {
         list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')"><i class="fa-solid fa-gear"></i></button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button></div></div>`;
         bar.innerHTML += `<img src="${char.avatar}" id="avatar-opt-${char._id}" class="avatar-choice" title="${char.name}" onclick="selectCharacter('${char._id}')">`;
+        
+        // Feed Selector Option
         const opt = document.createElement('option');
-        opt.value = char.name; opt.text = char.name; opt.dataset.avatar = char.avatar; opt.dataset.role = char.role;
-        sel.appendChild(opt); 
+        opt.value = char._id;
+        opt.text = char.name;
+        opt.dataset.avatar = char.avatar;
+        opt.dataset.role = char.role;
+        feedSel.appendChild(opt);
+        
+        // Select first by default if not set
+        if (index === 0 && !currentFeedCharId) currentFeedCharId = char._id;
     });
+
     if (!currentSelectedChar) { if(myCharacters.length > 0) selectCharacter(myCharacters[0]._id); else if(IS_ADMIN) selectCharacter('narrateur'); }
     else selectCharacter(currentSelectedChar._id);
+    
+    // Listen to feed selector changes
+    feedSel.onchange = (e) => { currentFeedCharId = e.target.value; };
+    if(currentFeedCharId) feedSel.value = currentFeedCharId;
 }
 
 // --- PROFILE ---
 function openProfile(name) { socket.emit('get_char_profile', name); }
 function closeProfileModal() { document.getElementById('profile-modal').classList.add('hidden'); }
+
 socket.on('char_profile_data', (char) => {
     document.getElementById('profileName').textContent = char.name;
     document.getElementById('profileRole').textContent = char.role;
     document.getElementById('profileAvatar').src = char.avatar;
     document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
+    
+    // Abonnés Count
+    const count = char.followers ? char.followers.length : 0;
+    const countEl = document.getElementById('profileFollowersCount');
+    countEl.textContent = `${count} Abonnés`;
+    countEl.onclick = () => socket.emit('get_followers_list', char._id);
+
     document.getElementById('profile-modal').classList.remove('hidden');
     document.getElementById('btn-dm-profile').onclick = function() { closeProfileModal(); if (char.ownerUsername) openDm(char.ownerUsername); };
+    
     const btnSub = document.getElementById('btn-sub-profile');
-    if(char.ownerId === PLAYER_ID) btnSub.style.display = 'none';
-    else { btnSub.style.display = 'block'; updateSubButton(btnSub, char.subscribers && char.subscribers.includes(PLAYER_ID)); btnSub.onclick = function() { socket.emit('subscribe_char', { charId: char._id, userId: PLAYER_ID }); }; }
+    // Hide if own character
+    if(char.ownerId === PLAYER_ID) {
+        btnSub.style.display = 'none';
+    } else {
+        btnSub.style.display = 'block';
+        // Check if ACTIVE FEED CHAR follows TARGET
+        const isSubbed = char.followers && currentFeedCharId && char.followers.includes(currentFeedCharId);
+        updateSubButton(btnSub, isSubbed);
+        btnSub.onclick = function() {
+            if(!currentFeedCharId) return alert("Sélectionnez un personnage dans le Feed !");
+            socket.emit('follow_character', { followerCharId: currentFeedCharId, targetCharId: char._id });
+        };
+    }
 });
-socket.on('char_profile_updated', (char) => { if(!document.getElementById('profile-modal').classList.contains('hidden') && document.getElementById('profileName').textContent === char.name) updateSubButton(document.getElementById('btn-sub-profile'), char.subscribers && char.subscribers.includes(PLAYER_ID)); });
-function updateSubButton(btn, subbed) { btn.innerHTML = subbed ? '<i class="fa-solid fa-check"></i> Abonné' : '<i class="fa-solid fa-rss"></i> S\'abonner'; btn.style.color = subbed ? '#23a559' : 'white'; }
+
+socket.on('char_profile_updated', (char) => { 
+    if(!document.getElementById('profile-modal').classList.contains('hidden') && document.getElementById('profileName').textContent === char.name) {
+        const isSubbed = char.followers && currentFeedCharId && char.followers.includes(currentFeedCharId);
+        updateSubButton(document.getElementById('btn-sub-profile'), isSubbed);
+        document.getElementById('profileFollowersCount').textContent = `${char.followers.length} Abonnés`;
+    }
+});
+function updateSubButton(btn, subbed) { 
+    btn.innerHTML = subbed ? '<i class="fa-solid fa-check"></i> Abonné' : '<i class="fa-solid fa-rss"></i> S\'abonner'; 
+    btn.style.color = subbed ? '#23a559' : 'white'; 
+}
+
+// Liste Abonnés Modal
+socket.on('followers_list_data', (followers) => {
+    const listDiv = document.getElementById('followers-list-container');
+    listDiv.innerHTML = "";
+    if(followers.length === 0) listDiv.innerHTML = "<div style='padding:10px; color:#aaa;'>Aucun abonné.</div>";
+    followers.forEach(f => {
+        listDiv.innerHTML += `<div style="display:flex; align-items:center; padding:8px; border-bottom:1px solid #333;">
+            <img src="${f.avatar}" style="width:30px; height:30px; border-radius:50%; margin-right:10px;">
+            <div><div style="font-weight:bold;">${f.name}</div><div style="font-size:0.8em; color:#aaa;">${f.role}</div></div>
+        </div>`;
+    });
+    document.getElementById('followers-modal').classList.remove('hidden');
+});
 
 // --- ACTIONS MSG ---
 function setContext(type, data) {
@@ -505,7 +496,6 @@ async function sendMessage() {
     const txt = document.getElementById('txtInput');
     const content = txt.value.trim();
     let finalMediaUrl = null, finalMediaType = null;
-
     if (pendingAttachment) {
         document.getElementById('chat-staging').innerHTML = 'Envoi...';
         let rType = undefined; if(pendingAttachment.type === 'audio') rType = 'video';
@@ -514,14 +504,11 @@ async function sendMessage() {
         clearStaging();
         if (!finalMediaUrl) return alert("Echec envoi média.");
     }
-
     if (!content && !finalMediaUrl) return;
-
     if (currentDmTarget) {
         socket.emit('send_dm', { sender: USERNAME, target: currentDmTarget, content: content || finalMediaUrl, type: finalMediaType || "text", date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) });
         txt.value = ''; cancelContext(); return;
     }
-    
     if (content === "/clear" && !finalMediaUrl) { if(IS_ADMIN) socket.emit('admin_clear_room', currentRoomId); txt.value = ''; return; }
     if (currentContext && currentContext.type === 'edit') { socket.emit('edit_message', { id: currentContext.data.id, newContent: content }); txt.value = ''; cancelContext(); return; }
     if(!currentSelectedChar) return alert("Perso requis !");
@@ -532,7 +519,6 @@ async function sendMessage() {
     txt.value = ''; cancelContext();
 }
 
-// --- DISPLAY CHAT (FLEXBOX REFACTOR) ---
 socket.on('history_data', (msgs) => { 
     if(currentDmTarget) return; 
     const container = document.getElementById('messages'); container.innerHTML = ""; 
@@ -567,55 +553,34 @@ function createCustomAudioPlayer(src) {
     return wrapper;
 }
 
-// --- CORE FUNCTION: DISPLAY MESSAGE ---
 function displayMessage(msg, isDm = false) {
     const div = document.createElement('div');
     div.className = 'message-container'; 
     if(isDm) div.classList.add('dm-message'); 
     div.id = `msg-${msg._id}`;
-    
     let senderName, senderAvatar, senderColor, senderRole, canEdit = false, canDelete = false;
-    
     if (isDm) {
         senderName = msg.sender || msg.senderName; 
         senderAvatar = `https://ui-avatars.com/api/?name=${senderName}&background=random&color=fff&size=64`; 
-        senderColor = "#dbdee1"; 
-        senderRole = "Utilisateur";
+        senderColor = "#dbdee1"; senderRole = "Utilisateur";
     } else {
         senderName = msg.senderName; senderAvatar = msg.senderAvatar; senderColor = msg.senderColor; senderRole = msg.senderRole; canEdit = (msg.ownerId === PLAYER_ID); canDelete = (msg.ownerId === PLAYER_ID) || IS_ADMIN;
     }
-
-    if (!isDm && USERNAME && msg.content && typeof msg.content === 'string' && msg.content.includes(`@${USERNAME}`)) {
-        div.classList.add('mentioned');
-    }
-
+    if (!isDm && USERNAME && msg.content && typeof msg.content === 'string' && msg.content.includes(`@${USERNAME}`)) { div.classList.add('mentioned'); }
     const msgTime = new Date(msg.timestamp || Date.now()).getTime();
     const timeDiff = msgTime - lastMessageData.time;
-    // Grouping logic (Discord style)
     const isGroup = (!isDm && !msg.replyTo && senderName === lastMessageData.author && timeDiff < 120000 && msg.type !== 'image' && msg.type !== 'video'); 
-    
     if (isGroup) {
         div.classList.add('msg-group-followup');
-        // Add timestamp tooltip for groups
-        const stamp = document.createElement('span');
-        stamp.className = 'group-timestamp';
-        stamp.innerText = msg.date.substring(0, 5); // Just HH:MM
-        div.appendChild(stamp);
-    } else {
-        lastMessageData = { author: senderName, time: msgTime };
-    }
-
-    // ACTIONS (Hover)
+        const stamp = document.createElement('span'); stamp.className = 'group-timestamp'; stamp.innerText = msg.date.substring(0, 5); div.appendChild(stamp);
+    } else { lastMessageData = { author: senderName, time: msgTime }; }
     let actionsHTML = "";
     if (!isDm) {
-         actionsHTML += `<div class="msg-actions">`;
-         actionsHTML += `<button class="action-btn" onclick="triggerReply('${msg._id}', '${senderName.replace(/'/g, "\\'")}', '${(msg.type==='text'?msg.content:'Média').replace(/'/g, "\\'")}')" title="Répondre"><i class="fa-solid fa-reply"></i></button>`;
+         actionsHTML += `<div class="msg-actions"><button class="action-btn" onclick="triggerReply('${msg._id}', '${senderName.replace(/'/g, "\\'")}', '${(msg.type==='text'?msg.content:'Média').replace(/'/g, "\\'")}')" title="Répondre"><i class="fa-solid fa-reply"></i></button>`;
          if (msg.type === 'text' && canEdit) actionsHTML += `<button class="action-btn" onclick="triggerEdit('${msg._id}', '${msg.content.replace(/'/g, "\\'")}')" title="Modifier"><i class="fa-solid fa-pen"></i></button>`;
          if (canDelete) actionsHTML += `<button class="action-btn" onclick="triggerDelete('${msg._id}')"><i class="fa-solid fa-trash"></i></button>`;
          actionsHTML += `</div>`;
     }
-
-    // CONTENT PARSING
     let contentHTML = "";
     if (msg.type === "image") contentHTML = `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">`;
     else if (msg.type === "video") {
@@ -623,67 +588,30 @@ function displayMessage(msg, isDm = false) {
         if (ytId) contentHTML = `<iframe class="video-frame" src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe>`;
         else contentHTML = `<video class="video-direct" controls><source src="${msg.content}"></video>`;
     } 
-    else if (msg.type === "audio") {
-        contentHTML = `<div id="audio-placeholder-${msg._id}"></div>`;
-    }
+    else if (msg.type === "audio") { contentHTML = `<div id="audio-placeholder-${msg._id}"></div>`; }
     else contentHTML = `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
-    
     const editedTag = (msg.edited && msg.type === 'text') ? '<span class="timestamp" style="font-size:0.65rem">(modifié)</span>' : '';
     const avatarClick = isDm ? "" : `onclick="openProfile('${senderName.replace(/'/g, "\\'")}')"`;
-
-    // REPLY LINE
     let replyHTML = "";
-    if (msg.replyTo && msg.replyTo.author) {
-        replyHTML = `<div class="reply-context-line"><div class="reply-spine"></div><span style="font-weight:600; cursor:pointer;">@${msg.replyTo.author}</span> <span style="font-style:italic; opacity:0.8;">${msg.replyTo.content}</span></div>`;
-    }
-
-    // HTML STRUCTURE CONSTRUCTION (FLEXBOX)
+    if (msg.replyTo && msg.replyTo.author) { replyHTML = `<div class="reply-context-line"><div class="reply-spine"></div><span style="font-weight:600; cursor:pointer;">@${msg.replyTo.author}</span> <span style="font-style:italic; opacity:0.8;">${msg.replyTo.content}</span></div>`; }
     let innerHTML = "";
-    
-    // Reply sits above the flex row in Discord
     if(replyHTML) innerHTML += replyHTML;
-    
-    // Flex Row
     innerHTML += `<div style="display:flex; width:100%;">`;
-    
-    // Column 1: Avatar
     innerHTML += `<div class="msg-col-avatar">`;
-    if(!isGroup) {
-        innerHTML += `<img src="${senderAvatar}" class="avatar-img" ${avatarClick}>`;
-    }
-    innerHTML += `</div>`;
-    
-    // Column 2: Content
-    innerHTML += `<div class="msg-col-content">`;
-    
-    // Header (Name + Date) - Hidden if grouped
-    if(!isGroup) {
-        innerHTML += `<div class="msg-header">
-            <span class="char-name" style="color:${senderColor}" ${avatarClick}>${senderName}</span>
-            ${senderRole ? `<span class="char-role">${senderRole}</span>` : ''}
-            <span class="timestamp">${msg.date}</span>
-        </div>`;
-    }
-    
+    if(!isGroup) { innerHTML += `<img src="${senderAvatar}" class="avatar-img" ${avatarClick}>`; }
+    innerHTML += `</div><div class="msg-col-content">`;
+    if(!isGroup) { innerHTML += `<div class="msg-header"><span class="char-name" style="color:${senderColor}" ${avatarClick}>${senderName}</span>${senderRole ? `<span class="char-role">${senderRole}</span>` : ''}<span class="timestamp">${msg.date}</span></div>`; }
     innerHTML += contentHTML + editedTag;
-    innerHTML += `</div>`; // End Col 2
-    
-    innerHTML += actionsHTML;
-    innerHTML += `</div>`; // End Flex Row
-
+    innerHTML += `</div>${actionsHTML}</div>`;
     div.innerHTML = innerHTML;
     document.getElementById('messages').appendChild(div);
-
-    if (msg.type === 'audio') {
-        const placeholder = document.getElementById(`audio-placeholder-${msg._id}`);
-        if(placeholder) placeholder.replaceWith(createCustomAudioPlayer(msg.content));
-    }
+    if (msg.type === 'audio') { const placeholder = document.getElementById(`audio-placeholder-${msg._id}`); if(placeholder) placeholder.replaceWith(createCustomAudioPlayer(msg.content)); }
 }
 
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
 
-// --- FEED ---
+// --- FEED LOGIC (UPDATED WITH FEED CHAR ID) ---
 function loadFeed() { socket.emit('request_feed'); }
 document.getElementById('postContent').addEventListener('input', (e) => { document.getElementById('char-count').textContent = `${e.target.value.length}/1000`; });
 async function previewPostFile() {
@@ -699,6 +627,12 @@ function submitPost() {
     const content = document.getElementById('postContent').value.trim();
     const mediaUrl = document.getElementById('postMediaUrl').value.trim();
     if(!content && !mediaUrl) return alert("Contenu vide.");
+    
+    // Use Active Feed Char
+    if(!currentFeedCharId) return alert("Aucun perso sélectionné pour le Feed.");
+    const char = myCharacters.find(c => c._id === currentFeedCharId);
+    if(!char) return alert("Perso invalide.");
+
     let mediaType = null;
     if(mediaUrl) {
         if(getYoutubeId(mediaUrl) || mediaUrl.match(/\.(mp4|webm|ogg)$/i) || mediaUrl.includes('/video/upload')) mediaType = 'video';
@@ -706,13 +640,25 @@ function submitPost() {
         else mediaType = 'image';
         if(mediaUrl.endsWith('.webm') && !mediaType) mediaType = 'video'; 
     }
-    const sel = document.getElementById('feedCharSelector');
-    if(sel.options.length === 0) return alert("Perso requis.");
-    const opt = sel.options[sel.selectedIndex];
-    socket.emit('create_post', { authorName: opt.value, authorAvatar: opt.dataset.avatar, authorRole: opt.dataset.role, content, mediaUrl, mediaType, date: new Date().toLocaleDateString(), ownerId: PLAYER_ID });
+    
+    socket.emit('create_post', { 
+        authorCharId: char._id,
+        authorName: char.name, 
+        authorAvatar: char.avatar, 
+        authorRole: char.role, 
+        content, mediaUrl, mediaType, 
+        date: new Date().toLocaleDateString(), 
+        ownerId: PLAYER_ID 
+    });
+    
     document.getElementById('postContent').value = ""; document.getElementById('postMediaUrl').value = ""; document.getElementById('postMediaFile').value = ""; document.getElementById('postFileStatus').style.display = 'none';
 }
-function toggleLike(id) { if(!PLAYER_ID) return; socket.emit('like_post', { postId: id, userId: PLAYER_ID }); }
+
+function toggleLike(id) { 
+    if(!PLAYER_ID) return; 
+    if(!currentFeedCharId) return alert("Sélectionnez un perso (Feed).");
+    socket.emit('like_post', { postId: id, charId: currentFeedCharId }); 
+}
 function deletePost(id) { if(confirm("Supprimer ?")) socket.emit('delete_post', id); }
 
 let currentDetailPostId = null;
@@ -734,8 +680,22 @@ function openPostDetail(id) {
              mediaType = pendingCommentAttachment.type;
         }
         if(!txt && !mediaUrl) return;
-        const sel = document.getElementById('feedCharSelector');
-        socket.emit('post_comment', { postId: id, comment: { authorName: sel.options[sel.selectedIndex].value, authorAvatar: sel.options[sel.selectedIndex].dataset.avatar, content: txt, mediaUrl, mediaType, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), ownerId: PLAYER_ID } });
+        
+        // Use Active Feed Char
+        if(!currentFeedCharId) return alert("Sélectionnez un perso (Feed).");
+        const char = myCharacters.find(c => c._id === currentFeedCharId);
+        
+        socket.emit('post_comment', { 
+            postId: id, 
+            comment: { 
+                authorCharId: char._id,
+                authorName: char.name, 
+                authorAvatar: char.avatar, 
+                content: txt, mediaUrl, mediaType, 
+                date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), 
+                ownerId: PLAYER_ID 
+            } 
+        });
         document.getElementById('post-detail-comment-input').value = ""; clearCommentStaging();
     };
 }
@@ -784,7 +744,10 @@ function createPostElement(post) {
     const div = document.createElement('div'); div.className = 'post-card'; div.id = `post-${post._id}`;
     const lastVisit = parseInt(localStorage.getItem('last_feed_visit') || '0');
     if (new Date(post.timestamp).getTime() > lastVisit && currentView === 'feed') div.classList.add('post-highlight');
-    const isLiked = post.likes.includes(PLAYER_ID);
+    
+    // Check if Active Feed Char liked this
+    const isLiked = post.likes.includes(currentFeedCharId); // Uses CharID now
+    
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
     let mediaHTML = "";
     if(post.mediaUrl) {
@@ -814,7 +777,6 @@ function createPostElement(post) {
     return div;
 }
 
-// NOTIFICATIONS
 let notifications = [];
 socket.on('notifications_data', (d) => { notifications = d; updateNotificationBadge(); });
 socket.on('notification_dispatch', (n) => { if(n.targetOwnerId === PLAYER_ID) { notifications.unshift(n); updateNotificationBadge(); if(notificationsEnabled) notifSound.play().catch(e=>{}); } });
@@ -832,4 +794,3 @@ function openNotifications() {
     socket.emit('mark_notifications_read', PLAYER_ID); notifications.forEach(n=>n.isRead=true); updateNotificationBadge();
 }
 function closeNotifications() { document.getElementById('notifications-modal').classList.add('hidden'); }
-
