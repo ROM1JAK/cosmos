@@ -416,8 +416,17 @@ function updateUI() {
 }
 
 // --- PROFILE ---
-function openProfile(name) { socket.emit('get_char_profile', name); }
-function closeProfileModal() { document.getElementById('profile-modal').classList.add('hidden'); }
+function openProfile(name) { 
+    // Show overlay first
+    document.getElementById('profile-overlay').classList.remove('hidden');
+    // Trigger Slide
+    document.getElementById('profile-slide-panel').classList.add('open');
+    socket.emit('get_char_profile', name); 
+}
+function closeProfileModal() { 
+    document.getElementById('profile-slide-panel').classList.remove('open');
+    document.getElementById('profile-overlay').classList.add('hidden');
+}
 
 socket.on('char_profile_data', (char) => {
     document.getElementById('profileName').textContent = char.name;
@@ -425,19 +434,19 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileAvatar').src = char.avatar;
     document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
+    document.getElementById('profilePostCount').textContent = char.postCount || 0;
     
     // Abonnés Count
     const count = char.followers ? char.followers.length : 0;
     const countEl = document.getElementById('profileFollowersCount');
-    countEl.textContent = `${count} Abonnés`;
-    countEl.onclick = () => socket.emit('get_followers_list', char._id);
+    countEl.textContent = `${count}`;
+    document.getElementById('btn-view-followers').onclick = () => socket.emit('get_followers_list', char._id);
 
-    document.getElementById('profile-modal').classList.remove('hidden');
     document.getElementById('btn-dm-profile').onclick = function() { closeProfileModal(); if (char.ownerUsername) openDm(char.ownerUsername); };
     
     const btnSub = document.getElementById('btn-sub-profile');
-    // Hide if own character
-    if(char.ownerId === PLAYER_ID) {
+    // Logic: Allow same user, but not same char
+    if(currentFeedCharId === char._id) {
         btnSub.style.display = 'none';
     } else {
         btnSub.style.display = 'block';
@@ -452,10 +461,10 @@ socket.on('char_profile_data', (char) => {
 });
 
 socket.on('char_profile_updated', (char) => { 
-    if(!document.getElementById('profile-modal').classList.contains('hidden') && document.getElementById('profileName').textContent === char.name) {
+    if(document.getElementById('profile-slide-panel').classList.contains('open') && document.getElementById('profileName').textContent === char.name) {
         const isSubbed = char.followers && currentFeedCharId && char.followers.includes(currentFeedCharId);
         updateSubButton(document.getElementById('btn-sub-profile'), isSubbed);
-        document.getElementById('profileFollowersCount').textContent = `${char.followers.length} Abonnés`;
+        document.getElementById('profileFollowersCount').textContent = `${char.followers.length}`;
     }
 });
 function updateSubButton(btn, subbed) { 
@@ -746,7 +755,7 @@ function createPostElement(post) {
     if (new Date(post.timestamp).getTime() > lastVisit && currentView === 'feed') div.classList.add('post-highlight');
     
     // Check if Active Feed Char liked this
-    const isLiked = post.likes.includes(currentFeedCharId); // Uses CharID now
+    const isLiked = post.likes.includes(currentFeedCharId); 
     
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
     let mediaHTML = "";
