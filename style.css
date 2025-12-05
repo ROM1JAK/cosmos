@@ -2,7 +2,7 @@
 
 :root { --bg-primary: #313338; --bg-secondary: #2b2d31; --bg-tertiary: #383a40; --accent: #5865F2; --text-normal: #dbdee1; --text-muted: #949ba4; --font-main: 'Inter', sans-serif; --danger: #da373c; --dm-color: #7d5bc4; --nav-height: 48px; }
 * { box-sizing: border-box; }
-body { background-color: var(--bg-primary); color: var(--text-normal); font-family: var(--font-main); margin: 0; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+body { background-color: var(--bg-primary); color: var(--text-normal); font-family: var(--font-main); margin: 0; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; padding-bottom: 70px; /* Space for player */ }
 /* UTILITAIRES */
 .hidden { display: none !important; }
 /* STYLE MENTIONS */
@@ -119,18 +119,8 @@ animation: notifyPulse 2s infinite;
 }
 
 /* FEED POSTS */
-#view-feed { 
-    overflow-y: auto; 
-    padding: 20px; /* Reduced padding, removed justify-center */
-    width: 100%;
-    /* display: block; or default to let margins handle centering */
-}
-.feed-container { 
-    width: 100%; max-width: 800px; 
-    margin: 0 auto; /* CENTER FEED */
-    display: flex; flex-direction: column; 
-    gap: 15px; margin-bottom: 40px;
-}
+#view-feed { overflow-y: auto; padding: 20px; width: 100%; }
+.feed-container { width: 100%; max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 15px; margin-bottom: 40px; }
 
 .post-create-box { background: var(--bg-secondary); padding: 15px; border-radius: 8px; border: 1px solid #222; }
 #postContent { width: 100%; background: #383a40; border: none; color: white; padding: 10px; border-radius: 4px; margin-top: 5px; resize: vertical; font-family: inherit; }
@@ -158,30 +148,14 @@ animation: notifyPulse 2s infinite;
 .action-item i { font-size: 1.1em; }
 
 /* POST DETAIL VIEW */
-.detail-view-box {
-    width: 95% !important; max-width: 800px !important;
-    height: 90vh; padding: 0 !important;
-    display: flex; flex-direction: column; overflow: hidden;
-    text-align: left; /* FORCE LEFT ALIGNMENT */
-}
+.detail-view-box { width: 95% !important; max-width: 800px !important; height: 90vh; padding: 0 !important; display: flex; flex-direction: column; overflow: hidden; text-align: left; }
 .detail-header { padding: 15px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; background: #232428; }
 .detail-header h3 { margin: 0; color: white; }
-
 .detail-comments-list { margin-top: 15px; width: 100%; }
 .detail-comment-input-area { padding: 15px; border-top: 1px solid #333; background: #1e1f22; }
-
-/* ENLARGED TYPOGRAPHY FOR DETAIL VIEW */
 .detail-view-box .post-content { font-size: 1.15rem; line-height: 1.6; }
-.detail-view-box .comment-bubble .text-body, 
-.detail-view-box .comment-item { font-size: 1.05rem; }
-
-/* Comment Item Styling */
-.comment-item { 
-    margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px;
-    background: #2b2d31; padding: 10px; border-radius: 6px; border: 1px solid #333;
-    align-items: flex-start; /* FORCE LEFT ALIGNMENT */
-    text-align: left; /* FORCE LEFT ALIGNMENT */
-}
+.detail-view-box .comment-bubble .text-body, .detail-view-box .comment-item { font-size: 1.05rem; }
+.comment-item { margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; background: #2b2d31; padding: 10px; border-radius: 6px; border: 1px solid #333; align-items: flex-start; text-align: left; }
 .comment-bubble { display: flex; flex-direction: column; width: 100%; }
 .comment-meta { display: flex; align-items: center; font-size: 0.9rem; color: #aaa; margin-bottom: 6px; }
 .comment-meta b { color: var(--accent); margin-right: 5px; }
@@ -189,8 +163,6 @@ animation: notifyPulse 2s infinite;
 .btn-comment-action { background: none; border: none; color: #666; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 4px; transition: 0.2s; }
 .btn-comment-action:hover { color: var(--text-normal); }
 .btn-comment-action.liked { color: #da373c; }
-
-/* Small Inputs for Detail View */
 .comment-input-field { width: 100%; background: #2b2d31; border: 1px solid #444; color: white; padding: 10px; border-radius: 4px; font-size: 1rem; }
 .btn-icon-small { background: none; border: none; color: #aaa; cursor: pointer; padding: 5px; font-size: 1rem; }
 .btn-icon-small:hover { color: white; }
@@ -340,3 +312,66 @@ animation: notifyPulse 2s infinite;
 #menu-toggle-btn { display: block; position: fixed; top: calc(15px + var(--nav-height)); left: 15px; z-index: 80; background: #313338; border: none; color: white; border-radius: 4px; padding: 5px; }
 .btn-close-sidebar { display: block; }
 }
+
+/* --- MUSIC STREAM --- */
+.music-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 20px; width: 100%;
+}
+.music-card {
+    background: #2b2d31; border-radius: 8px; overflow: hidden;
+    position: relative; transition: transform 0.2s;
+    cursor: pointer; border: 1px solid #333;
+}
+.music-card:hover { transform: translateY(-5px); border-color: var(--accent); }
+.cover-art-container { position: relative; width: 100%; padding-top: 100%; }
+.cover-art { position: absolute; top:0; left:0; width:100%; height:100%; object-fit: cover; }
+.play-overlay {
+    position: absolute; top:0; left:0; right:0; bottom:0;
+    background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity 0.2s;
+}
+.music-card:hover .play-overlay { opacity: 1; }
+.overlay-icon { font-size: 2rem; color: white; background: var(--accent); border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; }
+
+.track-info { padding: 10px; }
+.track-title { font-weight: bold; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.9rem; }
+.track-artist { font-size: 0.8rem; color: #aaa; margin-top: 2px; }
+.track-stats { font-size: 0.75rem; color: #666; margin-top: 5px; display: flex; gap: 10px; }
+
+/* --- PERSISTENT PLAYER --- */
+#persistent-player-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; height: 70px;
+    background: #18191c; border-top: 1px solid #2b2d31;
+    z-index: 500; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px; box-shadow: 0 -5px 20px rgba(0,0,0,0.5);
+}
+.player-left { display: flex; align-items: center; width: 30%; gap: 10px; }
+.player-mini-cover { width: 50px; height: 50px; border-radius: 4px; object-fit: cover; }
+.player-info { display: flex; flex-direction: column; overflow: hidden; }
+.player-title { font-weight: bold; color: white; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-artist { font-size: 0.8rem; color: #aaa; }
+
+.player-center { width: 40%; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.player-controls { display: flex; align-items: center; gap: 20px; }
+.p-btn { background: none; border: none; color: #ddd; font-size: 1.2rem; cursor: pointer; transition: 0.2s; }
+.p-btn:hover { color: white; }
+.play-pause-btn { width: 35px; height: 35px; background: white; color: black; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+.play-pause-btn:hover { transform: scale(1.1); color: black; }
+
+.player-progress-container { width: 100%; display: flex; align-items: center; gap: 10px; font-size: 0.75rem; color: #aaa; }
+.progress-bar-bg { flex: 1; height: 4px; background: #40444b; border-radius: 2px; cursor: pointer; position: relative; }
+.progress-bar-fill { height: 100%; background: var(--accent); width: 0%; border-radius: 2px; position: absolute; top:0; left:0; }
+.progress-bar-bg:hover .progress-bar-fill { background: #7289da; }
+
+.player-right { width: 30%; display: flex; align-items: center; justify-content: flex-end; gap: 15px; }
+.volume-slider { width: 80px; accent-color: var(--accent); }
+
+/* VISUALIZER */
+.visualizer { display: flex; gap: 3px; align-items: flex-end; height: 15px; margin-left: 10px; }
+.bar { width: 3px; background: var(--accent); animation: soundwave 0.5s infinite ease-in-out alternate; }
+.bar:nth-child(1) { height: 60%; animation-delay: -0.4s; }
+.bar:nth-child(2) { height: 100%; animation-delay: -0.2s; }
+.bar:nth-child(3) { height: 40%; animation-delay: 0s; }
+@keyframes soundwave { 0% { height: 20%; } 100% { height: 100%; } }
+
