@@ -30,7 +30,13 @@ let allOnlineUsers = [];
 
 // FEED IDENTITY
 let currentFeedCharId = null;
-let allPosts = []; // Local store for posts to fix display bugs
+let allPosts = []; 
+
+// MUSIC DATA
+let musicPlaylist = [];
+let currentTrackIndex = -1;
+let globalAudio = new Audio();
+let isPlaying = false;
 
 // Staging Vars
 let pendingAttachment = null; 
@@ -75,10 +81,19 @@ function switchView(view) {
     document.getElementById(`view-${view}`).classList.remove('hidden');
     document.getElementById(`view-${view}`).classList.add('active');
     document.getElementById(`btn-view-${view}`).classList.add('active');
+    
+    // Toggle Sidebar Identity Visibility based on view
+    const sidebar = document.getElementById('feed-char-sidebar');
+    if (view === 'feed' || view === 'music') sidebar.style.display = 'flex';
+    else sidebar.style.display = 'none';
+
     if(view === 'feed') {
         document.getElementById('btn-view-feed').classList.remove('nav-notify');
         localStorage.setItem('last_feed_visit', Date.now().toString());
         loadFeed();
+    }
+    if(view === 'music') {
+        loadMusicFeed();
     }
 }
 
@@ -387,7 +402,7 @@ function toggleCharBar() {
 function updateUI() {
     const list = document.getElementById('myCharList');
     const bar = document.getElementById('char-bar-horizontal');
-    const feedBar = document.getElementById('feed-char-container'); // UPDATED Target (Vertical Sidebar)
+    const feedBar = document.getElementById('feed-char-container'); 
     list.innerHTML = ""; bar.innerHTML = ""; feedBar.innerHTML = "";
     
     // Narrateur Admin
@@ -687,13 +702,9 @@ function openPostDetail(id) {
     if(!post) return;
     
     currentDetailPostId = id;
-    
-    // Generate fresh HTML for the post content from data
     const tempDiv = document.createElement('div');
     tempDiv.appendChild(createPostElement(post));
     const postContentClone = tempDiv.querySelector('.post-card').cloneNode(true);
-    
-    // Clean up clone
     postContentClone.onclick = null; 
     postContentClone.style.border = "none"; 
     postContentClone.classList.remove('highlight-new');
@@ -701,10 +712,7 @@ function openPostDetail(id) {
     
     document.getElementById('post-detail-content').innerHTML = ""; 
     document.getElementById('post-detail-content').appendChild(postContentClone);
-    
-    // Explicitly update comments
     document.getElementById('post-detail-comments-list').innerHTML = generateCommentsHTML(post.comments, id);
-    
     document.getElementById('post-detail-modal').classList.remove('hidden');
     clearCommentStaging();
 
@@ -753,30 +761,27 @@ function replyToComment(authorName) {
 }
 
 socket.on('feed_data', (posts) => { 
-    allPosts = posts; // Update local store
+    allPosts = posts; 
     const c = document.getElementById('feed-stream'); 
     c.innerHTML = ""; 
     posts.forEach(p => c.appendChild(createPostElement(p))); 
 });
 
 socket.on('new_post', (post) => { 
-    allPosts.unshift(post); // Update local store
+    allPosts.unshift(post);
     if(currentView !== 'feed') document.getElementById('btn-view-feed').classList.add('nav-notify'); 
     document.getElementById('feed-stream').prepend(createPostElement(post)); 
 });
 
 socket.on('post_updated', (post) => {
-    // Update local store
     const idx = allPosts.findIndex(p => p._id === post._id);
     if(idx !== -1) allPosts[idx] = post;
 
     const el = document.getElementById(`post-${post._id}`); if(el) el.replaceWith(createPostElement(post));
     if(currentDetailPostId === post._id) {
         document.getElementById('post-detail-comments-list').innerHTML = generateCommentsHTML(post.comments, post._id);
-        // Refresh the detail view post content (e.g. likes)
         const contentContainer = document.getElementById('post-detail-content');
         if(contentContainer) {
-            // Re-render the post card part to update likes in the modal without closing
             const tempDiv = document.createElement('div');
             tempDiv.appendChild(createPostElement(post));
             const newCard = tempDiv.querySelector('.post-card');
@@ -827,9 +832,7 @@ function createPostElement(post) {
     const lastVisit = parseInt(localStorage.getItem('last_feed_visit') || '0');
     if (new Date(post.timestamp).getTime() > lastVisit && currentView === 'feed') div.classList.add('post-highlight');
     
-    // Check if Active Feed Char liked this
     const isLiked = post.likes.includes(currentFeedCharId); 
-    
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
     const reportBtn = (!IS_ADMIN && post.ownerId !== PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#666;" onclick="event.stopPropagation(); reportPost('${post._id}')" title="Signaler"><i class="fa-solid fa-flag"></i></button>` : '';
 
@@ -878,3 +881,169 @@ function openNotifications() {
     socket.emit('mark_notifications_read', PLAYER_ID); notifications.forEach(n=>n.isRead=true); updateNotificationBadge();
 }
 function closeNotifications() { document.getElementById('notifications-modal').classList.add('hidden'); }
+
+// --- MUSIC LOGIC ---
+async function submitTrack() {
+    const title = document.getElementById('trackTitle').value.trim();
+    const audioFile = document.getElementById('trackAudioFile').files[0];
+    const coverFile = document.getElementById('trackCoverFile').files[0];
+    
+    if(!title || !audioFile || !coverFile) return alert("Tout est requis (Titre, Audio, Cover).");
+    if(!currentFeedCharId) return alert("Sélectionnez un perso artiste (à droite).");
+    
+    const char = myCharacters.find(c => c._id === currentFeedCharId);
+    
+    const statusDiv = document.getElementById('track-upload-status');
+    statusDiv.textContent = "Upload Audio en cours...";
+    
+    // Upload Audio
+    const audioUrl = await uploadToCloudinary(audioFile, 'video');
+    if(!audioUrl) return statusDiv.textContent = "Erreur Audio.";
+    
+    statusDiv.textContent = "Upload Cover en cours...";
+    const coverUrl = await uploadToCloudinary(coverFile, 'image');
+    if(!coverUrl) return statusDiv.textContent = "Erreur Cover.";
+    
+    statusDiv.textContent = "Publication...";
+    
+    const trackData = {
+        title,
+        audioUrl,
+        coverUrl,
+        artistId: char._id,
+        artistName: char.name,
+        ownerId: PLAYER_ID
+    };
+    
+    socket.emit('upload_track', trackData);
+    
+    document.getElementById('music-upload-modal').classList.add('hidden');
+    document.getElementById('trackTitle').value = "";
+    document.getElementById('trackAudioFile').value = "";
+    document.getElementById('trackCoverFile').value = "";
+    statusDiv.textContent = "";
+}
+
+function loadMusicFeed() { socket.emit('get_music_feed'); }
+
+socket.on('music_feed_data', (tracks) => {
+    musicPlaylist = tracks;
+    renderMusicGrid(tracks);
+});
+
+socket.on('track_uploaded', (track) => {
+    musicPlaylist.unshift(track);
+    renderMusicGrid(musicPlaylist);
+});
+
+socket.on('track_updated', (track) => {
+    const idx = musicPlaylist.findIndex(t => t._id === track._id);
+    if(idx !== -1) musicPlaylist[idx] = track;
+    renderMusicGrid(musicPlaylist);
+    // If playing this track, update UI (likes, plays)
+    if(isPlaying && musicPlaylist[currentTrackIndex]._id === track._id) {
+        updatePlayerUI(track);
+    }
+});
+
+function renderMusicGrid(tracks) {
+    const grid = document.getElementById('music-grid');
+    grid.innerHTML = "";
+    tracks.forEach((t, index) => {
+        const isLiked = t.likes.includes(currentFeedCharId);
+        grid.innerHTML += `
+        <div class="music-card" onclick="playTrack(${index})">
+            <div class="cover-art-container">
+                <img src="${t.coverUrl}" class="cover-art">
+                <div class="play-overlay"><div class="overlay-icon"><i class="fa-solid fa-play"></i></div></div>
+            </div>
+            <div class="track-info">
+                <div class="track-title">${t.title}</div>
+                <div class="track-artist">${t.artistName}</div>
+                <div class="track-stats">
+                    <span><i class="fa-solid fa-play"></i> ${t.plays}</span>
+                    <span style="${isLiked?'color:#da373c':''}"><i class="fa-solid fa-heart"></i> ${t.likes.length}</span>
+                </div>
+            </div>
+        </div>`;
+    });
+}
+
+// PLAYER LOGIC
+function playTrack(index) {
+    if(index < 0 || index >= musicPlaylist.length) return;
+    
+    currentTrackIndex = index;
+    const track = musicPlaylist[index];
+    
+    globalAudio.src = track.audioUrl;
+    globalAudio.play();
+    isPlaying = true;
+    
+    document.getElementById('persistent-player-bar').classList.remove('hidden');
+    updatePlayerUI(track);
+    
+    socket.emit('listen_track', track._id);
+}
+
+function updatePlayerUI(track) {
+    document.getElementById('player-cover').src = track.coverUrl;
+    document.getElementById('player-title').textContent = track.title;
+    document.getElementById('player-artist').textContent = track.artistName;
+    document.getElementById('player-play-btn').innerHTML = isPlaying ? '<i class="fa-solid fa-pause"></i>' : '<i class="fa-solid fa-play"></i>';
+    
+    const isLiked = track.likes.includes(currentFeedCharId);
+    const likeBtn = document.getElementById('player-like-btn');
+    likeBtn.innerHTML = isLiked ? '<i class="fa-solid fa-heart" style="color:#da373c;"></i>' : '<i class="fa-regular fa-heart"></i>';
+    
+    const visualizer = document.getElementById('player-visualizer');
+    if(isPlaying) visualizer.classList.remove('hidden'); else visualizer.classList.add('hidden');
+}
+
+function togglePlay() {
+    if(globalAudio.paused) {
+        globalAudio.play();
+        isPlaying = true;
+    } else {
+        globalAudio.pause();
+        isPlaying = false;
+    }
+    if(currentTrackIndex !== -1) updatePlayerUI(musicPlaylist[currentTrackIndex]);
+}
+
+function prevTrack() { playTrack(currentTrackIndex - 1); }
+function nextTrack() { playTrack(currentTrackIndex + 1); }
+
+function togglePlayerLike() {
+    if(currentTrackIndex === -1) return;
+    if(!currentFeedCharId) return alert("Sélectionnez un perso artiste.");
+    const track = musicPlaylist[currentTrackIndex];
+    socket.emit('like_track', { trackId: track._id, charId: currentFeedCharId });
+}
+
+// Audio Events
+globalAudio.addEventListener('timeupdate', () => {
+    const percent = (globalAudio.currentTime / globalAudio.duration) * 100;
+    document.getElementById('player-progress-bar').style.width = percent + '%';
+    document.getElementById('player-current-time').textContent = formatTime(globalAudio.currentTime);
+});
+globalAudio.addEventListener('loadedmetadata', () => {
+    document.getElementById('player-duration').textContent = formatTime(globalAudio.duration);
+});
+globalAudio.addEventListener('ended', () => nextTrack());
+
+function formatTime(s) {
+    if(isNaN(s)) return "0:00";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+function setVolume(val) { globalAudio.volume = val; }
+function seekTrack(e) {
+    const width = e.target.clientWidth;
+    const clickX = e.offsetX;
+    const duration = globalAudio.duration;
+    globalAudio.currentTime = (clickX / width) * duration;
+}
+
