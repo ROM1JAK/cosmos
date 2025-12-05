@@ -1,3 +1,4 @@
+
 const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
@@ -57,7 +58,7 @@ const PostSchema = new mongoose.Schema({
         id: String, authorCharId: String, authorName: String, authorAvatar: String, content: String, 
         mediaUrl: String, mediaType: String,
         ownerId: String, date: String,
-        likes: [String] // Added likes array for comments
+        likes: [String] 
     }],
     date: String,
     timestamp: { type: Date, default: Date.now }
@@ -191,7 +192,7 @@ io.on('connection', async (socket) => {
       const targetChar = await Character.findById(targetCharId);
       const followerChar = await Character.findById(followerCharId);
       if(!targetChar || !followerChar) return;
-      if(String(followerChar._id) === String(targetChar._id)) return;
+      if(String(followerChar._id) === String(targetChar._id)) return; // Anti-self-same-char follow
 
       const index = targetChar.followers.indexOf(followerCharId);
       if(index === -1) {
@@ -320,7 +321,6 @@ io.on('connection', async (socket) => {
       }
   });
 
-  // Gestion des Likes sur Commentaires
   socket.on('like_comment', async ({ postId, commentId, charId }) => {
       const post = await Post.findById(postId);
       if(!post) return;
@@ -333,7 +333,6 @@ io.on('connection', async (socket) => {
       if(index === -1) { comment.likes.push(charId); }
       else { comment.likes.splice(index, 1); }
       
-      // Mongoose doesn't always detect deep changes in mixed arrays, marking modified
       post.markModified('comments');
       await post.save();
       io.emit('post_updated', post);
