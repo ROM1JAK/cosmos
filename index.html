@@ -15,6 +15,7 @@
     <nav id="top-nav">
         <button class="nav-btn active" id="btn-view-chat" onclick="switchView('chat')"><i class="fa-solid fa-comments"></i> Chat</button>
         <button class="nav-btn" id="btn-view-feed" onclick="switchView('feed')"><i class="fa-solid fa-bullhorn"></i> Feed</button>
+        <div id="realtime-clock" class="nav-clock">00:00</div>
         <button class="nav-btn" id="btn-notifs" onclick="openNotifications()" style="position:relative;">
             <i class="fa-solid fa-bell"></i>
             <span id="notif-badge" class="hidden"></span>
@@ -106,22 +107,38 @@
         </div>
     </div>
     
+    <!-- POST DETAIL MODAL (NEW 2-COLUMN LAYOUT) -->
     <div id="post-detail-modal" class="modal-overlay hidden" onclick="closePostDetail()">
-        <div class="modal-box" style="max-width: 600px; padding:0; overflow:hidden; max-height:90vh; display:flex; flex-direction:column;" onclick="event.stopPropagation()">
-            <div style="padding:15px; border-bottom:1px solid #222; display:flex; justify-content:space-between;">
-                <h3 style="color:white; margin:0;">Discussion</h3> <button onclick="closePostDetail()" style="background:none; border:none; color:#aaa; cursor:pointer;">X</button>
+        <div class="modal-box detail-view-box" onclick="event.stopPropagation()">
+            <div class="detail-header">
+                <h3>Détail du Post</h3> 
+                <button onclick="closePostDetail()" style="background:none; border:none; color:#aaa; cursor:pointer;">X</button>
             </div>
-            <div style="overflow-y:auto; padding:15px; flex:1;">
-                <div id="post-detail-content"></div>
-                <div id="post-detail-comments-list" style="margin-top:20px;"></div>
-            </div>
-            <div style="padding:15px; background: var(--bg-chat); border-top:1px solid #222;">
-                <div id="comment-staging" class="chat-staging hidden"></div>
-                <div class="comment-form" style="display:flex; gap:5px;">
-                    <input type="text" id="post-detail-comment-input" class="modal-input" placeholder="Commentaire..." style="margin:0;">
-                    <button class="btn-icon" onclick="toggleRecording('comment')"><i class="fa-solid fa-microphone"></i></button>
-                    <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-paperclip"></i><input type="file" id="comment-file-input" class="hidden" accept="image/*,video/*" onchange="stageCommentMedia(this)"></label>
-                    <button id="btn-detail-comment" class="btn-primary">Envoyer</button>
+            
+            <div class="post-detail-grid">
+                <!-- COLONNE GAUCHE: POST -->
+                <div class="detail-left">
+                    <div id="post-detail-content"></div>
+                </div>
+
+                <!-- COLONNE DROITE: COMMENTAIRES -->
+                <div class="detail-right">
+                    <div class="detail-comments-header">
+                         <h4>Commentaires</h4>
+                    </div>
+                    <div id="post-detail-comments-list" class="detail-comments-list"></div>
+                    
+                    <div class="detail-comment-input-area">
+                        <div id="comment-staging" class="chat-staging hidden"></div>
+                        <div class="comment-form-container">
+                            <input type="text" id="post-detail-comment-input" placeholder="Répondre..." class="comment-input-field">
+                            <div style="display:flex; gap:5px; margin-top:5px; justify-content:flex-end;">
+                                <button class="btn-icon-small" onclick="toggleRecording('comment')"><i class="fa-solid fa-microphone"></i></button>
+                                <label class="btn-icon-small" style="cursor:pointer;"><i class="fa-solid fa-paperclip"></i><input type="file" id="comment-file-input" class="hidden" accept="image/*,video/*" onchange="stageCommentMedia(this)"></label>
+                                <button id="btn-detail-comment" class="btn-primary-small">Envoyer</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -216,8 +233,9 @@
             <div class="feed-view-header">
                 <h3 style="margin:0; font-size:1.1rem;">Flux Social</h3>
                 <div class="feed-identity-wrapper">
-                    <span style="font-size:0.8rem; color:var(--text-muted); margin-right:5px;">Agir en tant que :</span>
-                    <select id="activeFeedCharSelect" class="feed-char-picker"></select>
+                    <span style="font-size:0.8rem; color:var(--text-muted); margin-right:10px;">Agir en tant que :</span>
+                    <!-- Barre horizontale d'avatars pour le Feed -->
+                    <div id="feed-char-bar" class="feed-char-selector-bar"></div>
                 </div>
             </div>
 
