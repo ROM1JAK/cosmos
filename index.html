@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -107,7 +108,7 @@
         </div>
     </div>
     
-    <!-- POST DETAIL MODAL (NEW 2-COLUMN LAYOUT) -->
+    <!-- POST DETAIL MODAL (Vertical Layout) -->
     <div id="post-detail-modal" class="modal-overlay hidden" onclick="closePostDetail()">
         <div class="modal-box detail-view-box" onclick="event.stopPropagation()">
             <div class="detail-header">
@@ -115,29 +116,26 @@
                 <button onclick="closePostDetail()" style="background:none; border:none; color:#aaa; cursor:pointer;">X</button>
             </div>
             
-            <div class="post-detail-grid">
-                <!-- COLONNE GAUCHE: POST -->
-                <div class="detail-left">
-                    <div id="post-detail-content"></div>
-                </div>
+            <div style="overflow-y:auto; flex:1; padding:20px;">
+                <!-- Post Original -->
+                <div id="post-detail-content"></div>
 
-                <!-- COLONNE DROITE: COMMENTAIRES -->
-                <div class="detail-right">
-                    <div class="detail-comments-header">
-                         <h4>Commentaires</h4>
-                    </div>
+                <!-- Commentaires -->
+                <div style="margin-top:30px; border-top:1px solid #333; padding-top:20px;">
+                    <h4 style="color:var(--text-muted); margin-bottom:15px; text-transform:uppercase; font-size:0.9rem;">Commentaires</h4>
                     <div id="post-detail-comments-list" class="detail-comments-list"></div>
-                    
-                    <div class="detail-comment-input-area">
-                        <div id="comment-staging" class="chat-staging hidden"></div>
-                        <div class="comment-form-container">
-                            <input type="text" id="post-detail-comment-input" placeholder="Répondre..." class="comment-input-field">
-                            <div style="display:flex; gap:5px; margin-top:5px; justify-content:flex-end;">
-                                <button class="btn-icon-small" onclick="toggleRecording('comment')"><i class="fa-solid fa-microphone"></i></button>
-                                <label class="btn-icon-small" style="cursor:pointer;"><i class="fa-solid fa-paperclip"></i><input type="file" id="comment-file-input" class="hidden" accept="image/*,video/*" onchange="stageCommentMedia(this)"></label>
-                                <button id="btn-detail-comment" class="btn-primary-small">Envoyer</button>
-                            </div>
-                        </div>
+                </div>
+            </div>
+
+            <!-- Zone de Saisie -->
+            <div class="detail-comment-input-area">
+                <div id="comment-staging" class="chat-staging hidden"></div>
+                <div class="comment-form-container">
+                    <input type="text" id="post-detail-comment-input" placeholder="Répondre..." class="comment-input-field">
+                    <div style="display:flex; gap:5px; margin-top:5px; justify-content:flex-end;">
+                        <button class="btn-icon-small" onclick="toggleRecording('comment')"><i class="fa-solid fa-microphone"></i></button>
+                        <label class="btn-icon-small" style="cursor:pointer;"><i class="fa-solid fa-paperclip"></i><input type="file" id="comment-file-input" class="hidden" accept="image/*,video/*" onchange="stageCommentMedia(this)"></label>
+                        <button id="btn-detail-comment" class="btn-primary-small">Envoyer</button>
                     </div>
                 </div>
             </div>
@@ -229,14 +227,10 @@
         </div>
 
         <div id="view-feed" class="view-section hidden">
-            <!-- HEADER DU FEED (IDENTITÉ) -->
-            <div class="feed-view-header">
-                <h3 style="margin:0; font-size:1.1rem;">Flux Social</h3>
-                <div class="feed-identity-wrapper">
-                    <span style="font-size:0.8rem; color:var(--text-muted); margin-right:10px;">Agir en tant que :</span>
-                    <!-- Barre horizontale d'avatars pour le Feed -->
-                    <div id="feed-char-bar" class="feed-char-selector-bar"></div>
-                </div>
+            <!-- RIGHT VERTICAL SIDEBAR FOR CHARACTERS -->
+            <div id="feed-char-sidebar">
+                <div style="font-size:0.75rem; text-align:center; color:#aaa; margin-bottom:10px; font-weight:bold;">AGIR</div>
+                <div id="feed-char-container" class="feed-sidebar-list"></div>
             </div>
 
             <div class="feed-container">
