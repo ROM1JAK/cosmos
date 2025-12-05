@@ -30,6 +30,7 @@ let allOnlineUsers = [];
 
 // FEED IDENTITY
 let currentFeedCharId = null;
+let allPosts = []; // Local store for posts to fix display bugs
 
 // Staging Vars
 let pendingAttachment = null; 
@@ -382,11 +383,11 @@ function toggleCharBar() {
     else { icon.classList.remove('fa-chevron-up'); icon.classList.add('fa-chevron-down'); }
 }
 
-// UPDATE UI (Includes Feed Selector - New Avatar Bar)
+// UPDATE UI
 function updateUI() {
     const list = document.getElementById('myCharList');
     const bar = document.getElementById('char-bar-horizontal');
-    const feedBar = document.getElementById('feed-char-bar'); // NEW Container
+    const feedBar = document.getElementById('feed-char-container'); // UPDATED Target (Vertical Sidebar)
     list.innerHTML = ""; bar.innerHTML = ""; feedBar.innerHTML = "";
     
     // Narrateur Admin
@@ -682,17 +683,31 @@ function reportPost(id) {
 
 let currentDetailPostId = null;
 function openPostDetail(id) {
-    const postEl = document.getElementById(`post-${id}`); if(!postEl) return;
-    currentDetailPostId = id;
-    const clone = postEl.cloneNode(true); clone.onclick = null; clone.style.border="none"; clone.classList.remove('highlight-new');
-    // Remove comment section from clone to avoid duplication in grid
-    const old = clone.querySelector('.comments-list'); if(old) old.remove();
-    const oldActions = clone.querySelector('.post-actions'); if(oldActions) oldActions.remove(); // We can keep actions or move them
+    const post = allPosts.find(p => p._id === id);
+    if(!post) return;
     
-    document.getElementById('post-detail-content').innerHTML = ""; document.getElementById('post-detail-content').appendChild(clone);
-    document.getElementById('post-detail-comments-list').innerHTML = postEl.querySelector('.comments-list')?.innerHTML || "";
+    currentDetailPostId = id;
+    
+    // Generate fresh HTML for the post content from data
+    const tempDiv = document.createElement('div');
+    tempDiv.appendChild(createPostElement(post));
+    const postContentClone = tempDiv.querySelector('.post-card').cloneNode(true);
+    
+    // Clean up clone
+    postContentClone.onclick = null; 
+    postContentClone.style.border = "none"; 
+    postContentClone.classList.remove('highlight-new');
+    const oldComments = postContentClone.querySelector('.comments-list'); if(oldComments) oldComments.remove();
+    
+    document.getElementById('post-detail-content').innerHTML = ""; 
+    document.getElementById('post-detail-content').appendChild(postContentClone);
+    
+    // Explicitly update comments
+    document.getElementById('post-detail-comments-list').innerHTML = generateCommentsHTML(post.comments, id);
+    
     document.getElementById('post-detail-modal').classList.remove('hidden');
     clearCommentStaging();
+
     document.getElementById('btn-detail-comment').onclick = async () => {
         const txt = document.getElementById('post-detail-comment-input').value.trim();
         let mediaUrl = null, mediaType = null;
@@ -703,7 +718,6 @@ function openPostDetail(id) {
         }
         if(!txt && !mediaUrl) return;
         
-        // Use Active Feed Char
         if(!currentFeedCharId) return alert("Sélectionnez un perso (Feed).");
         const char = myCharacters.find(c => c._id === currentFeedCharId);
         
@@ -738,20 +752,46 @@ function replyToComment(authorName) {
     input.focus();
 }
 
-socket.on('feed_data', (posts) => { const c = document.getElementById('feed-stream'); c.innerHTML = ""; posts.forEach(p => c.appendChild(createPostElement(p))); });
+socket.on('feed_data', (posts) => { 
+    allPosts = posts; // Update local store
+    const c = document.getElementById('feed-stream'); 
+    c.innerHTML = ""; 
+    posts.forEach(p => c.appendChild(createPostElement(p))); 
+});
+
 socket.on('new_post', (post) => { 
+    allPosts.unshift(post); // Update local store
     if(currentView !== 'feed') document.getElementById('btn-view-feed').classList.add('nav-notify'); 
     document.getElementById('feed-stream').prepend(createPostElement(post)); 
 });
+
 socket.on('post_updated', (post) => {
+    // Update local store
+    const idx = allPosts.findIndex(p => p._id === post._id);
+    if(idx !== -1) allPosts[idx] = post;
+
     const el = document.getElementById(`post-${post._id}`); if(el) el.replaceWith(createPostElement(post));
     if(currentDetailPostId === post._id) {
         document.getElementById('post-detail-comments-list').innerHTML = generateCommentsHTML(post.comments, post._id);
-        const likeBtn = document.querySelector('#post-detail-content .action-item.liked-btn'); 
-        // Update post like button in modal if needed, or simply let the user re-open if interaction is complex
+        // Refresh the detail view post content (e.g. likes)
+        const contentContainer = document.getElementById('post-detail-content');
+        if(contentContainer) {
+            // Re-render the post card part to update likes in the modal without closing
+            const tempDiv = document.createElement('div');
+            tempDiv.appendChild(createPostElement(post));
+            const newCard = tempDiv.querySelector('.post-card');
+            newCard.onclick = null; newCard.style.border = "none"; newCard.classList.remove('highlight-new');
+             const oldComments = newCard.querySelector('.comments-list'); if(oldComments) oldComments.remove();
+            contentContainer.innerHTML = "";
+            contentContainer.appendChild(newCard);
+        }
     }
 });
-socket.on('post_deleted', (id) => { const el = document.getElementById(`post-${id}`); if(el) el.remove(); if(currentDetailPostId === id) closePostDetail(); });
+socket.on('post_deleted', (id) => { 
+    allPosts = allPosts.filter(p => p._id !== id);
+    const el = document.getElementById(`post-${id}`); if(el) el.remove(); 
+    if(currentDetailPostId === id) closePostDetail(); 
+});
 socket.on('reload_posts', () => loadFeed());
 
 function generateCommentsHTML(comments, postId) {
@@ -771,7 +811,7 @@ function generateCommentsHTML(comments, postId) {
         html += `<div class="comment-item">
             <div class="comment-bubble">
                 <div class="comment-meta"><img src="${c.authorAvatar}" style="width:20px;height:20px;border-radius:50%;margin-right:5px;"><b>${c.authorName}</b> ${c.date}</div>
-                <div style="margin-left:25px;">${c.content} ${mediaHtml} ${delBtn}</div>
+                <div style="margin-left:25px;" class="text-body">${c.content} ${mediaHtml} ${delBtn}</div>
                 <div class="comment-actions-bar">
                     <button class="btn-comment-action" onclick="replyToComment('${c.authorName}')"><i class="fa-solid fa-reply"></i></button>
                     <button class="btn-comment-action ${isLiked?'liked':''}" onclick="toggleCommentLike('${postId}', '${c.id}')"><i class="fa-solid fa-heart"></i> ${likesCount}</button>
