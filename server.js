@@ -75,6 +75,33 @@ const NotificationSchema = new mongoose.Schema({
 });
 const Notification = mongoose.model('Notification', NotificationSchema);
 
+// --- MUSIC SCHEMAS ---
+const AlbumSchema = new mongoose.Schema({
+    title: String,
+    coverUrl: String,
+    artistId: String, // Character ID
+    artistName: String,
+    year: String,
+    ownerId: String
+});
+const Album = mongoose.model('Album', AlbumSchema);
+
+const TrackSchema = new mongoose.Schema({
+    title: String,
+    audioUrl: String,
+    coverUrl: String, // Can be album cover or single cover
+    duration: Number, // In seconds
+    albumId: String,
+    artistId: String, // Character ID
+    artistName: String,
+    ownerId: String,
+    plays: { type: Number, default: 0 },
+    likes: [String], // Array of Character IDs
+    timestamp: { type: Date, default: Date.now }
+});
+const Track = mongoose.model('Track', TrackSchema);
+
+
 let onlineUsers = {}; 
 
 function broadcastUserList() {
@@ -176,11 +203,13 @@ io.on('connection', async (socket) => {
       });
       await Message.updateMany({ senderName: data.originalName, ownerId: data.ownerId }, { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }});
       await Post.updateMany({ authorName: data.originalName, ownerId: data.ownerId }, { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor }});
+      await Track.updateMany({ artistId: data.charId }, { $set: { artistName: data.newName }}); // Update Music Artist Name
       
       const myChars = await Character.find({ ownerId: data.ownerId });
       socket.emit('my_chars_data', myChars);
       io.emit('force_history_refresh', { roomId: data.currentRoomId });
       io.emit('reload_posts'); 
+      io.emit('reload_music');
   });
 
   socket.on('delete_char', async (charId) => {
@@ -360,6 +389,52 @@ io.on('connection', async (socket) => {
       io.emit('post_updated', post);
   });
   
+  // --- MUSIC / STREAM ---
+  socket.on('upload_track', async (trackData) => {
+      const newTrack = new Track(trackData);
+      await newTrack.save();
+      io.emit('track_uploaded', newTrack);
+      
+      // Notify Followers
+      const artist = await Character.findById(trackData.artistId);
+      if(artist && artist.followers.length > 0) {
+          const followersChars = await Character.find({ _id: { $in: artist.followers } });
+          const notifiedOwners = new Set();
+          for(const f of followersChars) {
+              if(!notifiedOwners.has(f.ownerId)) {
+                  await createNotification(f.ownerId, 'follow', `(${trackData.artistName}) a sorti un nouveau son !`, "Music");
+                  notifiedOwners.add(f.ownerId);
+              }
+          }
+      }
+  });
+
+  socket.on('get_music_feed', async () => {
+      const tracks = await Track.find().sort({ timestamp: -1 }).limit(50);
+      socket.emit('music_feed_data', tracks);
+  });
+
+  socket.on('like_track', async ({ trackId, charId }) => {
+      const track = await Track.findById(trackId);
+      if(!track) return;
+      const index = track.likes.indexOf(charId);
+      if(index === -1) track.likes.push(charId);
+      else track.likes.splice(index, 1);
+      await track.save();
+      io.emit('track_updated', track);
+  });
+
+  socket.on('listen_track', async (trackId) => {
+      await Track.findByIdAndUpdate(trackId, { $inc: { plays: 1 } });
+      const track = await Track.findById(trackId);
+      io.emit('track_updated', track);
+  });
+
+  socket.on('delete_track', async (trackId) => {
+      await Track.findByIdAndDelete(trackId);
+      io.emit('track_deleted', trackId);
+  });
+
   socket.on('mark_notifications_read', async (userId) => { await Notification.updateMany({ targetOwnerId: userId, isRead: false }, { isRead: true }); socket.emit('notifications_read_confirmed'); });
   socket.on('typing_start', (data) => { socket.to(data.roomId).emit('display_typing', data); });
   socket.on('typing_stop', (data) => { socket.to(data.roomId).emit('hide_typing', data); });
