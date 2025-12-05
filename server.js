@@ -56,7 +56,8 @@ const PostSchema = new mongoose.Schema({
     comments: [{
         id: String, authorCharId: String, authorName: String, authorAvatar: String, content: String, 
         mediaUrl: String, mediaType: String,
-        ownerId: String, date: String
+        ownerId: String, date: String,
+        likes: [String] // Added likes array for comments
     }],
     date: String,
     timestamp: { type: Date, default: Date.now }
@@ -151,7 +152,6 @@ io.on('connection', async (socket) => {
   socket.on('get_char_profile', async (charName) => {
       const char = await Character.findOne({ name: charName }).sort({_id: -1});
       if(char) {
-          // Calcul du nombre de posts
           const postCount = await Post.countDocuments({ authorCharId: char._id });
           const charData = char.toObject();
           charData.postCount = postCount;
@@ -187,31 +187,21 @@ io.on('connection', async (socket) => {
       socket.emit('char_deleted_success', charId);
   });
 
-  // NOUVEAU SYSTEME D'ABONNEMENT
   socket.on('follow_character', async ({ followerCharId, targetCharId }) => {
       const targetChar = await Character.findById(targetCharId);
       const followerChar = await Character.findById(followerCharId);
-      
       if(!targetChar || !followerChar) return;
-      
-      // Anti-Self-Follow (Même ID de personnage)
-      // Mais on AUTORISE le même OwnerId (pour qu'un joueur puisse faire suivre ses propres persos entre eux)
       if(String(followerChar._id) === String(targetChar._id)) return;
 
       const index = targetChar.followers.indexOf(followerCharId);
-      
       if(index === -1) {
           targetChar.followers.push(followerCharId);
-          // Notif
           await createNotification(targetChar.ownerId, 'follow', `(${followerChar.name}) vous suit désormais`, followerChar.ownerUsername);
       } else {
           targetChar.followers.splice(index, 1);
       }
-      
       await targetChar.save();
       
-      // Renvoie le profil mis à jour pour rafraîchir le bouton
-      // Recalcul post count pour l'objet retourné
       const postCount = await Post.countDocuments({ authorCharId: targetChar._id });
       const charData = targetChar.toObject();
       charData.postCount = postCount;
@@ -309,6 +299,7 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('delete_post', async (postId) => { await Post.findByIdAndDelete(postId); io.emit('post_deleted', postId); });
+  socket.on('report_post', async (postId) => { console.log(`Post ${postId} signalé.`); });
 
   socket.on('like_post', async ({ postId, charId }) => { 
       const post = await Post.findById(postId);
@@ -329,10 +320,30 @@ io.on('connection', async (socket) => {
       }
   });
 
+  // Gestion des Likes sur Commentaires
+  socket.on('like_comment', async ({ postId, commentId, charId }) => {
+      const post = await Post.findById(postId);
+      if(!post) return;
+      const comment = post.comments.find(c => c.id === commentId);
+      if(!comment) return;
+
+      if(!comment.likes) comment.likes = [];
+      const index = comment.likes.indexOf(charId);
+      
+      if(index === -1) { comment.likes.push(charId); }
+      else { comment.likes.splice(index, 1); }
+      
+      // Mongoose doesn't always detect deep changes in mixed arrays, marking modified
+      post.markModified('comments');
+      await post.save();
+      io.emit('post_updated', post);
+  });
+
   socket.on('post_comment', async ({ postId, comment }) => {
       const post = await Post.findById(postId);
       if(!post) return;
       comment.id = new mongoose.Types.ObjectId().toString();
+      comment.likes = [];
       post.comments.push(comment);
       await post.save();
       io.emit('post_updated', post);
