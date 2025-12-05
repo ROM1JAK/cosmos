@@ -81,6 +81,15 @@ function switchView(view) {
     }
 }
 
+// --- CLOCK ---
+function updateClock() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
+    document.getElementById('realtime-clock').textContent = timeString;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
 async function toggleRecording(source) { 
     const btnId = `btn-record-${source}`;
     const btn = document.getElementById(btnId);
@@ -373,53 +382,45 @@ function toggleCharBar() {
     else { icon.classList.remove('fa-chevron-up'); icon.classList.add('fa-chevron-down'); }
 }
 
-// UPDATE UI (Includes Feed Selector)
+// UPDATE UI (Includes Feed Selector - New Avatar Bar)
 function updateUI() {
     const list = document.getElementById('myCharList');
     const bar = document.getElementById('char-bar-horizontal');
-    const feedSel = document.getElementById('activeFeedCharSelect');
-    list.innerHTML = ""; bar.innerHTML = ""; feedSel.innerHTML = "";
+    const feedBar = document.getElementById('feed-char-bar'); // NEW Container
+    list.innerHTML = ""; bar.innerHTML = ""; feedBar.innerHTML = "";
     
     // Narrateur Admin
     if(IS_ADMIN) {
         bar.innerHTML += `<img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" id="avatar-opt-narrateur" class="avatar-choice" title="Narrateur" onclick="selectCharacter('narrateur')">`;
     }
     
-    // Feed Dropdown Default
-    if (myCharacters.length === 0) {
-        feedSel.innerHTML = '<option value="">Aucun perso</option>';
-        currentFeedCharId = null;
-    }
+    // Default selection logic for Feed
+    if (myCharacters.length > 0 && !currentFeedCharId) currentFeedCharId = myCharacters[0]._id;
 
-    myCharacters.forEach((char, index) => {
+    myCharacters.forEach((char) => {
         list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')"><i class="fa-solid fa-gear"></i></button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button></div></div>`;
         bar.innerHTML += `<img src="${char.avatar}" id="avatar-opt-${char._id}" class="avatar-choice" title="${char.name}" onclick="selectCharacter('${char._id}')">`;
         
-        // Feed Selector Option
-        const opt = document.createElement('option');
-        opt.value = char._id;
-        opt.text = char.name;
-        opt.dataset.avatar = char.avatar;
-        opt.dataset.role = char.role;
-        feedSel.appendChild(opt);
-        
-        // Select first by default if not set
-        if (index === 0 && !currentFeedCharId) currentFeedCharId = char._id;
+        // Feed Selector Avatars
+        const feedAvatar = document.createElement('img');
+        feedAvatar.src = char.avatar;
+        feedAvatar.className = 'feed-avatar-choice';
+        feedAvatar.title = char.name;
+        if(currentFeedCharId === char._id) feedAvatar.classList.add('active-feed-char');
+        feedAvatar.onclick = () => {
+            currentFeedCharId = char._id;
+            updateUI(); // Refresh to update active class
+        };
+        feedBar.appendChild(feedAvatar);
     });
 
     if (!currentSelectedChar) { if(myCharacters.length > 0) selectCharacter(myCharacters[0]._id); else if(IS_ADMIN) selectCharacter('narrateur'); }
     else selectCharacter(currentSelectedChar._id);
-    
-    // Listen to feed selector changes
-    feedSel.onchange = (e) => { currentFeedCharId = e.target.value; };
-    if(currentFeedCharId) feedSel.value = currentFeedCharId;
 }
 
 // --- PROFILE ---
 function openProfile(name) { 
-    // Show overlay first
     document.getElementById('profile-overlay').classList.remove('hidden');
-    // Trigger Slide
     document.getElementById('profile-slide-panel').classList.add('open');
     socket.emit('get_char_profile', name); 
 }
@@ -436,7 +437,6 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
     document.getElementById('profilePostCount').textContent = char.postCount || 0;
     
-    // Abonnés Count
     const count = char.followers ? char.followers.length : 0;
     const countEl = document.getElementById('profileFollowersCount');
     countEl.textContent = `${count}`;
@@ -445,12 +445,10 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('btn-dm-profile').onclick = function() { closeProfileModal(); if (char.ownerUsername) openDm(char.ownerUsername); };
     
     const btnSub = document.getElementById('btn-sub-profile');
-    // Logic: Allow same user, but not same char
     if(currentFeedCharId === char._id) {
         btnSub.style.display = 'none';
     } else {
         btnSub.style.display = 'block';
-        // Check if ACTIVE FEED CHAR follows TARGET
         const isSubbed = char.followers && currentFeedCharId && char.followers.includes(currentFeedCharId);
         updateSubButton(btnSub, isSubbed);
         btnSub.onclick = function() {
@@ -668,14 +666,29 @@ function toggleLike(id) {
     if(!currentFeedCharId) return alert("Sélectionnez un perso (Feed).");
     socket.emit('like_post', { postId: id, charId: currentFeedCharId }); 
 }
+function toggleCommentLike(postId, commentId) {
+    if(!PLAYER_ID) return; 
+    if(!currentFeedCharId) return alert("Sélectionnez un perso (Feed).");
+    socket.emit('like_comment', { postId: postId, commentId: commentId, charId: currentFeedCharId });
+}
+
 function deletePost(id) { if(confirm("Supprimer ?")) socket.emit('delete_post', id); }
+function reportPost(id) { 
+    if(confirm("Signaler ce post à la modération ?")) {
+        socket.emit('report_post', id); 
+        alert("Signalement envoyé.");
+    }
+}
 
 let currentDetailPostId = null;
 function openPostDetail(id) {
     const postEl = document.getElementById(`post-${id}`); if(!postEl) return;
     currentDetailPostId = id;
     const clone = postEl.cloneNode(true); clone.onclick = null; clone.style.border="none"; clone.classList.remove('highlight-new');
-    const old = clone.querySelector('.comments-section'); if(old) old.remove();
+    // Remove comment section from clone to avoid duplication in grid
+    const old = clone.querySelector('.comments-list'); if(old) old.remove();
+    const oldActions = clone.querySelector('.post-actions'); if(oldActions) oldActions.remove(); // We can keep actions or move them
+    
     document.getElementById('post-detail-content').innerHTML = ""; document.getElementById('post-detail-content').appendChild(clone);
     document.getElementById('post-detail-comments-list').innerHTML = postEl.querySelector('.comments-list')?.innerHTML || "";
     document.getElementById('post-detail-modal').classList.remove('hidden');
@@ -719,6 +732,12 @@ function stageCommentMedia(input, forcedType) {
 function clearCommentStaging() { pendingCommentAttachment = null; document.getElementById('comment-staging').classList.add('hidden'); document.getElementById('comment-file-input').value = ""; }
 function deleteComment(postId, commentId) { if(confirm("Supprimer ?")) socket.emit('delete_comment', { postId, commentId }); }
 
+function replyToComment(authorName) {
+    const input = document.getElementById('post-detail-comment-input');
+    input.value = `@${authorName} ` + input.value;
+    input.focus();
+}
+
 socket.on('feed_data', (posts) => { const c = document.getElementById('feed-stream'); c.innerHTML = ""; posts.forEach(p => c.appendChild(createPostElement(p))); });
 socket.on('new_post', (post) => { 
     if(currentView !== 'feed') document.getElementById('btn-view-feed').classList.add('nav-notify'); 
@@ -728,7 +747,8 @@ socket.on('post_updated', (post) => {
     const el = document.getElementById(`post-${post._id}`); if(el) el.replaceWith(createPostElement(post));
     if(currentDetailPostId === post._id) {
         document.getElementById('post-detail-comments-list').innerHTML = generateCommentsHTML(post.comments, post._id);
-        const likeBtn = document.querySelector('#post-detail-content .action-item'); if(likeBtn) likeBtn.innerHTML = `<i class="fa-solid fa-heart"></i> ${post.likes.length}`;
+        const likeBtn = document.querySelector('#post-detail-content .action-item.liked-btn'); 
+        // Update post like button in modal if needed, or simply let the user re-open if interaction is complex
     }
 });
 socket.on('post_deleted', (id) => { const el = document.getElementById(`post-${id}`); if(el) el.remove(); if(currentDetailPostId === id) closePostDetail(); });
@@ -744,7 +764,20 @@ function generateCommentsHTML(comments, postId) {
             if(c.mediaType === 'video') mediaHtml = `<video src="${c.mediaUrl}" controls style="max-width:200px; border-radius:4px; margin-top:5px;"></video>`;
             if(c.mediaType === 'audio') mediaHtml = `<audio src="${c.mediaUrl}" controls style="max-width:200px; margin-top:5px;"></audio>`;
         }
-        html += `<div class="comment-item"><div class="comment-bubble"><div class="comment-meta"><img src="${c.authorAvatar}" style="width:20px;height:20px;border-radius:50%;margin-right:5px;"><b>${c.authorName}</b> ${c.date}</div><div style="margin-left:25px;">${c.content} ${mediaHtml} ${delBtn}</div></div></div>`;
+        
+        const likesCount = c.likes ? c.likes.length : 0;
+        const isLiked = c.likes && currentFeedCharId && c.likes.includes(currentFeedCharId);
+        
+        html += `<div class="comment-item">
+            <div class="comment-bubble">
+                <div class="comment-meta"><img src="${c.authorAvatar}" style="width:20px;height:20px;border-radius:50%;margin-right:5px;"><b>${c.authorName}</b> ${c.date}</div>
+                <div style="margin-left:25px;">${c.content} ${mediaHtml} ${delBtn}</div>
+                <div class="comment-actions-bar">
+                    <button class="btn-comment-action" onclick="replyToComment('${c.authorName}')"><i class="fa-solid fa-reply"></i></button>
+                    <button class="btn-comment-action ${isLiked?'liked':''}" onclick="toggleCommentLike('${postId}', '${c.id}')"><i class="fa-solid fa-heart"></i> ${likesCount}</button>
+                </div>
+            </div>
+        </div>`;
     });
     return html;
 }
@@ -758,6 +791,8 @@ function createPostElement(post) {
     const isLiked = post.likes.includes(currentFeedCharId); 
     
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
+    const reportBtn = (!IS_ADMIN && post.ownerId !== PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#666;" onclick="event.stopPropagation(); reportPost('${post._id}')" title="Signaler"><i class="fa-solid fa-flag"></i></button>` : '';
+
     let mediaHTML = "";
     if(post.mediaUrl) {
         if(post.mediaType === 'video' || post.mediaUrl.includes('/video/upload')) {
@@ -767,7 +802,7 @@ function createPostElement(post) {
         } else if (post.mediaType === 'audio') { mediaHTML = `<audio controls src="${post.mediaUrl}" style="width:100%; margin-top:10px;"></audio>`; } 
         else { mediaHTML = `<img src="${post.mediaUrl}" class="post-media">`; }
     }
-    div.innerHTML = `${delBtn}
+    div.innerHTML = `${delBtn} ${reportBtn}
         <div class="post-header" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
             <img src="${post.authorAvatar}" class="post-avatar">
             <div class="post-meta">
@@ -779,7 +814,7 @@ function createPostElement(post) {
         <div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
         ${mediaHTML}
         <div class="post-actions">
-            <button class="action-item ${isLiked?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
+            <button class="action-item ${isLiked?'liked':''} liked-btn" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
             <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
         </div>
         <div class="comments-list hidden">${generateCommentsHTML(post.comments, post._id)}</div>`;
