@@ -221,7 +221,7 @@ io.on('connection', async (socket) => {
       const targetChar = await Character.findById(targetCharId);
       const followerChar = await Character.findById(followerCharId);
       if(!targetChar || !followerChar) return;
-      if(String(followerChar._id) === String(targetChar._id)) return; // Anti-self-same-char follow
+      if(String(followerChar._id) === String(targetChar._id)) return; 
 
       const index = targetChar.followers.indexOf(followerCharId);
       if(index === -1) {
