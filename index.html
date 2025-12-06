@@ -78,8 +78,12 @@
         <div class="modal-box" onclick="event.stopPropagation()">
             <h3>Uploader un Son</h3>
             <input type="text" id="trackTitle" class="modal-input" placeholder="Titre du son">
-            <label class="file-upload-label full-width" style="margin:10px 0;"><span><i class="fa-solid fa-music"></i> Fichier Audio (MP3/WAV)</span><input type="file" id="trackAudioFile" accept="audio/*"></label>
-            <label class="file-upload-label full-width" style="margin:10px 0;"><span><i class="fa-solid fa-image"></i> Cover Art (Image)</span><input type="file" id="trackCoverFile" accept="image/*"></label>
+            <label class="file-upload-label full-width" style="margin:10px 0;"><span><i class="fa-solid fa-music"></i> Fichier Audio (MP3/WAV)</span><input type="file" id="trackAudioFile" accept="audio/*" onchange="previewTrackAudio()"></label>
+            <div id="audio-preview-name" class="upload-preview-text"></div>
+
+            <label class="file-upload-label full-width" style="margin:10px 0;"><span><i class="fa-solid fa-image"></i> Cover Art (Image)</span><input type="file" id="trackCoverFile" accept="image/*" onchange="previewTrackCover()"></label>
+            <img id="cover-preview-img" class="upload-preview-img hidden">
+
             <div id="track-upload-status" style="margin:10px 0; font-size:0.9rem; color:#aaa;"></div>
             <button onclick="submitTrack()" class="btn-primary full-width">Publier</button>
             <button onclick="document.getElementById('music-upload-modal').classList.add('hidden')" class="btn-secondary full-width" style="margin-top:10px;">Annuler</button>
@@ -241,10 +245,9 @@
             </div>
         </div>
 
-        <!-- RIGHT VERTICAL SIDEBAR FOR CHARACTERS (Used for Feed and Music) -->
-        <div id="feed-char-sidebar">
-            <div style="font-size:0.75rem; text-align:center; color:#aaa; margin-bottom:10px; font-weight:bold;">AGIR</div>
-            <div id="feed-char-container" class="feed-sidebar-list"></div>
+        <!-- RIGHT TOP DROPDOWN FOR CHARACTERS (Feed & Music) -->
+        <div id="feed-identity-widget" class="feed-identity-widget hidden">
+            <!-- Content Injected by JS -->
         </div>
 
         <!-- FEED VIEW -->
