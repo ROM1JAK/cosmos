@@ -1,5 +1,6 @@
 
 
+
 var socket = io();
 const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
 
@@ -83,9 +84,9 @@ function switchView(view) {
     document.getElementById(`btn-view-${view}`).classList.add('active');
     
     // Toggle Sidebar Identity Visibility based on view
-    const sidebar = document.getElementById('feed-char-sidebar');
-    if (view === 'feed' || view === 'music') sidebar.style.display = 'flex';
-    else sidebar.style.display = 'none';
+    const sidebar = document.getElementById('feed-identity-widget');
+    if (view === 'feed' || view === 'music') sidebar.classList.remove('hidden');
+    else sidebar.classList.add('hidden');
 
     if(view === 'feed') {
         document.getElementById('btn-view-feed').classList.remove('nav-notify');
@@ -402,9 +403,12 @@ function toggleCharBar() {
 function updateUI() {
     const list = document.getElementById('myCharList');
     const bar = document.getElementById('char-bar-horizontal');
-    const feedBar = document.getElementById('feed-char-container'); 
-    list.innerHTML = ""; bar.innerHTML = ""; feedBar.innerHTML = "";
+    list.innerHTML = ""; bar.innerHTML = "";
     
+    // FEED IDENTITY WIDGET
+    const widget = document.getElementById('feed-identity-widget');
+    widget.innerHTML = "";
+
     // Narrateur Admin
     if(IS_ADMIN) {
         bar.innerHTML += `<img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" id="avatar-opt-narrateur" class="avatar-choice" title="Narrateur" onclick="selectCharacter('narrateur')">`;
@@ -413,25 +417,45 @@ function updateUI() {
     // Default selection logic for Feed
     if (myCharacters.length > 0 && !currentFeedCharId) currentFeedCharId = myCharacters[0]._id;
 
+    // Chat List & Bar
     myCharacters.forEach((char) => {
         list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')"><i class="fa-solid fa-gear"></i></button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button></div></div>`;
         bar.innerHTML += `<img src="${char.avatar}" id="avatar-opt-${char._id}" class="avatar-choice" title="${char.name}" onclick="selectCharacter('${char._id}')">`;
-        
-        // Feed Selector Avatars
-        const feedAvatar = document.createElement('img');
-        feedAvatar.src = char.avatar;
-        feedAvatar.className = 'feed-avatar-choice';
-        feedAvatar.title = char.name;
-        if(currentFeedCharId === char._id) feedAvatar.classList.add('active-feed-char');
-        feedAvatar.onclick = () => {
-            currentFeedCharId = char._id;
-            updateUI(); // Refresh to update active class
-        };
-        feedBar.appendChild(feedAvatar);
     });
 
     if (!currentSelectedChar) { if(myCharacters.length > 0) selectCharacter(myCharacters[0]._id); else if(IS_ADMIN) selectCharacter('narrateur'); }
     else selectCharacter(currentSelectedChar._id);
+
+    // Build Identity Widget
+    let activeChar = myCharacters.find(c => c._id === currentFeedCharId);
+    let activeHTML = activeChar ? 
+        `<img src="${activeChar.avatar}" class="feed-avatar-choice active-feed-char"> <span style="font-weight:bold; color:white; font-size:0.9rem;">${activeChar.name}</span>` 
+        : `<span style="color:#aaa;">Sélectionner</span>`;
+    
+    widget.innerHTML = `
+        <div class="identity-active" onclick="toggleIdentityDropdown()">
+            ${activeHTML}
+            <i class="fa-solid fa-chevron-down" style="color:#aaa; font-size:0.8rem; margin-left:auto;"></i>
+        </div>
+        <div id="identity-dropdown-list" class="identity-dropdown hidden"></div>
+    `;
+
+    const dropdown = document.getElementById('identity-dropdown-list');
+    myCharacters.forEach(char => {
+        const item = document.createElement('div');
+        item.className = 'identity-option';
+        item.innerHTML = `<img src="${char.avatar}" class="feed-avatar-choice"> <span style="color:#ddd; font-size:0.9rem;">${char.name}</span>`;
+        item.onclick = () => {
+            currentFeedCharId = char._id;
+            updateUI();
+        };
+        dropdown.appendChild(item);
+    });
+}
+
+function toggleIdentityDropdown() {
+    const d = document.getElementById('identity-dropdown-list');
+    d.classList.toggle('hidden');
 }
 
 // --- PROFILE ---
@@ -921,7 +945,23 @@ async function submitTrack() {
     document.getElementById('trackTitle').value = "";
     document.getElementById('trackAudioFile').value = "";
     document.getElementById('trackCoverFile').value = "";
+    document.getElementById('audio-preview-name').textContent = "";
+    document.getElementById('cover-preview-img').classList.add('hidden');
     statusDiv.textContent = "";
+}
+
+function previewTrackAudio() {
+    const f = document.getElementById('trackAudioFile').files[0];
+    if(f) document.getElementById('audio-preview-name').textContent = f.name;
+}
+function previewTrackCover() {
+    const f = document.getElementById('trackCoverFile').files[0];
+    if(f) {
+        const url = URL.createObjectURL(f);
+        const img = document.getElementById('cover-preview-img');
+        img.src = url;
+        img.classList.remove('hidden');
+    }
 }
 
 function loadMusicFeed() { socket.emit('get_music_feed'); }
@@ -946,13 +986,28 @@ socket.on('track_updated', (track) => {
     }
 });
 
+socket.on('track_deleted', (trackId) => {
+    musicPlaylist = musicPlaylist.filter(t => t._id !== trackId);
+    renderMusicGrid(musicPlaylist);
+    if(isPlaying && musicPlaylist[currentTrackIndex] && musicPlaylist[currentTrackIndex]._id === trackId) {
+        // Stop playing deleted track
+        globalAudio.pause();
+        isPlaying = false;
+        document.getElementById('persistent-player-bar').classList.add('hidden');
+    }
+});
+
 function renderMusicGrid(tracks) {
     const grid = document.getElementById('music-grid');
     grid.innerHTML = "";
     tracks.forEach((t, index) => {
         const isLiked = t.likes.includes(currentFeedCharId);
+        const canDelete = (t.ownerId === PLAYER_ID || IS_ADMIN);
+        const delBtn = canDelete ? `<button class="btn-delete-track" onclick="event.stopPropagation(); deleteTrack('${t._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
+
         grid.innerHTML += `
         <div class="music-card" onclick="playTrack(${index})">
+            ${delBtn}
             <div class="cover-art-container">
                 <img src="${t.coverUrl}" class="cover-art">
                 <div class="play-overlay"><div class="overlay-icon"><i class="fa-solid fa-play"></i></div></div>
@@ -967,6 +1022,10 @@ function renderMusicGrid(tracks) {
             </div>
         </div>`;
     });
+}
+
+function deleteTrack(id) {
+    if(confirm("Supprimer ce son ?")) socket.emit('delete_track', id);
 }
 
 // PLAYER LOGIC
@@ -1046,4 +1105,3 @@ function seekTrack(e) {
     const duration = globalAudio.duration;
     globalAudio.currentTime = (clickX / width) * duration;
 }
-
