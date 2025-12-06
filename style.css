@@ -1,5 +1,6 @@
 
 
+
 :root { --bg-primary: #313338; --bg-secondary: #2b2d31; --bg-tertiary: #383a40; --accent: #5865F2; --text-normal: #dbdee1; --text-muted: #949ba4; --font-main: 'Inter', sans-serif; --danger: #da373c; --dm-color: #7d5bc4; --nav-height: 48px; }
 * { box-sizing: border-box; }
 body { background-color: var(--bg-primary); color: var(--text-normal); font-family: var(--font-main); margin: 0; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; padding-bottom: 70px; /* Space for player */ }
@@ -97,26 +98,38 @@ animation: notifyPulse 2s infinite;
 .btn-secondary { background: #444; color: white; border:none; padding: 8px; border-radius: 4px; cursor: pointer;}
 .full-width { width: 100%; }
 
-/* --- FEED RIGHT SIDEBAR (Vertical Selector) --- */
-#feed-char-sidebar {
-    position: fixed; top: 80px; right: 20px;
-    width: 60px; display: flex; flex-direction: column;
-    align-items: center; z-index: 60;
+/* --- IDENTITY WIDGET (Dropdown) --- */
+.feed-identity-widget {
+    position: fixed; top: 60px; right: 20px; z-index: 100;
 }
-.feed-sidebar-list {
-    display: flex; flex-direction: column; gap: 10px;
-    background: #2b2d31; padding: 10px 5px; border-radius: 30px;
-    border: 1px solid #111; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+.identity-active {
+    display: flex; align-items: center; gap: 10px;
+    background: #2b2d31; padding: 5px 15px 5px 5px;
+    border-radius: 30px; border: 1px solid #111;
+    cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    transition: 0.2s;
 }
+.identity-active:hover { background: #35373c; }
+.identity-dropdown {
+    position: absolute; top: calc(100% + 5px); right: 0;
+    background: #2b2d31; border: 1px solid #111;
+    border-radius: 8px; width: 220px;
+    max-height: 300px; overflow-y: auto;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    display: flex; flex-direction: column;
+}
+.identity-dropdown.hidden { display: none; }
+.identity-option {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px; cursor: pointer; border-bottom: 1px solid #333;
+}
+.identity-option:hover { background: #35373c; }
+.identity-option:last-child { border-bottom: none; }
 .feed-avatar-choice {
-    width: 40px; height: 40px; border-radius: 50%; 
-    border: 2px solid transparent; cursor: pointer; opacity: 0.5; 
-    transition: 0.2s; object-fit: cover;
+    width: 36px; height: 36px; border-radius: 50%; 
+    object-fit: cover; border: 2px solid transparent;
 }
-.feed-avatar-choice:hover { opacity: 1; transform: scale(1.1); }
-.feed-avatar-choice.active-feed-char {
-    opacity: 1; border-color: var(--accent); box-shadow: 0 0 8px var(--accent);
-}
+.active-feed-char .feed-avatar-choice { border-color: var(--accent); }
 
 /* FEED POSTS */
 #view-feed { overflow-y: auto; padding: 20px; width: 100%; }
@@ -339,6 +352,20 @@ animation: notifyPulse 2s infinite;
 .track-artist { font-size: 0.8rem; color: #aaa; margin-top: 2px; }
 .track-stats { font-size: 0.75rem; color: #666; margin-top: 5px; display: flex; gap: 10px; }
 
+.btn-delete-track {
+    position: absolute; top: 5px; right: 5px;
+    background: rgba(0,0,0,0.7); color: #da373c;
+    border: none; border-radius: 50%; width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 10; opacity: 0; transition: 0.2s;
+}
+.music-card:hover .btn-delete-track { opacity: 1; }
+.btn-delete-track:hover { background: #da373c; color: white; }
+
+.upload-preview-text { font-size: 0.9rem; color: var(--accent); margin-bottom: 10px; font-weight: bold; }
+.upload-preview-img { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; margin-top: 5px; border: 1px solid #555; }
+
+
 /* --- PERSISTENT PLAYER --- */
 #persistent-player-bar {
     position: fixed; bottom: 0; left: 0; right: 0; height: 70px;
@@ -374,4 +401,3 @@ animation: notifyPulse 2s infinite;
 .bar:nth-child(2) { height: 100%; animation-delay: -0.2s; }
 .bar:nth-child(3) { height: 40%; animation-delay: 0s; }
 @keyframes soundwave { 0% { height: 20%; } 100% { height: 100%; } }
-
