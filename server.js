@@ -1,4 +1,3 @@
-
 const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
@@ -27,7 +26,10 @@ const User = mongoose.model('User', UserSchema);
 const CharacterSchema = new mongoose.Schema({
     name: String, color: String, avatar: String, role: String, 
     ownerId: String, ownerUsername: String, description: String,
-    followers: [String] 
+    followers: [String],
+    partyName: String,
+    partyLogo: String,
+    isOfficial: { type: Boolean, default: false }
 });
 const Character = mongoose.model('Character', CharacterSchema);
 
@@ -47,23 +49,31 @@ const RoomSchema = new mongoose.Schema({
 });
 const Room = mongoose.model('Room', RoomSchema);
 
-// UPDATE: Ajout champ repostOf
 const PostSchema = new mongoose.Schema({
     content: String,
     mediaUrl: String,
     mediaType: String,
     authorCharId: String,
     authorName: String, authorAvatar: String, authorRole: String, authorColor: String, ownerId: String,
-    repostOf: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', default: null }, // NOUVEAU
+    partyName: String,
+    partyLogo: String,
     likes: [String], 
     comments: [{
         id: String, authorCharId: String, authorName: String, authorAvatar: String, content: String, 
         mediaUrl: String, mediaType: String,
-        ownerId: String, date: String,
-        likes: [String] 
+        ownerId: String, date: String
     }],
     date: String,
-    timestamp: { type: Date, default: Date.now }
+    timestamp: { type: Date, default: Date.now },
+    isAnonymous: { type: Boolean, default: false },
+    isBreakingNews: { type: Boolean, default: false },
+    poll: {
+        question: String,
+        options: [{
+            text: String,
+            voters: [String]
+        }]
+    }
 });
 const Post = mongoose.model('Post', PostSchema);
 
@@ -76,34 +86,6 @@ const NotificationSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 });
 const Notification = mongoose.model('Notification', NotificationSchema);
-
-// --- MUSIC SCHEMAS ---
-const TrackSchema = new mongoose.Schema({
-    title: String,
-    audioUrl: String,
-    coverUrl: String, 
-    duration: Number, 
-    artistId: String, 
-    artistName: String,
-    ownerId: String,
-    plays: { type: Number, default: 0 },
-    likes: [String], 
-    timestamp: { type: Date, default: Date.now }
-});
-const Track = mongoose.model('Track', TrackSchema);
-
-// --- STORY SCHEMA (NOUVEAU) ---
-const StorySchema = new mongoose.Schema({
-    authorCharId: String,
-    authorName: String,
-    authorAvatar: String,
-    mediaUrl: String,
-    mediaType: String, // 'image' or 'video'
-    ownerId: String,
-    createdAt: { type: Date, default: Date.now, expires: 86400 } // TTL 24h
-});
-const Story = mongoose.model('Story', StorySchema);
-
 
 let onlineUsers = {}; 
 
@@ -168,8 +150,17 @@ io.on('connection', async (socket) => {
 
   socket.on('request_initial_data', async (userId) => {
       socket.emit('rooms_data', await Room.find());
-      // UPDATE: Populate repostOf pour récupérer le post original
-      const posts = await Post.find().populate('repostOf').sort({ timestamp: -1 }).limit(50);
+      let posts = await Post.find().sort({ timestamp: -1 }).limit(50);
+      // Masquer les vraies infos des posts anonymes
+      posts = posts.map(p => {
+          let displayPost = p.toObject();
+          if(displayPost.isAnonymous) {
+              displayPost.authorName = "Source Anonyme";
+              displayPost.authorAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E";
+              displayPost.authorRole = "Leak";
+          }
+          return displayPost;
+      });
       socket.emit('feed_data', posts);
       
       if(userId) {
@@ -180,25 +171,15 @@ io.on('connection', async (socket) => {
       }
   });
 
-  socket.on('request_feed', async () => {
-    // NOUVEAU: On s'assure de renvoyer le feed peuplé lors du refresh
-    const posts = await Post.find().populate('repostOf').sort({ timestamp: -1 }).limit(50);
-    socket.emit('feed_data', posts);
-  });
-
   // --- PERSONNAGES & FOLLOWERS ---
   socket.on('get_char_profile', async (charName) => {
       const char = await Character.findOne({ name: charName }).sort({_id: -1});
       if(char) {
-          // UPDATE: On compte les posts ET les reposts
+          // Calcul du nombre de posts
           const postCount = await Post.countDocuments({ authorCharId: char._id });
           const charData = char.toObject();
           charData.postCount = postCount;
           socket.emit('char_profile_data', charData);
-          
-          // UPDATE: Envoyer les posts du profil (y compris reposts)
-          const profilePosts = await Post.find({ authorCharId: char._id }).populate('repostOf').sort({ timestamp: -1 });
-          socket.emit('profile_posts_data', profilePosts);
       }
   });
 
@@ -214,19 +195,22 @@ io.on('connection', async (socket) => {
   
   socket.on('edit_char', async (data) => {
       await Character.findByIdAndUpdate(data.charId, { 
-          name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor, description: data.newDescription 
+          name: data.newName, 
+          role: data.newRole, 
+          avatar: data.newAvatar, 
+          color: data.newColor, 
+          description: data.newDescription,
+          partyName: data.partyName,
+          partyLogo: data.partyLogo,
+          isOfficial: data.isOfficial
       });
       await Message.updateMany({ senderName: data.originalName, ownerId: data.ownerId }, { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }});
       await Post.updateMany({ authorName: data.originalName, ownerId: data.ownerId }, { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor }});
-      await Track.updateMany({ artistId: data.charId }, { $set: { artistName: data.newName }});
-      await Story.updateMany({ authorCharId: data.charId }, { $set: { authorName: data.newName, authorAvatar: data.newAvatar }}); // Update Stories
       
       const myChars = await Character.find({ ownerId: data.ownerId });
       socket.emit('my_chars_data', myChars);
       io.emit('force_history_refresh', { roomId: data.currentRoomId });
       io.emit('reload_posts'); 
-      io.emit('reload_music');
-      io.emit('reload_stories'); // NOUVEAU
   });
 
   socket.on('delete_char', async (charId) => {
@@ -234,21 +218,31 @@ io.on('connection', async (socket) => {
       socket.emit('char_deleted_success', charId);
   });
 
+  // NOUVEAU SYSTEME D'ABONNEMENT
   socket.on('follow_character', async ({ followerCharId, targetCharId }) => {
       const targetChar = await Character.findById(targetCharId);
       const followerChar = await Character.findById(followerCharId);
+      
       if(!targetChar || !followerChar) return;
-      if(String(followerChar._id) === String(targetChar._id)) return; 
+      
+      // Anti-Self-Follow (Même ID de personnage)
+      // Mais on AUTORISE le même OwnerId (pour qu'un joueur puisse faire suivre ses propres persos entre eux)
+      if(String(followerChar._id) === String(targetChar._id)) return;
 
       const index = targetChar.followers.indexOf(followerCharId);
+      
       if(index === -1) {
           targetChar.followers.push(followerCharId);
+          // Notif
           await createNotification(targetChar.ownerId, 'follow', `(${followerChar.name}) vous suit désormais`, followerChar.ownerUsername);
       } else {
           targetChar.followers.splice(index, 1);
       }
+      
       await targetChar.save();
       
+      // Renvoie le profil mis à jour pour rafraîchir le bouton
+      // Recalcul post count pour l'objet retourné
       const postCount = await Post.countDocuments({ authorCharId: targetChar._id });
       const charData = targetChar.toObject();
       charData.postCount = postCount;
@@ -324,13 +318,20 @@ io.on('connection', async (socket) => {
   socket.on('edit_message', async (data) => { await Message.findByIdAndUpdate(data.id, { content: data.newContent, edited: true }); io.emit('message_updated', { id: data.id, newContent: data.newContent }); });
   socket.on('admin_clear_room', async (roomId) => { await Message.deleteMany({ roomId: roomId }); io.to(roomId).emit('history_cleared'); });
 
-  // --- POSTS (FEED & REPOST) ---
+  // --- POSTS (FEED) ---
   socket.on('create_post', async (postData) => {
       const newPost = new Post(postData);
       const savedPost = await newPost.save();
-      // On fetch le post complet (si c'est un repost, faut populate)
-      const populatedPost = await Post.findById(savedPost._id).populate('repostOf');
-      io.emit('new_post', populatedPost);
+      
+      // Créer une copie pour l'affichage (sans vraies infos si anonyme)
+      let displayPost = savedPost.toObject();
+      if(displayPost.isAnonymous) {
+          displayPost.authorName = "Source Anonyme";
+          displayPost.authorAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E";
+          displayPost.authorRole = "Leak";
+      }
+      
+      io.emit('new_post', displayPost);
       
       let authorChar = null;
       if(postData.authorCharId) authorChar = await Character.findById(postData.authorCharId);
@@ -347,30 +348,7 @@ io.on('connection', async (socket) => {
       }
   });
 
-  // NOUVEAU: REPOST EVENT
-  socket.on('repost_post', async ({ originalPostId, reposterCharId, reposterName, reposterAvatar, reposterRole, ownerId }) => {
-      // Pour éviter les chaînes infinies, si on reposte un repost, on pointe vers l'original
-      let targetId = originalPostId;
-      const original = await Post.findById(originalPostId);
-      if(original && original.repostOf) targetId = original.repostOf;
-
-      const newPost = new Post({
-          repostOf: targetId, // Link to original
-          authorCharId: reposterCharId,
-          authorName: reposterName,
-          authorAvatar: reposterAvatar,
-          authorRole: reposterRole,
-          ownerId: ownerId,
-          content: "", // Content vide car c'est un repost
-          date: new Date().toLocaleDateString()
-      });
-      const savedPost = await newPost.save();
-      const populated = await Post.findById(savedPost._id).populate('repostOf');
-      io.emit('new_post', populated);
-  });
-
   socket.on('delete_post', async (postId) => { await Post.findByIdAndDelete(postId); io.emit('post_deleted', postId); });
-  socket.on('report_post', async (postId) => { console.log(`Post ${postId} signalé.`); });
 
   socket.on('like_post', async ({ postId, charId }) => { 
       const post = await Post.findById(postId);
@@ -382,9 +360,7 @@ io.on('connection', async (socket) => {
       else { post.likes.splice(index, 1); }
       
       await post.save();
-      // Il faut repopulate sinon le repost perd son contenu à l'update
-      const populated = await Post.findById(postId).populate('repostOf');
-      io.emit('post_updated', populated);
+      io.emit('post_updated', post);
 
       if (action === 'like' && post.ownerId) {
            const likerChar = await Character.findById(charId);
@@ -393,33 +369,13 @@ io.on('connection', async (socket) => {
       }
   });
 
-  socket.on('like_comment', async ({ postId, commentId, charId }) => {
-      const post = await Post.findById(postId);
-      if(!post) return;
-      const comment = post.comments.find(c => c.id === commentId);
-      if(!comment) return;
-
-      if(!comment.likes) comment.likes = [];
-      const index = comment.likes.indexOf(charId);
-      
-      if(index === -1) { comment.likes.push(charId); }
-      else { comment.likes.splice(index, 1); }
-      
-      post.markModified('comments');
-      await post.save();
-      const populated = await Post.findById(postId).populate('repostOf');
-      io.emit('post_updated', populated);
-  });
-
   socket.on('post_comment', async ({ postId, comment }) => {
       const post = await Post.findById(postId);
       if(!post) return;
       comment.id = new mongoose.Types.ObjectId().toString();
-      comment.likes = [];
       post.comments.push(comment);
       await post.save();
-      const populated = await Post.findById(postId).populate('repostOf');
-      io.emit('post_updated', populated);
+      io.emit('post_updated', post);
       
       if (post.ownerId !== comment.ownerId) {
           await createNotification(post.ownerId, 'reply', `(${comment.authorName}) a commenté votre post`, "Feed");
@@ -431,69 +387,27 @@ io.on('connection', async (socket) => {
       if(!post) return;
       post.comments = post.comments.filter(c => c.id !== commentId);
       await post.save();
-      const populated = await Post.findById(postId).populate('repostOf');
-      io.emit('post_updated', populated);
+      io.emit('post_updated', post);
+  });
+
+  // --- SONDAGES ---
+  socket.on('vote_poll', async ({ postId, optionIndex, charId }) => {
+      const post = await Post.findById(postId);
+      if(!post || !post.poll || !post.poll.options[optionIndex]) return;
+      
+      const option = post.poll.options[optionIndex];
+      const voterIndex = option.voters.indexOf(charId);
+      
+      if(voterIndex === -1) {
+          option.voters.push(charId);
+      } else {
+          option.voters.splice(voterIndex, 1);
+      }
+      
+      await post.save();
+      io.emit('post_updated', post);
   });
   
-  // --- STORIES (NOUVEAU) ---
-  socket.on('create_story', async (data) => {
-      const newStory = new Story(data);
-      await newStory.save();
-      io.emit('story_added', newStory);
-  });
-
-  socket.on('request_stories', async () => {
-      // Renvoie toutes les stories non expirées (géré par Mongo TTL)
-      const stories = await Story.find().sort({ createdAt: 1 });
-      socket.emit('stories_data', stories);
-  });
-
-  // --- MUSIC / STREAM ---
-  socket.on('upload_track', async (trackData) => {
-      const newTrack = new Track(trackData);
-      await newTrack.save();
-      io.emit('track_uploaded', newTrack);
-      
-      // Notify Followers
-      const artist = await Character.findById(trackData.artistId);
-      if(artist && artist.followers.length > 0) {
-          const followersChars = await Character.find({ _id: { $in: artist.followers } });
-          const notifiedOwners = new Set();
-          for(const f of followersChars) {
-              if(!notifiedOwners.has(f.ownerId)) {
-                  await createNotification(f.ownerId, 'follow', `(${trackData.artistName}) a sorti un nouveau son !`, "Music");
-                  notifiedOwners.add(f.ownerId);
-              }
-          }
-      }
-  });
-
-  socket.on('get_music_feed', async () => {
-      const tracks = await Track.find().sort({ timestamp: -1 }).limit(50);
-      socket.emit('music_feed_data', tracks);
-  });
-
-  socket.on('like_track', async ({ trackId, charId }) => {
-      const track = await Track.findById(trackId);
-      if(!track) return;
-      const index = track.likes.indexOf(charId);
-      if(index === -1) track.likes.push(charId);
-      else track.likes.splice(index, 1);
-      await track.save();
-      io.emit('track_updated', track);
-  });
-
-  socket.on('listen_track', async (trackId) => {
-      await Track.findByIdAndUpdate(trackId, { $inc: { plays: 1 } });
-      const track = await Track.findById(trackId);
-      io.emit('track_updated', track);
-  });
-
-  socket.on('delete_track', async (trackId) => {
-      await Track.findByIdAndDelete(trackId);
-      io.emit('track_deleted', trackId);
-  });
-
   socket.on('mark_notifications_read', async (userId) => { await Notification.updateMany({ targetOwnerId: userId, isRead: false }, { isRead: true }); socket.emit('notifications_read_confirmed'); });
   socket.on('typing_start', (data) => { socket.to(data.roomId).emit('display_typing', data); });
   socket.on('typing_stop', (data) => { socket.to(data.roomId).emit('hide_typing', data); });
