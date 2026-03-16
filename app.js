@@ -1,5 +1,3 @@
-
-
 var socket = io();
 const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
 
@@ -418,50 +416,48 @@ function toggleCharBar() {
     else { icon.classList.remove('fa-chevron-up'); icon.classList.add('fa-chevron-down'); }
 }
 
-// UPDATE UI (Includes Feed Selector)
+function toggleFeedCharDropdown() {
+    document.getElementById('feed-char-dropdown').classList.toggle('hidden');
+}
+
+function selectFeedCharacter(id) {
+    currentFeedCharId = id;
+    const char = myCharacters.find(c => c._id === id);
+    if(char) {
+        document.getElementById('activeFeedCharAvatar').src = char.avatar;
+        document.getElementById('activeFeedCharAvatar').title = char.name;
+    }
+    document.getElementById('feed-char-dropdown').classList.add('hidden');
+    updateBreakingNewsVisibility();
+}
+
 function updateUI() {
     const list = document.getElementById('myCharList');
     const bar = document.getElementById('char-bar-horizontal');
-    const feedSel = document.getElementById('activeFeedCharSelect');
-    list.innerHTML = ""; bar.innerHTML = ""; feedSel.innerHTML = "";
+    const feedDropdown = document.getElementById('feed-char-dropdown');
+    list.innerHTML = ""; bar.innerHTML = ""; feedDropdown.innerHTML = "";
     
-    // Narrateur Admin
     if(IS_ADMIN) {
         bar.innerHTML += `<img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" id="avatar-opt-narrateur" class="avatar-choice" title="Narrateur" onclick="selectCharacter('narrateur')">`;
     }
     
-    // Feed Dropdown Default
     if (myCharacters.length === 0) {
-        feedSel.innerHTML = '<option value="">Aucun perso</option>';
+        document.getElementById('activeFeedCharAvatar').src = "https://ui-avatars.com/api/?name=?&background=random";
         currentFeedCharId = null;
     }
 
     myCharacters.forEach((char, index) => {
         list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')"><i class="fa-solid fa-gear"></i></button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button></div></div>`;
         bar.innerHTML += `<img src="${char.avatar}" id="avatar-opt-${char._id}" class="avatar-choice" title="${char.name}" onclick="selectCharacter('${char._id}')">`;
+        feedDropdown.innerHTML += `<img src="${char.avatar}" class="avatar-choice" title="${char.name}" onclick="selectFeedCharacter('${char._id}')" style="width:40px; height:40px; border-radius:50%; cursor:pointer; object-fit:cover;">`;
         
-        // Feed Selector Option
-        const opt = document.createElement('option');
-        opt.value = char._id;
-        opt.text = char.name;
-        opt.dataset.avatar = char.avatar;
-        opt.dataset.role = char.role;
-        feedSel.appendChild(opt);
-        
-        // Select first by default if not set
-        if (index === 0 && !currentFeedCharId) currentFeedCharId = char._id;
+        if (index === 0 && !currentFeedCharId) selectFeedCharacter(char._id);
     });
 
     if (!currentSelectedChar) { if(myCharacters.length > 0) selectCharacter(myCharacters[0]._id); else if(IS_ADMIN) selectCharacter('narrateur'); }
     else selectCharacter(currentSelectedChar._id);
     
-    // Listen to feed selector changes
-    feedSel.onchange = (e) => { 
-        currentFeedCharId = e.target.value;
-        updateBreakingNewsVisibility();
-    };
-    if(currentFeedCharId) feedSel.value = currentFeedCharId;
-    
+    if(currentFeedCharId) selectFeedCharacter(currentFeedCharId);
     updateBreakingNewsVisibility();
 }
 
@@ -479,9 +475,7 @@ function updateBreakingNewsVisibility() {
 
 // --- PROFILE ---
 function openProfile(name) { 
-    // Show overlay first
     document.getElementById('profile-overlay').classList.remove('hidden');
-    // Trigger Slide
     document.getElementById('profile-slide-panel').classList.add('open');
     socket.emit('get_char_profile', name); 
 }
@@ -497,14 +491,12 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
     
-    // Party Badge
     if(char.partyName && char.partyLogo) {
         document.getElementById('profileOwner').innerHTML += `<div class="party-badge"><img src="${char.partyLogo}" class="party-logo"> ${char.partyName}</div>`;
     }
     
     document.getElementById('profilePostCount').textContent = char.postCount || 0;
     
-    // Abonnés Count
     const count = char.followers ? char.followers.length : 0;
     const countEl = document.getElementById('profileFollowersCount');
     countEl.textContent = `${count}`;
@@ -513,12 +505,10 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('btn-dm-profile').onclick = function() { closeProfileModal(); if (char.ownerUsername) openDm(char.ownerUsername); };
     
     const btnSub = document.getElementById('btn-sub-profile');
-    // Logic: Allow same user, but not same char
     if(currentFeedCharId === char._id) {
         btnSub.style.display = 'none';
     } else {
         btnSub.style.display = 'block';
-        // Check if ACTIVE FEED CHAR follows TARGET
         const isSubbed = char.followers && currentFeedCharId && char.followers.includes(currentFeedCharId);
         updateSubButton(btnSub, isSubbed);
         btnSub.onclick = function() {
@@ -540,7 +530,6 @@ function updateSubButton(btn, subbed) {
     btn.style.color = subbed ? '#23a559' : 'white'; 
 }
 
-// Liste Abonnés Modal
 socket.on('followers_list_data', (followers) => {
     const listDiv = document.getElementById('followers-list-container');
     listDiv.innerHTML = "";
@@ -554,7 +543,6 @@ socket.on('followers_list_data', (followers) => {
     document.getElementById('followers-modal').classList.remove('hidden');
 });
 
-// --- ACTIONS MSG ---
 function setContext(type, data) {
     currentContext = { type, data };
     const bar = document.getElementById('context-bar');
@@ -590,7 +578,7 @@ async function sendMessage() {
     if (currentContext && currentContext.type === 'edit') { socket.emit('edit_message', { id: currentContext.data.id, newContent: content }); txt.value = ''; cancelContext(); return; }
     if(!currentSelectedChar) return alert("Perso requis !");
     
-    const baseMsg = { senderName: currentSelectedChar.name, senderColor: currentSelectedChar.color || "#fff", senderAvatar: currentSelectedChar.avatar, senderRole: currentSelectedChar.role, ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null };
+    const baseMsg = { senderName: currentSelectedChar.name, senderColor: currentSelectedChar.color || "#fff", senderAvatar: currentSelectedChar.avatar, senderRole: currentSelectedChar.role, ownerId: PLAYER_ID, targetName: "", partyName: currentSelectedChar.partyName || null, partyLogo: currentSelectedChar.partyLogo || null, roomId: currentRoomId, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null };
     if (finalMediaUrl) socket.emit('message_rp', { ...baseMsg, content: finalMediaUrl, type: finalMediaType });
     if (content) socket.emit('message_rp', { ...baseMsg, content: content, type: "text" });
     txt.value = ''; cancelContext();
@@ -671,13 +659,16 @@ function displayMessage(msg, isDm = false) {
     const avatarClick = isDm ? "" : `onclick="openProfile('${senderName.replace(/'/g, "\\'")}')"`;
     let replyHTML = "";
     if (msg.replyTo && msg.replyTo.author) { replyHTML = `<div class="reply-context-line"><div class="reply-spine"></div><span style="font-weight:600; cursor:pointer;">@${msg.replyTo.author}</span> <span style="font-style:italic; opacity:0.8;">${msg.replyTo.content}</span></div>`; }
+    
+    const partyBadgeHtml = (msg.partyName && msg.partyLogo) ? `<span class="party-badge" style="margin-left: 5px;"><img src="${msg.partyLogo}" class="party-logo" style="width:14px;height:14px;border-radius:50%;"> ${msg.partyName}</span>` : '';
+    
     let innerHTML = "";
     if(replyHTML) innerHTML += replyHTML;
     innerHTML += `<div style="display:flex; width:100%;">`;
     innerHTML += `<div class="msg-col-avatar">`;
     if(!isGroup) { innerHTML += `<img src="${senderAvatar}" class="avatar-img" ${avatarClick}>`; }
     innerHTML += `</div><div class="msg-col-content">`;
-    if(!isGroup) { innerHTML += `<div class="msg-header"><span class="char-name" style="color:${senderColor}" ${avatarClick}>${senderName}</span>${senderRole ? `<span class="char-role">${senderRole}</span>` : ''}<span class="timestamp">${msg.date}</span></div>`; }
+    if(!isGroup) { innerHTML += `<div class="msg-header"><span class="char-name" style="color:${senderColor}" ${avatarClick}>${senderName}</span>${partyBadgeHtml}${senderRole ? `<span class="char-role">${senderRole}</span>` : ''}<span class="timestamp">${msg.date}</span></div>`; }
     innerHTML += contentHTML + editedTag;
     innerHTML += `</div>${actionsHTML}</div>`;
     div.innerHTML = innerHTML;
@@ -688,7 +679,6 @@ function displayMessage(msg, isDm = false) {
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
 
-// --- FEED LOGIC (UPDATED WITH FEED CHAR ID) ---
 function loadFeed() { socket.emit('request_feed'); }
 document.getElementById('postContent').addEventListener('input', (e) => { document.getElementById('char-count').textContent = `${e.target.value.length}/1000`; });
 
@@ -746,7 +736,6 @@ function submitPost() {
     
     if(!content && !mediaUrl) return alert("Contenu vide.");
     
-    // Use Active Feed Char
     if(!currentFeedCharId) return alert("Aucun perso sélectionné pour le Feed.");
     const char = myCharacters.find(c => c._id === currentFeedCharId);
     if(!char) return alert("Perso invalide.");
@@ -806,6 +795,13 @@ function toggleLike(id) {
 }
 function deletePost(id) { if(confirm("Supprimer ?")) socket.emit('delete_post', id); }
 
+function addAdminVotes(postId, optionIndex) {
+    const amount = parseInt(prompt("Combien de votes ajouter ? (Admin)"));
+    if(!isNaN(amount) && amount > 0) {
+        socket.emit('admin_add_votes', { postId, optionIndex, amount, userId: PLAYER_ID });
+    }
+}
+
 let currentDetailPostId = null;
 function openPostDetail(id) {
     const postEl = document.getElementById(`post-${id}`); if(!postEl) return;
@@ -826,7 +822,6 @@ function openPostDetail(id) {
         }
         if(!txt && !mediaUrl) return;
         
-        // Use Active Feed Char
         if(!currentFeedCharId) return alert("Sélectionnez un perso (Feed).");
         const char = myCharacters.find(c => c._id === currentFeedCharId);
         
@@ -896,7 +891,6 @@ function createPostElement(post) {
     const lastVisit = parseInt(localStorage.getItem('last_feed_visit') || '0');
     if (new Date(post.timestamp).getTime() > lastVisit && currentView === 'feed') div.classList.add('post-highlight');
     
-    // Check if Active Feed Char liked this
     const isLiked = post.likes.includes(currentFeedCharId); 
     
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
@@ -910,7 +904,6 @@ function createPostElement(post) {
         else { mediaHTML = `<img src="${post.mediaUrl}" class="post-media">`; }
     }
     
-    // Affichage anonyme : masquer vraies infos
     let displayName = post.authorName;
     let displayAvatar = post.authorAvatar;
     let displayRole = post.authorRole;
@@ -931,23 +924,27 @@ function createPostElement(post) {
         post.poll.options.forEach((opt, idx) => {
             const pct = totalVoters > 0 ? Math.round((opt.voters.length / totalVoters) * 100) : 0;
             const isVoted = opt.voters.includes(currentFeedCharId);
+            const adminBtn = IS_ADMIN ? `<button title="Ajouter des votes (Admin)" style="position:absolute; right:-35px; top:50%; transform:translateY(-50%); background:var(--accent); color:white; border:none; border-radius:4px; padding:6px; cursor:pointer;" onclick="event.stopPropagation(); addAdminVotes('${post._id}', ${idx})"><i class="fa-solid fa-plus"></i></button>` : '';
             
-            if(hasVoted || totalVoters === 0) {
+            if(hasVoted) {
                 pollHTML += `
-                    <div class="poll-option">
-                        <div class="poll-results" style="width: ${pct}%;">
+                    <div class="poll-option" style="position:relative; margin-right:${IS_ADMIN ? '40px' : '0'};">
+                        <div class="poll-results ${isVoted ? 'voted' : ''}">
+                            <div class="poll-fill" style="width: ${pct}%;"></div>
                             <div class="poll-result-text">
                                 <span>${opt.text}</span>
-                                <span>${pct}%</span>
+                                <span>${pct}% (${opt.voters.length} votes)</span>
                             </div>
                         </div>
+                        ${adminBtn}
                     </div>`;
             } else {
                 pollHTML += `
-                    <div class="poll-option">
+                    <div class="poll-option" style="position:relative; margin-right:${IS_ADMIN ? '40px' : '0'};">
                         <button class="poll-option-btn" onclick="event.stopPropagation(); socket.emit('vote_poll', { postId: '${post._id}', optionIndex: ${idx}, charId: '${currentFeedCharId}' })">
                             ${opt.text}
                         </button>
+                        ${adminBtn}
                     </div>`;
             }
         });
