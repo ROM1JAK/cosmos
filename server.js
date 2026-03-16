@@ -37,6 +37,8 @@ const MessageSchema = new mongoose.Schema({
     content: String, type: String, 
     senderName: String, senderColor: String, senderAvatar: String, senderRole: String, ownerId: String,
     targetName: String, targetOwnerId: String,
+    partyName: String, 
+    partyLogo: String,
     roomId: { type: String, required: true },
     replyTo: { id: String, author: String, content: String },
     edited: { type: Boolean, default: false },
@@ -151,7 +153,6 @@ io.on('connection', async (socket) => {
   socket.on('request_initial_data', async (userId) => {
       socket.emit('rooms_data', await Room.find());
       let posts = await Post.find().sort({ timestamp: -1 }).limit(50);
-      // Masquer les vraies infos des posts anonymes
       posts = posts.map(p => {
           let displayPost = p.toObject();
           if(displayPost.isAnonymous) {
@@ -175,7 +176,6 @@ io.on('connection', async (socket) => {
   socket.on('get_char_profile', async (charName) => {
       const char = await Character.findOne({ name: charName }).sort({_id: -1});
       if(char) {
-          // Calcul du nombre de posts
           const postCount = await Post.countDocuments({ authorCharId: char._id });
           const charData = char.toObject();
           charData.postCount = postCount;
@@ -204,8 +204,8 @@ io.on('connection', async (socket) => {
           partyLogo: data.partyLogo,
           isOfficial: data.isOfficial
       });
-      await Message.updateMany({ senderName: data.originalName, ownerId: data.ownerId }, { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }});
-      await Post.updateMany({ authorName: data.originalName, ownerId: data.ownerId }, { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor }});
+      await Message.updateMany({ senderName: data.originalName, ownerId: data.ownerId }, { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor, partyName: data.partyName, partyLogo: data.partyLogo }});
+      await Post.updateMany({ authorName: data.originalName, ownerId: data.ownerId }, { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor, partyName: data.partyName, partyLogo: data.partyLogo }});
       
       const myChars = await Character.find({ ownerId: data.ownerId });
       socket.emit('my_chars_data', myChars);
@@ -218,31 +218,21 @@ io.on('connection', async (socket) => {
       socket.emit('char_deleted_success', charId);
   });
 
-  // NOUVEAU SYSTEME D'ABONNEMENT
   socket.on('follow_character', async ({ followerCharId, targetCharId }) => {
       const targetChar = await Character.findById(targetCharId);
       const followerChar = await Character.findById(followerCharId);
-      
       if(!targetChar || !followerChar) return;
-      
-      // Anti-Self-Follow (Même ID de personnage)
-      // Mais on AUTORISE le même OwnerId (pour qu'un joueur puisse faire suivre ses propres persos entre eux)
       if(String(followerChar._id) === String(targetChar._id)) return;
-
       const index = targetChar.followers.indexOf(followerCharId);
       
       if(index === -1) {
           targetChar.followers.push(followerCharId);
-          // Notif
           await createNotification(targetChar.ownerId, 'follow', `(${followerChar.name}) vous suit désormais`, followerChar.ownerUsername);
       } else {
           targetChar.followers.splice(index, 1);
       }
       
       await targetChar.save();
-      
-      // Renvoie le profil mis à jour pour rafraîchir le bouton
-      // Recalcul post count pour l'objet retourné
       const postCount = await Post.countDocuments({ authorCharId: targetChar._id });
       const charData = targetChar.toObject();
       charData.postCount = postCount;
@@ -322,20 +312,16 @@ io.on('connection', async (socket) => {
   socket.on('create_post', async (postData) => {
       const newPost = new Post(postData);
       const savedPost = await newPost.save();
-      
-      // Créer une copie pour l'affichage (sans vraies infos si anonyme)
       let displayPost = savedPost.toObject();
       if(displayPost.isAnonymous) {
           displayPost.authorName = "Source Anonyme";
           displayPost.authorAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E";
           displayPost.authorRole = "Leak";
       }
-      
       io.emit('new_post', displayPost);
       
       let authorChar = null;
       if(postData.authorCharId) authorChar = await Character.findById(postData.authorCharId);
-      
       if(authorChar && authorChar.followers.length > 0) {
           const followersChars = await Character.find({ _id: { $in: authorChar.followers } });
           const notifiedOwners = new Set();
@@ -376,7 +362,6 @@ io.on('connection', async (socket) => {
       post.comments.push(comment);
       await post.save();
       io.emit('post_updated', post);
-      
       if (post.ownerId !== comment.ownerId) {
           await createNotification(post.ownerId, 'reply', `(${comment.authorName}) a commenté votre post`, "Feed");
       }
@@ -394,7 +379,6 @@ io.on('connection', async (socket) => {
   socket.on('vote_poll', async ({ postId, optionIndex, charId }) => {
       const post = await Post.findById(postId);
       if(!post || !post.poll || !post.poll.options[optionIndex]) return;
-      
       const option = post.poll.options[optionIndex];
       const voterIndex = option.voters.indexOf(charId);
       
@@ -402,6 +386,21 @@ io.on('connection', async (socket) => {
           option.voters.push(charId);
       } else {
           option.voters.splice(voterIndex, 1);
+      }
+      await post.save();
+      io.emit('post_updated', post);
+  });
+  
+  // ADMIN ADD VOTES
+  socket.on('admin_add_votes', async ({ postId, optionIndex, amount, userId }) => {
+      const user = await User.findOne({ secretCode: userId });
+      if (!user || !user.isAdmin) return;
+      
+      const post = await Post.findById(postId);
+      if(!post || !post.poll || !post.poll.options[optionIndex]) return;
+      
+      for(let i=0; i<amount; i++) {
+          post.poll.options[optionIndex].voters.push('admin_dummy_' + Date.now() + '_' + i);
       }
       
       await post.save();
