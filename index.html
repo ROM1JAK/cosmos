@@ -19,6 +19,14 @@
             <i class="fa-solid fa-bell"></i>
             <span id="notif-badge" class="hidden"></span>
         </button>
+        <!-- Character selector in nav -->
+        <div id="nav-char-selector" style="position:relative; margin-left:auto;">
+            <div class="nav-char-trigger" onclick="toggleNavCharDropdown()" title="Changer de personnage">
+                <img id="nav-active-avatar" src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" class="nav-char-avatar">
+                <i class="fa-solid fa-chevron-down nav-char-chevron"></i>
+            </div>
+            <div id="nav-char-dropdown" class="nav-char-dropdown hidden"></div>
+        </div>
     </nav>
 
     <div id="mobile-overlay" onclick="toggleSidebar()"></div>
@@ -221,10 +229,8 @@
             <!-- HEADER DU FEED (IDENTITÉ) -->
             <div class="feed-view-header">
                 <h3 style="margin:0; font-size:1.1rem;">Flux Social</h3>
-                <div class="feed-identity-wrapper">
-                    <span style="font-size:0.8rem; color:var(--text-muted); margin-right:8px;">Agir en tant que :</span>
-                    <div id="feed-char-avatar-wrapper" style="position:relative;"></div>
-                </div>
+                <!-- feed-char-avatar-wrapper kept for JS compatibility but hidden -->
+                <div id="feed-char-avatar-wrapper" style="display:none; position:relative;"></div>
             </div>
 
             <div class="feed-container">
