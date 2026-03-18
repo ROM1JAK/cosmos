@@ -70,12 +70,11 @@ const PostSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now },
     isAnonymous: { type: Boolean, default: false },
     isBreakingNews: { type: Boolean, default: false },
+    isArticle: { type: Boolean, default: false },
+    articleTitle: { type: String, default: '' },
     poll: {
         question: String,
-        options: [{
-            text: String,
-            voters: [String]
-        }]
+        options: [{ text: String, voters: [String] }]
     }
 });
 const Post = mongoose.model('Post', PostSchema);
