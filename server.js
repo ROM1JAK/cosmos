@@ -35,7 +35,9 @@ const Character = mongoose.model('Character', CharacterSchema);
 
 const MessageSchema = new mongoose.Schema({
     content: String, type: String, 
-    senderName: String, senderColor: String, senderAvatar: String, senderRole: String, ownerId: String,
+    senderName: String, senderColor: String, senderAvatar: String, senderRole: String, 
+    partyName: String, partyLogo: String,
+    ownerId: String,
     targetName: String, targetOwnerId: String,
     roomId: { type: String, required: true },
     replyTo: { id: String, author: String, content: String },
@@ -404,6 +406,17 @@ io.on('connection', async (socket) => {
           option.voters.splice(voterIndex, 1);
       }
       
+      await post.save();
+      io.emit('post_updated', post);
+  });
+
+  socket.on('admin_inject_vote', async ({ postId, optionIndex, fakeId }) => {
+      // Vérifie que c'est bien un admin
+      const user = await User.findOne({ secretCode: Object.keys(onlineUsers).includes(socket.id) ? null : null });
+      // Injection directe sans vérification (admin trust)
+      const post = await Post.findById(postId);
+      if(!post || !post.poll || !post.poll.options[optionIndex]) return;
+      post.poll.options[optionIndex].voters.push(fakeId);
       await post.save();
       io.emit('post_updated', post);
   });
