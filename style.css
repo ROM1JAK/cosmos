@@ -699,14 +699,102 @@ input, textarea, select { transition: border-color 0.2s; }
 
 /* CHAT INPUT — SPACING FIX */
 #char-selector-wrapper {
-  margin-top: 8px;
+  margin-top: 0 !important;
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
-/* POLL ADMIN — HOVER POPUP */
+/* Hide the old toggle bar entirely */
+#char-bar-actions { display: none !important; }
+#char-bar-horizontal { display: none !important; }
+
+.chat-char-trigger {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--accent);
+  object-fit: cover;
+  flex-shrink: 0;
+  transition: all 0.2s;
+  box-shadow: 0 0 0 0 var(--accent-glow);
+  margin-left: 4px;
+}
+.chat-char-trigger:hover {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 4px var(--accent-glow);
+}
+
+.chat-char-dropdown {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  min-width: 210px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03);
+  z-index: 300;
+  overflow: hidden;
+  animation: dropdownIn 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.chat-char-dropdown.hidden { display: none; }
+
+.chat-char-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid var(--border);
+}
+.chat-char-option:last-child { border-bottom: none; }
+.chat-char-option:hover { background: var(--bg-hover); }
+.chat-char-option.active { background: var(--accent-muted); }
+.chat-char-opt-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+  flex-shrink: 0;
+}
+.chat-char-opt-info { display: flex; flex-direction: column; min-width: 0; }
+.chat-char-opt-name {
+  font-weight: 700;
+  font-size: 0.85rem;
+  font-family: var(--font-display);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-char-opt-role {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Adjust input zone to accommodate avatar */
+#input-zone {
+  gap: 0;
+}
+
+/* ═══════════════════════════════════════
+   POLL ADMIN — HOVER POPUP (BUG FIX)
+   Bridge pseudo-element prevents gap
+═══════════════════════════════════════ */
 .poll-option-wrap {
   position: relative;
 }
-.poll-admin-popup {
+
+/* Remove old CSS-only hover — use JS instead */
+.poll-option-wrap .poll-admin-popup {
   display: none;
   position: absolute;
   top: 50%;
@@ -722,7 +810,16 @@ input, textarea, select { transition: border-color 0.2s; }
   box-shadow: 0 8px 24px rgba(0,0,0,0.5);
   white-space: nowrap;
 }
-.poll-option-wrap:hover .poll-admin-popup {
+/* Invisible bridge between option and popup */
+.poll-option-wrap .poll-admin-popup::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -14px;
+  width: 14px;
+  height: 100%;
+}
+.poll-option-wrap .poll-admin-popup.visible {
   display: flex;
 }
 .poll-admin-popup-btn {
@@ -796,64 +893,181 @@ body[data-theme="rose"] {
 .post-article {
   padding: 0 !important;
   overflow: hidden;
+  background: #f9f6f0 !important;
+  border-color: rgba(139, 90, 43, 0.25) !important;
 }
-.post-article .post-banner {
+.post-article:hover {
+  background: #f4f0e8 !important;
+  border-color: rgba(139, 90, 43, 0.4) !important;
+}
+
+.post-article .article-banner {
   width: 100%;
-  max-height: 220px;
+  max-height: 260px;
   object-fit: cover;
   display: block;
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 }
-.post-article .post-article-body {
-  padding: 18px 20px 16px;
-}
-.post-article .post-header {
-  padding: 0;
-  margin-bottom: 10px;
-}
-.post-article .post-article-title {
-  font-family: var(--font-display);
-  font-size: 1.1rem;
-  font-weight: 800;
-  color: white;
-  margin-bottom: 8px;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
-}
-.post-article .post-content {
-  text-align: justify;
-  font-size: 0.92rem;
-  line-height: 1.7;
-  color: var(--text-normal);
-  margin-bottom: 14px;
-}
-.post-article .post-actions {
-  padding: 12px 0 0;
-  margin: 0;
-}
-.post-article .post-media {
-  display: none; /* hidden — shown as banner instead */
+
+.post-article .article-inner {
+  padding: 20px 24px 18px;
 }
 
-/* ═══════════════════════════════════════
-   FEED TYPING INDICATOR
-═══════════════════════════════════════ */
-.feed-typing-indicator {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  padding: 6px 4px;
+/* Bandeau de catégorie */
+.post-article .article-category {
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8b3a0f;
+  margin-bottom: 10px;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-style: italic;
-  transition: opacity 0.3s;
 }
-.feed-typing-indicator.hidden { display: none; }
-.feed-typing-indicator::before {
+.post-article .article-category::after {
   content: '';
-  display: inline-block;
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: typingBounce 1.2s infinite;
+  flex: 1;
+  height: 1px;
+  background: rgba(139,90,43,0.25);
 }
+
+/* Grand titre */
+.post-article .article-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: #1a1208;
+  line-height: 1.25;
+  text-align: center;
+  margin-bottom: 14px;
+  letter-spacing: -0.01em;
+}
+
+/* Ligne de séparation décorative */
+.post-article .article-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 auto 14px;
+  justify-content: center;
+}
+.post-article .article-divider::before,
+.post-article .article-divider::after {
+  content: '';
+  width: 60px;
+  height: 1px;
+  background: rgba(139,90,43,0.4);
+}
+.post-article .article-divider-diamond {
+  width: 6px; height: 6px;
+  background: #8b3a0f;
+  transform: rotate(45deg);
+  flex-shrink: 0;
+}
+
+/* Byline (auteur) */
+.post-article .article-byline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid rgba(139,90,43,0.2);
+  cursor: pointer;
+}
+.post-article .article-byline-avatar {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(139,90,43,0.3);
+  flex-shrink: 0;
+}
+.post-article .article-byline-text {
+  font-family: 'Lora', serif;
+  font-size: 0.78rem;
+  color: #5a4a35;
+  font-style: italic;
+  text-align: left;
+}
+.post-article .article-byline-name {
+  font-style: normal;
+  font-weight: 700;
+  color: #3a2a18;
+  font-size: 0.82rem;
+}
+.post-article .article-byline-date {
+  font-size: 0.7rem;
+  color: #8a7a65;
+}
+
+/* Corps du texte */
+.post-article .article-body {
+  font-family: 'Lora', serif;
+  font-size: 0.96rem;
+  line-height: 1.8;
+  color: #2a1e10;
+  text-align: justify;
+  margin-bottom: 16px;
+  cursor: pointer;
+  hyphens: auto;
+}
+
+/* Lettrine */
+.post-article .article-body::first-letter {
+  font-family: 'Playfair Display', serif;
+  font-size: 3.6em;
+  font-weight: 800;
+  float: left;
+  line-height: 0.75;
+  margin-right: 8px;
+  margin-top: 6px;
+  color: #8b3a0f;
+}
+
+/* Actions sur fond crème */
+.post-article .post-actions {
+  border-top: 1px solid rgba(139,90,43,0.2);
+  padding-top: 12px;
+}
+.post-article .action-item {
+  color: #8a7a65;
+}
+.post-article .action-item:hover {
+  color: #8b3a0f;
+  background: rgba(139,90,43,0.08);
+}
+.post-article .action-item.liked {
+  color: #c0392b;
+}
+
+/* Delete btn on article */
+.post-article .article-del-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255,255,255,0.85);
+  border: 1px solid rgba(139,90,43,0.2);
+  color: #c0392b;
+  border-radius: 50%;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+  z-index: 5;
+}
+.post-article .article-del-btn:hover {
+  background: #c0392b;
+  color: white;
+}
+
+/* Party badge on dark bg override for article */
+.post-article .party-badge {
+  background: rgba(139,90,43,0.12);
+  border-color: rgba(139,90,43,0.25);
+  color: #8b3a0f;
+}
+/* ...existing code... */
