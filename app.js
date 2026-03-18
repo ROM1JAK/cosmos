@@ -199,9 +199,6 @@ socket.on('login_success', (data) => {
     document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`;
     document.getElementById('btn-account-main').innerHTML = '<i class="fa-solid fa-user"></i> Mon Profil';
     closeLoginModal();
-    // Apply saved theme
-    const savedTheme = data.uiTheme || localStorage.getItem('ui_theme') || 'default';
-    applyTheme(savedTheme, false);
     socket.emit('request_initial_data', PLAYER_ID);
     socket.emit('request_dm_contacts', USERNAME);
     const lastTab = localStorage.getItem('last_tab');
@@ -220,64 +217,15 @@ function checkAutoLogin() {
     else openLoginModal();
 }
 
-socket.on('connect', () => { 
-    checkAutoLogin(); 
-    setupEmojiPicker(); 
-    const t = localStorage.getItem('ui_theme');
-    if(t) applyTheme(t, false);
+socket.on('connect', () => { checkAutoLogin(); setupEmojiPicker(); });
+socket.on('update_user_list', (users) => {
+    allOnlineUsers = users;
+    const listDiv = document.getElementById('online-users-list');
+    document.getElementById('online-count').textContent = users.length;
+    listDiv.innerHTML = "";
+    users.forEach(u => listDiv.innerHTML += `<div class="online-user" onclick="startDmFromList('${u}')"><span class="status-dot"></span><span>${u}</span></div>`);
 });
-
-// ── THEMES ──────────────────────────────────────────────
-const THEMES = {
-    default: { accent: '#6c63ff', glow: 'rgba(108,99,255,0.35)', muted: 'rgba(108,99,255,0.15)', soft: '#8b85ff' },
-    matrix:  { accent: '#00d4aa', glow: 'rgba(0,212,170,0.35)',   muted: 'rgba(0,212,170,0.15)',  soft: '#33e8c0' },
-    blood:   { accent: '#ff4757', glow: 'rgba(255,71,87,0.35)',    muted: 'rgba(255,71,87,0.15)',  soft: '#ff6b7a' },
-    cyber:   { accent: '#f9ca24', glow: 'rgba(249,202,36,0.35)',   muted: 'rgba(249,202,36,0.15)', soft: '#fbd94a' },
-    rose:    { accent: '#fd79a8', glow: 'rgba(253,121,168,0.35)',  muted: 'rgba(253,121,168,0.15)',soft: '#fe9ec0' },
-};
-
-function applyTheme(themeName, save = true) {
-    const t = THEMES[themeName] || THEMES.default;
-    document.body.setAttribute('data-theme', themeName);
-    const r = document.documentElement.style;
-    r.setProperty('--accent', t.accent);
-    r.setProperty('--accent-glow', t.glow);
-    r.setProperty('--accent-muted', t.muted);
-    r.setProperty('--accent-soft', t.soft);
-    // Update swatch active state
-    document.querySelectorAll('.theme-swatch').forEach(el => {
-        el.classList.toggle('active', el.dataset.theme === themeName);
-    });
-    localStorage.setItem('ui_theme', themeName);
-    if(save && PLAYER_ID) socket.emit('save_theme', { userId: PLAYER_ID, theme: themeName });
-}
-
-socket.on('theme_saved', (theme) => {
-    const msg = document.getElementById('settings-msg');
-    if(msg) { msg.textContent = 'Thème sauvegardé !'; setTimeout(() => { msg.textContent = ''; }, 2000); }
-});
-
-// ── FEED TYPING ──────────────────────────────────────────
-let feedTypingTimeout = null;
-let feedTypingUsers = new Set();
-
-function updateFeedTypingUI() {
-    const el = document.getElementById('feed-typing-indicator');
-    if(!el) return;
-    if(feedTypingUsers.size === 0) { el.classList.add('hidden'); return; }
-    const names = [...feedTypingUsers].join(', ');
-    el.textContent = `${names} est en train d'écrire un post...`;
-    el.classList.remove('hidden');
-}
-
-socket.on('display_feed_typing', (data) => {
-    feedTypingUsers.add(data.charName);
-    updateFeedTypingUI();
-});
-socket.on('hide_feed_typing', (data) => {
-    feedTypingUsers.delete(data.charName);
-    updateFeedTypingUI();
-});
+socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId && !currentDmTarget) socket.emit('request_history', currentRoomId); });
 
 const txtInput = document.getElementById('txtInput');
 txtInput.addEventListener('input', () => {
@@ -459,7 +407,6 @@ function selectCharacter(id) {
     if(currentSelectedChar) localStorage.setItem('saved_char_id', currentSelectedChar._id);
     document.querySelectorAll('.avatar-choice').forEach(el => el.classList.remove('selected'));
     const el = document.getElementById(`avatar-opt-${id}`); if(el) el.classList.add('selected');
-    updateChatCharUI();
 }
 function toggleCharBar() {
     const bar = document.getElementById('char-bar-horizontal');
@@ -473,103 +420,78 @@ function toggleCharBar() {
 function updateUI() {
     const list = document.getElementById('myCharList');
     const bar = document.getElementById('char-bar-horizontal');
-    list.innerHTML = ""; if(bar) bar.innerHTML = "";
+    list.innerHTML = ""; bar.innerHTML = "";
     
-    if(IS_ADMIN && bar) {
+    // Narrateur Admin
+    if(IS_ADMIN) {
         bar.innerHTML += `<img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" id="avatar-opt-narrateur" class="avatar-choice" title="Narrateur" onclick="selectCharacter('narrateur')">`;
     }
 
     myCharacters.forEach((char, index) => {
         list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')"><i class="fa-solid fa-gear"></i></button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button></div></div>`;
-        if(bar) bar.innerHTML += `<img src="${char.avatar}" id="avatar-opt-${char._id}" class="avatar-choice" title="${char.name}" onclick="selectCharacter('${char._id}')">`;
+        bar.innerHTML += `<img src="${char.avatar}" id="avatar-opt-${char._id}" class="avatar-choice" title="${char.name}" onclick="selectCharacter('${char._id}')">`;
         if (index === 0 && !currentFeedCharId) currentFeedCharId = char._id;
     });
 
     if (!currentSelectedChar) { if(myCharacters.length > 0) selectCharacter(myCharacters[0]._id); else if(IS_ADMIN) selectCharacter('narrateur'); }
     else selectCharacter(currentSelectedChar._id);
 
-    updateChatCharUI();
     updateFeedCharUI();
-    updatePostOptions();
+    updateNavCharUI();
     updateBreakingNewsVisibility();
 }
 
-function updateChatCharUI() {
-    const btn = document.getElementById('chat-char-avatar-btn');
-    const dropdown = document.getElementById('chat-char-dropdown');
-    if (!btn || !dropdown) return;
+function updateFeedCharUI() {
+    // Rebuild feed character dropdown
+    const container = document.getElementById('feed-char-avatar-wrapper');
+    if(!container) return;
+    
+    const char = currentFeedCharId ? myCharacters.find(c => c._id === currentFeedCharId) : null;
+    const avatarSrc = char ? char.avatar : 'https://cdn-icons-png.flaticon.com/512/1144/1144760.png';
+    const charName = char ? char.name : 'Aucun';
+    
+    container.innerHTML = `
+        <div class="feed-char-trigger" onclick="toggleFeedCharDropdown()" title="Changer de personnage">
+            <img src="${avatarSrc}" class="feed-char-avatar-btn" id="feed-active-avatar">
+            <i class="fa-solid fa-chevron-down feed-char-chevron"></i>
+        </div>
+        <div id="feed-char-dropdown" class="feed-char-dropdown hidden">
+            ${myCharacters.map(c => `
+                <div class="feed-char-option ${c._id === currentFeedCharId ? 'active' : ''}" onclick="selectFeedChar('${c._id}')">
+                    <img src="${c.avatar}" class="feed-char-opt-avatar">
+                    <div>
+                        <div class="feed-char-opt-name" style="color:${c.color}">${c.name}</div>
+                        <div class="feed-char-opt-role">${c.role}</div>
+                    </div>
+                    ${c._id === currentFeedCharId ? '<i class="fa-solid fa-check" style="margin-left:auto; color:var(--accent);"></i>' : ''}
+                </div>`).join('')}
+        </div>`;
+}
 
-    if (currentSelectedChar) {
-        btn.src = currentSelectedChar.avatar;
-        btn.title = currentSelectedChar.name;
+function toggleFeedCharDropdown() {
+    const dd = document.getElementById('feed-char-dropdown');
+    if(dd) dd.classList.toggle('hidden');
+}
+
+function selectFeedChar(charId) {
+    currentFeedCharId = charId;
+    const dd = document.getElementById('feed-char-dropdown');
+    if(dd) dd.classList.add('hidden');
+    updateFeedCharUI();
+    updateBreakingNewsVisibility();
+    loadFeed();
+}
+
+function updateBreakingNewsVisibility() {
+    const label = document.getElementById('breakingNewsLabel');
+    if(!label) return;
+    const char = myCharacters.find(c => c._id === currentFeedCharId);
+    if(char && char.isOfficial) {
+        label.style.display = 'flex';
+    } else {
+        label.style.display = 'none';
+        document.getElementById('postBreakingNews').checked = false;
     }
-
-    const narrateur = IS_ADMIN ? [{
-        _id: 'narrateur',
-        name: 'Narrateur',
-        role: 'Omniscient',
-        color: '#ffffff',
-        avatar: 'https://cdn-icons-png.flaticon.com/512/1144/1144760.png'
-    }] : [];
-
-    const chars = [...narrateur, ...myCharacters];
-    dropdown.innerHTML = chars.map(c => `
-        <div class="chat-char-option ${currentSelectedChar && currentSelectedChar._id === c._id ? 'active' : ''}"
-             onclick="selectChatChar('${c._id}')">
-            <img src="${c.avatar}" class="chat-char-opt-avatar">
-            <div class="chat-char-opt-info">
-                <span class="chat-char-opt-name" style="color:${c.color}">${c.name}</span>
-                <span class="chat-char-opt-role">${c.role}</span>
-            </div>
-            ${currentSelectedChar && currentSelectedChar._id === c._id ? '<i class="fa-solid fa-check" style="margin-left:auto; color:var(--accent); font-size:0.75rem;"></i>' : ''}
-        </div>`).join('');
-}
-
-function toggleChatCharDropdown() {
-    const dd = document.getElementById('chat-char-dropdown');
-    if (dd) dd.classList.toggle('hidden');
-}
-
-function selectChatChar(id) {
-    selectCharacter(id);
-    updateChatCharUI();
-    const dd = document.getElementById('chat-char-dropdown');
-    if (dd) dd.classList.add('hidden');
-}
-
-// Close chat char dropdown when clicking outside
-document.addEventListener('click', (e) => {
-    const wrapper = document.getElementById('char-selector-wrapper');
-    if (wrapper && !wrapper.contains(e.target)) {
-        const dd = document.getElementById('chat-char-dropdown');
-        if (dd) dd.classList.add('hidden');
-    }
-    // Also handle feed dropdown
-    const feedWrapper = document.getElementById('feed-char-avatar-wrapper');
-    if (feedWrapper && !feedWrapper.contains(e.target)) {
-        const fdd = document.getElementById('feed-char-dropdown');
-        if (fdd) fdd.classList.add('hidden');
-    }
-});
-
-// ── POLL ADMIN POPUP — JS HOVER WITH DELAY (BUG FIX) ────
-let pollPopupHideTimeout = null;
-
-function showPollAdminPopup(el) {
-    clearTimeout(pollPopupHideTimeout);
-    const popup = el.querySelector('.poll-admin-popup');
-    if (popup) popup.classList.add('visible');
-}
-
-function hidePollAdminPopup(el) {
-    pollPopupHideTimeout = setTimeout(() => {
-        const popup = el.querySelector('.poll-admin-popup');
-        if (popup) popup.classList.remove('visible');
-    }, 120);
-}
-
-function keepPollAdminPopup(el) {
-    clearTimeout(pollPopupHideTimeout);
 }
 
 // --- PROFILE ---
@@ -841,12 +763,10 @@ function submitPost() {
     const mediaUrl = document.getElementById('postMediaUrl').value.trim();
     const isAnonymous = document.getElementById('postAnonymous').checked;
     const isBreakingNews = document.getElementById('postBreakingNews').checked;
-    const isArticle = document.getElementById('postIsArticle') ? document.getElementById('postIsArticle').checked : false;
-    const articleTitle = isArticle ? (document.getElementById('postArticleTitle').value.trim()) : '';
     
     if(!content && !mediaUrl) return alert("Contenu vide.");
-    if(isArticle && !articleTitle) return alert("Un article nécessite un titre !");
     
+    // Use Active Feed Char
     if(!currentFeedCharId) return alert("Aucun perso sélectionné pour le Feed.");
     const char = myCharacters.find(c => c._id === currentFeedCharId);
     if(!char) return alert("Perso invalide.");
@@ -862,18 +782,27 @@ function submitPost() {
     let poll = null;
     if(pollOptions.length > 0) {
         const question = document.getElementById('pollQuestion').value.trim();
-        if(question) { poll = { question, options: pollOptions.map(text => ({ text: text.trim(), voters: [] })) }; }
+        if(question) {
+            poll = {
+                question,
+                options: pollOptions.map(text => ({ text: text.trim(), voters: [] }))
+            };
+        }
     }
     
     const postData = { 
-        authorCharId: char._id, authorName: char.name, authorAvatar: char.avatar, 
-        authorRole: char.role, authorColor: char.color,
-        partyName: char.partyName, partyLogo: char.partyLogo,
+        authorCharId: char._id,
+        authorName: char.name, 
+        authorAvatar: char.avatar, 
+        authorRole: char.role,
+        authorColor: char.color,
+        partyName: char.partyName,
+        partyLogo: char.partyLogo,
         content, mediaUrl, mediaType, 
         date: new Date().toLocaleDateString(), 
         ownerId: PLAYER_ID,
-        isAnonymous, isBreakingNews,
-        isArticle, articleTitle,
+        isAnonymous,
+        isBreakingNews,
         poll
     };
     
@@ -885,11 +814,6 @@ function submitPost() {
     document.getElementById('postFileStatus').style.display = 'none';
     document.getElementById('postAnonymous').checked = false;
     document.getElementById('postBreakingNews').checked = false;
-    if(document.getElementById('postIsArticle')) {
-        document.getElementById('postIsArticle').checked = false;
-        document.getElementById('articleTitleWrapper').style.display = 'none';
-        document.getElementById('postArticleTitle').value = '';
-    }
     pollOptions = [];
     document.getElementById('poll-creation-ui').classList.add('hidden');
     pollUIOpen = false;
@@ -1000,12 +924,22 @@ function createPostElement(post) {
     
     if(post.isBreakingNews) div.classList.add('post-breaking-news');
     if(post.isAnonymous) div.classList.add('post-anonymous');
-    if(post.isArticle) div.classList.add('post-article');
     
     const lastVisit = parseInt(localStorage.getItem('last_feed_visit') || '0');
     if (new Date(post.timestamp).getTime() > lastVisit && currentView === 'feed') div.classList.add('post-highlight');
     
     const isLiked = post.likes.includes(currentFeedCharId); 
+    
+    const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
+    let mediaHTML = "";
+    if(post.mediaUrl) {
+        if(post.mediaType === 'video' || post.mediaUrl.includes('/video/upload')) {
+             const ytId = getYoutubeId(post.mediaUrl);
+             if(ytId) mediaHTML = `<iframe class="post-media" src="https://www.youtube.com/embed/${ytId}" frameborder="0" allowfullscreen></iframe>`;
+             else mediaHTML = `<video class="post-media" controls src="${post.mediaUrl}"></video>`;
+        } else if (post.mediaType === 'audio') { mediaHTML = `<audio controls src="${post.mediaUrl}" style="width:100%; margin-top:10px;"></audio>`; } 
+        else { mediaHTML = `<img src="${post.mediaUrl}" class="post-media">`; }
+    }
     
     let displayName = post.authorName;
     let displayAvatar = post.authorAvatar;
@@ -1015,82 +949,70 @@ function createPostElement(post) {
         displayAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E";
         displayRole = "Leak";
     }
-
-    let mediaHTML = "";
-    let bannerHTML = "";
-    if(post.mediaUrl) {
-        if(post.mediaType === 'video' || post.mediaUrl.includes('/video/upload')) {
-             const ytId = getYoutubeId(post.mediaUrl);
-             if(ytId) mediaHTML = `<iframe class="post-media" src="https://www.youtube.com/embed/${ytId}" frameborder="0" allowfullscreen></iframe>`;
-             else mediaHTML = `<video class="post-media" controls src="${post.mediaUrl}"></video>`;
-        } else if (post.mediaType === 'audio') { 
-            mediaHTML = `<audio controls src="${post.mediaUrl}" style="width:100%; margin-top:10px;"></audio>`; 
-        } else { 
-            if(post.isArticle) bannerHTML = `<img src="${post.mediaUrl}" class="article-banner">`;
-            else mediaHTML = `<img src="${post.mediaUrl}" class="post-media">`;
-        }
-    }
     
-    // Poll HTML
     let pollHTML = "";
     if(post.poll && post.poll.options && post.poll.options.length > 0) {
         const totalVoters = post.poll.options.reduce((sum, opt) => sum + opt.voters.length, 0);
         const hasVoted = post.poll.options.some(opt => opt.voters.includes(currentFeedCharId));
-        pollHTML = `<div class="poll-container"><div class="poll-question"><i class="fa-solid fa-chart-column" style="margin-right:6px; color:var(--accent);"></i>${post.poll.question}</div>`;
+        
+        pollHTML = `<div class="poll-container">
+            <div class="poll-question"><i class="fa-solid fa-chart-column" style="margin-right:6px; color:var(--accent);"></i>${post.poll.question}</div>`;
+        
         post.poll.options.forEach((opt, idx) => {
             const pct = totalVoters > 0 ? Math.round((opt.voters.length / totalVoters) * 100) : 0;
             const isVoted = opt.voters.includes(currentFeedCharId);
-            const adminPopup = IS_ADMIN ? `<div class="poll-admin-popup"><button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 1)">+1 Vote</button><button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 10)">+10 Votes</button><button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 100)">+100 Votes</button></div>` : '';
+            
+            // Admin hover popup (only for admins)
+            const adminPopup = IS_ADMIN ? `
+                <div class="poll-admin-popup">
+                    <button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 1)">+1 Vote</button>
+                    <button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 10)">+10 Votes</button>
+                    <button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 100)">+100 Votes</button>
+                </div>` : '';
+            
             if(hasVoted) {
-                pollHTML += `<div class="poll-option poll-option-wrap"><div class="poll-results-bar ${isVoted ? 'poll-voted-bar' : ''}"><div class="poll-bar-fill" style="width:${pct}%"></div><div class="poll-result-text"><span>${isVoted ? '✓ ' : ''}${opt.text}</span><span><strong>${pct}%</strong> <span style="opacity:0.6">(${opt.voters.length})</span></span></div></div>${adminPopup}</div>`;
+                pollHTML += `
+                    <div class="poll-option poll-option-wrap">
+                        <div class="poll-results-bar ${isVoted ? 'poll-voted-bar' : ''}">
+                            <div class="poll-bar-fill" style="width:${pct}%"></div>
+                            <div class="poll-result-text">
+                                <span>${isVoted ? '✓ ' : ''}${opt.text}</span>
+                                <span><strong>${pct}%</strong> <span style="opacity:0.6">(${opt.voters.length})</span></span>
+                            </div>
+                        </div>
+                        ${adminPopup}
+                    </div>`;
             } else {
-                pollHTML += `<div class="poll-option poll-option-wrap"><button class="poll-option-btn" onclick="event.stopPropagation(); votePoll('${post._id}', ${idx})">${opt.text}</button>${adminPopup}</div>`;
+                pollHTML += `
+                    <div class="poll-option poll-option-wrap">
+                        <button class="poll-option-btn" onclick="event.stopPropagation(); votePoll('${post._id}', ${idx})">
+                            ${opt.text}
+                        </button>
+                        ${adminPopup}
+                    </div>`;
             }
         });
+        
         pollHTML += `<div class="poll-total">${totalVoters} vote${totalVoters !== 1 ? 's' : ''}</div></div>`;
     }
-
-    const actionsHTML = `<div class="post-actions">
-        <button class="action-item ${isLiked?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
-        <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
-    </div>`;
-
-    if(post.isArticle) {
-        const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="article-del-btn" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
-        const partyBadge = post.partyName && post.partyLogo && !post.isAnonymous ? `<span class="party-badge"><img src="${post.partyLogo}" class="party-logo"> ${post.partyName}</span>` : '';
-        div.innerHTML = `
-            ${delBtn}
-            ${bannerHTML}
-            <div class="article-inner">
-                <div class="article-category">📰 Article de Presse${partyBadge}</div>
-                <h2 class="article-title">${post.articleTitle || post.content.split(/\s+/).slice(0,8).join(' ') + '…'}</h2>
-                <div class="article-divider"><div class="article-divider-diamond"></div></div>
-                <div class="article-byline" onclick="event.stopPropagation(); openProfile('${displayName.replace(/'/g,"\\'")}')">
-                    <img src="${displayAvatar}" class="article-byline-avatar">
-                    <div class="article-byline-text">
-                        <div class="article-byline-name">${displayName}</div>
-                        <div class="article-byline-date">Rédigé le ${post.date} — ${displayRole}</div>
-                    </div>
-                </div>
-                <div class="article-body" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
-                ${mediaHTML}${pollHTML}${actionsHTML}
-            </div>
-            <div class="comments-list hidden">${generateCommentsHTML(post.comments, post._id)}</div>`;
-    } else {
-        const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
-        const headerHTML = `<div class="post-header" onclick="event.stopPropagation(); openProfile('${displayName.replace(/'/g, "\\'")}')">
+    
+    div.innerHTML = `${delBtn}
+        <div class="post-header" onclick="event.stopPropagation(); openProfile('${displayName.replace(/'/g, "\\'")}')">
             <img src="${displayAvatar}" class="post-avatar">
             <div class="post-meta">
                 <div class="post-author">${displayName}${post.partyName && post.partyLogo && !post.isAnonymous ? `<span class="party-badge"><img src="${post.partyLogo}" class="party-logo"> ${post.partyName}</span>` : ''}</div>
                 <div class="post-role">${displayRole}</div>
             </div>
             <span class="post-date">${post.date}</span>
-        </div>`;
-        div.innerHTML = `${delBtn}${headerHTML}
-            <div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
-            ${mediaHTML}${pollHTML}${actionsHTML}
-            <div class="comments-list hidden">${generateCommentsHTML(post.comments, post._id)}</div>`;
-    }
+        </div>
+        <div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
+        ${mediaHTML}
+        ${pollHTML}
+        <div class="post-actions">
+            <button class="action-item ${isLiked?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
+            <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
+        </div>
+        <div class="comments-list hidden">${generateCommentsHTML(post.comments, post._id)}</div>`;
     return div;
 }
 
@@ -1112,17 +1034,17 @@ function openNotifications() {
 }
 function closeNotifications() { document.getElementById('notifications-modal').classList.add('hidden'); }
 
-// Close feed char dropdown when clicking outside
+// Close nav char dropdown when clicking outside
 document.addEventListener('click', (e) => {
+    const navSelector = document.getElementById('nav-char-selector');
+    if(navSelector && !navSelector.contains(e.target)) {
+        const dd = document.getElementById('nav-char-dropdown');
+        if(dd) dd.classList.add('hidden');
+    }
+    // ...existing feed char dropdown close logic...
     const wrapper = document.getElementById('feed-char-avatar-wrapper');
     if(wrapper && !wrapper.contains(e.target)) {
         const dd = document.getElementById('feed-char-dropdown');
         if(dd) dd.classList.add('hidden');
-    }
-    // Also handle feed dropdown
-    const feedWrapper = document.getElementById('feed-char-avatar-wrapper');
-    if (feedWrapper && !feedWrapper.contains(e.target)) {
-        const fdd = document.getElementById('feed-char-dropdown');
-        if (fdd) fdd.classList.add('hidden');
     }
 });
