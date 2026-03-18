@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ConvSmos</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="icone.png">
@@ -20,6 +19,14 @@
             <i class="fa-solid fa-bell"></i>
             <span id="notif-badge" class="hidden"></span>
         </button>
+        <!-- Character selector in nav -->
+        <div id="nav-char-selector" style="position:relative; margin-left:auto;">
+            <div class="nav-char-trigger" onclick="toggleNavCharDropdown()" title="Changer de personnage">
+                <img id="nav-active-avatar" src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" class="nav-char-avatar">
+                <i class="fa-solid fa-chevron-down nav-char-chevron"></i>
+            </div>
+            <div id="nav-char-dropdown" class="nav-char-dropdown hidden"></div>
+        </div>
     </nav>
 
     <div id="mobile-overlay" onclick="toggleSidebar()"></div>
@@ -40,250 +47,231 @@
             <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                 <h2>Profil</h2> <button onclick="closeUserSettingsModal()" class="btn-secondary">X</button>
             </div>
+            <input type="text" id="settingsUsernameInput" class="modal-input" placeholder="Pseudo">
             <button onclick="submitUsernameChange()" class="btn-primary full-width" style="margin-bottom:10px;">Changer Pseudo</button>
-            <div class="password-wrapper" style="margin-bottom:10px;">y full-width" style="margin-bottom:10px;">Changer Pseudo</button>
+            <div class="password-wrapper" style="margin-bottom:10px;">
                 <input type="password" id="settingsCodeInput" class="modal-input" readonly>
                 <button onclick="toggleSecretVisibility()" class="btn-eye"><i class="fa-solid fa-eye"></i></button>
-            </div>utton onclick="toggleSecretVisibility()" class="btn-eye"><i class="fa-solid fa-eye"></i></button>
+            </div>
             <button onclick="toggleNotifications()" id="btn-notif-toggle" class="btn-secondary full-width">Notifs</button>
-            <!-- THEME PICKER -->leNotifications()" id="btn-notif-toggle" class="btn-secondary full-width">Notifs</button>
-            <div style="margin-top:14px; margin-bottom:6px; text-align:left;">
-                <div style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:8px; font-weight:700;">THÈME</div>
-                <div id="theme-picker" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">ng:0.1em; margin-bottom:8px; font-weight:700;">THÈME</div>
-                    <button class="theme-swatch" data-theme="default" style="--swatch:#6c63ff" onclick="applyTheme('default')">Cosmos</button>
-                    <button class="theme-swatch" data-theme="matrix" style="--swatch:#00d4aa" onclick="applyTheme('matrix')">Matrice</button>>
-                    <button class="theme-swatch" data-theme="blood" style="--swatch:#ff4757" onclick="applyTheme('blood')">Sang</button>tton>
-                    <button class="theme-swatch" data-theme="cyber" style="--swatch:#f9ca24" onclick="applyTheme('cyber')">Cyberpunk</button>
-                    <button class="theme-swatch" data-theme="rose" style="--swatch:#fd79a8" onclick="applyTheme('rose')">Rose</button>button>
-                </div>utton class="theme-swatch" data-theme="rose" style="--swatch:#fd79a8" onclick="applyTheme('rose')">Rose</button>
-            </div>div>
             <p id="settings-msg" style="height:1.2em; color:#23a559; margin:5px 0;"></p>
-            <button onclick="logoutUser()" class="btn-logout">Déconnexion</button>"></p>
-        </div>utton onclick="logoutUser()" class="btn-logout">Déconnexion</button>
-    </div>div>
+            <button onclick="logoutUser()" class="btn-logout">Déconnexion</button>
+        </div>
     </div>
+    
     <div id="notifications-modal" class="modal-overlay hidden" onclick="closeNotifications()">
         <div class="modal-box" style="max-width: 400px; padding:0; overflow:hidden; max-height:80vh; display:flex; flex-direction:column;" onclick="event.stopPropagation()">
-            <div style="padding:15px; border-bottom:1px solid #222; display:flex; justify-content:space-between;"> flex-direction:column;" onclick="event.stopPropagation()">
-                <h3 style="color:white; margin:0;">Notifications</h3>isplay:flex; justify-content:space-between;">
+            <div style="padding:15px; border-bottom:1px solid #222; display:flex; justify-content:space-between;">
+                <h3 style="color:white; margin:0;">Notifications</h3>
                 <button onclick="closeNotifications()" style="background:none; border:none; color:#aaa; cursor:pointer;">X</button>
-            </div>utton onclick="closeNotifications()" style="background:none; border:none; color:#aaa; cursor:pointer;">X</button>
+            </div>
             <div id="notif-list" style="overflow-y:auto; padding:10px; flex:1;"></div>
-        </div>iv id="notif-list" style="overflow-y:auto; padding:10px; flex:1;"></div>
-    </div>div>
+        </div>
     </div>
+    
     <!-- LISTE ABONNÉS MODAL (Z-Index élevé) -->
     <div id="followers-modal" class="modal-overlay hidden" style="z-index:300;" onclick="document.getElementById('followers-modal').classList.add('hidden')">
-        <div class="modal-box" style="max-width:350px;" onclick="event.stopPropagation()">ocument.getElementById('followers-modal').classList.add('hidden')">
+        <div class="modal-box" style="max-width:350px;" onclick="event.stopPropagation()">
             <h3 style="margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:10px;">Abonnés</h3>
-            <div id="followers-list-container" style="max-height:300px; overflow-y:auto;"></div>bonnés</h3>
+            <div id="followers-list-container" style="max-height:300px; overflow-y:auto;"></div>
             <button onclick="document.getElementById('followers-modal').classList.add('hidden')" class="btn-secondary full-width" style="margin-top:10px;">Fermer</button>
-        </div>utton onclick="document.getElementById('followers-modal').classList.add('hidden')" class="btn-secondary full-width" style="margin-top:10px;">Fermer</button>
-    </div>div>
+        </div>
     </div>
+
     <input type="file" id="chat-img-input" accept="image/*" class="hidden" onchange="handleChatFileSelect(this, 'image')">
     <input type="file" id="chat-video-input" accept="video/*" class="hidden" onchange="handleChatFileSelect(this, 'video')">
-    <input type="file" id="chat-video-input" accept="video/*" class="hidden" onchange="handleChatFileSelect(this, 'video')">
+
     <!-- PROFIL SLIDE-IN (Gauche) -->
     <div id="profile-overlay" class="modal-overlay hidden" onclick="closeProfileModal()"></div>
-    <div id="profile-slide-panel">s="modal-overlay hidden" onclick="closeProfileModal()"></div>
+    <div id="profile-slide-panel">
         <button onclick="closeProfileModal()" class="btn-close-profile"><i class="fa-solid fa-xmark"></i></button>
-        <div class="profile-header-slide">()" class="btn-close-profile"><i class="fa-solid fa-xmark"></i></button>
+        <div class="profile-header-slide">
             <img id="profileAvatar" src="" class="profile-avatar-large">
-            <h2 id="profileName">Nom</h2>" class="profile-avatar-large">
+            <h2 id="profileName">Nom</h2>
             <span id="profileRole" class="profile-role-tag">Rôle</span>
-        </div>pan id="profileRole" class="profile-role-tag">Rôle</span>
         </div>
+        
         <div class="profile-stats">
             <div class="stat-item">
                 <span id="profilePostCount" class="stat-value">0</span>
-                <span class="stat-label">Posts</span>at-value">0</span>
-            </div>pan class="stat-label">Posts</span>
+                <span class="stat-label">Posts</span>
+            </div>
             <div class="stat-item" id="btn-view-followers" style="cursor:pointer;">
-                <span id="profileFollowersCount" class="stat-value">0</span>nter;">
-                <span class="stat-label">Abonnés</span>"stat-value">0</span>
-            </div>pan class="stat-label">Abonnés</span>
-        </div>div>
+                <span id="profileFollowersCount" class="stat-value">0</span>
+                <span class="stat-label">Abonnés</span>
+            </div>
         </div>
+
         <div class="profile-body">
             <div style="font-size:0.8rem; color:#666; margin-bottom:10px; font-weight:bold;">À PROPOS</div>
-            <p id="profileDesc" class="profile-desc-text"></p>ottom:10px; font-weight:bold;">À PROPOS</div>
+            <p id="profileDesc" class="profile-desc-text"></p>
             <div id="profileOwner" style="margin-top:10px; color:#444; font-size:0.8em;"></div>
-        </div>iv id="profileOwner" style="margin-top:10px; color:#444; font-size:0.8em;"></div>
         </div>
+
         <div class="profile-actions-footer">
             <button id="btn-dm-profile" class="btn-primary full-width">Message Privé</button>
-            <button id="btn-sub-profile" class="btn-secondary full-width">Suivre</button>ton>
-        </div>utton id="btn-sub-profile" class="btn-secondary full-width">Suivre</button>
-    </div>div>
+            <button id="btn-sub-profile" class="btn-secondary full-width">Suivre</button>
+        </div>
     </div>
+    
     <div id="post-detail-modal" class="modal-overlay hidden" onclick="closePostDetail()">
         <div class="modal-box" style="max-width: 600px; padding:0; overflow:hidden; max-height:90vh; display:flex; flex-direction:column;" onclick="event.stopPropagation()">
-            <div style="padding:15px; border-bottom:1px solid #222; display:flex; justify-content:space-between;"> flex-direction:column;" onclick="event.stopPropagation()">
+            <div style="padding:15px; border-bottom:1px solid #222; display:flex; justify-content:space-between;">
                 <h3 style="color:white; margin:0;">Discussion</h3> <button onclick="closePostDetail()" style="background:none; border:none; color:#aaa; cursor:pointer;">X</button>
-            </div>3 style="color:white; margin:0;">Discussion</h3> <button onclick="closePostDetail()" style="background:none; border:none; color:#aaa; cursor:pointer;">X</button>
+            </div>
             <div style="overflow-y:auto; padding:15px; flex:1;">
-                <div id="post-detail-content"></div>x; flex:1;">
+                <div id="post-detail-content"></div>
                 <div id="post-detail-comments-list" style="margin-top:20px;"></div>
-            </div>iv id="post-detail-comments-list" style="margin-top:20px;"></div>
+            </div>
             <div style="padding:15px; background: var(--bg-chat); border-top:1px solid #222;">
-                <div id="comment-staging" class="chat-staging hidden"></div>:1px solid #222;">
-                <div class="comment-form" style="display:flex; gap:5px;">iv>
+                <div id="comment-staging" class="chat-staging hidden"></div>
+                <div class="comment-form" style="display:flex; gap:5px;">
                     <input type="text" id="post-detail-comment-input" class="modal-input" placeholder="Commentaire..." style="margin:0;">
-                    <button class="btn-icon" onclick="toggleRecording('comment')"><i class="fa-solid fa-microphone"></i></button>gin:0;">
+                    <button class="btn-icon" onclick="toggleRecording('comment')"><i class="fa-solid fa-microphone"></i></button>
                     <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-paperclip"></i><input type="file" id="comment-file-input" class="hidden" accept="image/*,video/*" onchange="stageCommentMedia(this)"></label>
-                    <button id="btn-detail-comment" class="btn-primary">Envoyer</button>a-paperclip"></i><input type="file" id="comment-file-input" class="hidden" accept="image/*,video/*" onchange="stageCommentMedia(this)"></label>
-                </div>utton id="btn-detail-comment" class="btn-primary">Envoyer</button>
-            </div>div>
-        </div>div>
-    </div>div>
+                    <button id="btn-detail-comment" class="btn-primary">Envoyer</button>
+                </div>
+            </div>
+        </div>
     </div>
+
     <button id="menu-toggle-btn" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
-    <button id="menu-toggle-btn" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+
     <div id="main-view-wrapper">
         <div id="view-chat" class="view-section active">
-            <div id="app-container">iew-section active">
-                <div id="sidebar">">
+            <div id="app-container">
+                <div id="sidebar">
                     <div class="sidebar-header">
                         <h2 class="app-title">ConvSmos</h2>
                         <div id="player-id-display">...</div>
                         <button id="btn-account-main" class="btn-login" onclick="openAccountUI()">Connexion</button>
-                    </div>utton id="btn-account-main" class="btn-login" onclick="openAccountUI()">Connexion</button>
+                    </div>
                     <div class="sidebar-section">
-                        <h3>SALONS</h3>-section">
+                        <h3>SALONS</h3>
                         <div id="roomList"></div>
                         <button class="btn-add-room" onclick="createRoomPrompt()">+ Créer Salon</button>
-                    </div>utton class="btn-add-room" onclick="createRoomPrompt()">+ Créer Salon</button>
+                    </div>
                     <div class="sidebar-section">
-                        <h3>PERSONNAGES</h3>ion">
+                        <h3>PERSONNAGES</h3>
                         <div id="myCharList"></div>
                         <div class="create-form-toggle" onclick="toggleCreateForm()">+ Nouveau</div>
-                        <div id="create-char-form" class="create-form hidden">orm()">+ Nouveau</div>
+                        <div id="create-char-form" class="create-form hidden">
                             <input type="text" id="newCharName" placeholder="Nom">
                             <input type="text" id="newCharRole" placeholder="Rôle">
                             <label class="file-upload-label"><span>Image</span><input type="file" id="newCharFile" accept="image/*"></label>
-                            <input type="hidden" id="newCharBase64">mage</span><input type="file" id="newCharFile" accept="image/*"></label>
+                            <input type="hidden" id="newCharBase64">
                             <textarea id="newCharDesc" placeholder="Bio..." rows="2"></textarea>
                             <input type="color" id="newCharColor" value="#5c7cfa" style="width:100%; height:30px; border:none;">
-                            <input type="text" id="newCharPartyName" placeholder="Parti Politique (optionnel)">x; border:none;">
+                            <input type="text" id="newCharPartyName" placeholder="Parti Politique (optionnel)">
                             <label class="file-upload-label"><span>Logo du Parti</span><input type="file" id="newCharPartyFile" accept="image/*"></label>
-                            <input type="hidden" id="newCharPartyBase64">u Parti</span><input type="file" id="newCharPartyFile" accept="image/*"></label>
+                            <input type="hidden" id="newCharPartyBase64">
                             <button onclick="createCharacter()" class="btn-primary">Créer</button>
-                        </div>utton onclick="createCharacter()" class="btn-primary">Créer</button>
+                        </div>
                         <div id="edit-char-form" class="create-form hidden">
                             <h4 style="margin:0 0 5px 0; color:#eab308;">Modifier</h4>
                             <input type="hidden" id="editCharId"><input type="hidden" id="editCharOriginalName">
                             <input type="text" id="editCharName" placeholder="Nom"><input type="text" id="editCharRole" placeholder="Rôle">
                             <label class="file-upload-label"><span>Changer Image</span><input type="file" id="editCharFile" accept="image/*"></label>
-                            <input type="hidden" id="editCharBase64">anger Image</span><input type="file" id="editCharFile" accept="image/*"></label>
+                            <input type="hidden" id="editCharBase64">
                             <textarea id="editCharDesc" rows="2"></textarea>
                             <input type="color" id="editCharColor" style="width:100%; height:30px; border:none;">
-                            <input type="text" id="editCharPartyName" placeholder="Parti Politique (optionnel)">>
+                            <input type="text" id="editCharPartyName" placeholder="Parti Politique (optionnel)">
                             <label class="file-upload-label"><span>Logo du Parti</span><input type="file" id="editCharPartyFile" accept="image/*"></label>
-                            <input type="hidden" id="editCharPartyBase64"> Parti</span><input type="file" id="editCharPartyFile" accept="image/*"></label>
+                            <input type="hidden" id="editCharPartyBase64">
                             <div style="display:flex; gap:5px;"><button onclick="submitEditCharacter()" class="btn-primary">OK</button><button onclick="cancelEditCharacter()" class="btn-secondary">Annuler</button></div>
-                        </div>iv style="display:flex; gap:5px;"><button onclick="submitEditCharacter()" class="btn-primary">OK</button><button onclick="cancelEditCharacter()" class="btn-secondary">Annuler</button></div>
-                    </div>div>
+                        </div>
+                    </div>
                     <div class="sidebar-section"><h3>MESSAGES PRIVÉS</h3><div id="dmList"></div></div>
-                </div>iv class="sidebar-section"><h3>MESSAGES PRIVÉS</h3><div id="dmList"></div></div>
                 </div>
+
                 <div id="chat-area">
                     <div class="chat-header">
                         <span class="header-hash">#</span><h3 id="currentRoomName">Salon Global</h3>
                         <div id="dm-header-actions" class="hidden" style="margin-left:auto; display:flex; gap:10px;">
                             <button onclick="deleteCurrentDmHistory()" style="background:none; border:none; cursor:pointer; color:#da373c;"><i class="fa-solid fa-trash"></i></button>
-                            <button onclick="closeCurrentDm()" style="background:none; border:none; cursor:pointer; color:#aaa;"><i class="fa-solid fa-xmark"></i></button>i></button>
-                        </div>utton onclick="closeCurrentDm()" style="background:none; border:none; cursor:pointer; color:#aaa;"><i class="fa-solid fa-xmark"></i></button>
-                    </div>div>
+                            <button onclick="closeCurrentDm()" style="background:none; border:none; cursor:pointer; color:#aaa;"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
                     </div>
+
                     <div id="messages"></div>
                     <div id="typing-indicator" class="hidden"><span class="typing-dots">...</span> <span id="typing-text"></span></div>
-                    <div id="typing-indicator" class="hidden"><span class="typing-dots">...</span> <span id="typing-text"></span></div>
+                    
                     <div id="input-wrapper">
+                        <div id="char-selector-wrapper" class="hidden">
+                            <div id="char-bar-actions"><button id="btn-toggle-chars" onclick="toggleCharBar()"><i id="toggle-icon" class="fa-solid fa-chevron-up"></i></button></div>
+                            <div id="char-bar-horizontal" class="char-bar-content hidden-bar"></div>
+                        </div>
                         <div id="context-bar" class="hidden">
                             <div class="context-info"><span id="context-icon"></span> <span id="context-text"></span></div>
-                            <button class="btn-close-reply" onclick="cancelContext()">X</button>context-text"></span></div>
-                        </div>utton class="btn-close-reply" onclick="cancelContext()">X</button>
+                            <button class="btn-close-reply" onclick="cancelContext()">X</button>
+                        </div>
                         <div id="mention-suggestions" class="hidden"></div>
                         <div id="chat-staging" class="chat-staging hidden"></div>
-                        <div id="emoji-picker" class="hidden"></div>idden"></div>
                         <div id="emoji-picker" class="hidden"></div>
+
                         <div id="input-zone">
                             <button class="btn-icon" onclick="document.getElementById('chat-img-input').click()"><i class="fa-solid fa-circle-plus"></i></button>
-                            <div id="char-selector-wrapper">="document.getElementById('chat-img-input').click()"><i class="fa-solid fa-circle-plus"></i></button>
-                                <img id="chat-char-avatar-btn" class="chat-char-trigger" src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" onclick="toggleChatCharDropdown()" title="Changer de personnage">
-                                <div id="chat-char-dropdown" class="chat-char-dropdown hidden"></div>/cdn-icons-png.flaticon.com/512/1144/1144760.png" onclick="toggleChatCharDropdown()" title="Changer de personnage">
-                            </div>iv id="chat-char-dropdown" class="chat-char-dropdown hidden"></div>
                             <input id="txtInput" type="text" autocomplete="off" placeholder="Envoyer un message...">
                             <button class="btn-icon" id="btn-emoji" onclick="toggleEmojiPicker()"><i class="fa-solid fa-face-smile"></i></button>
                             <button class="btn-icon" id="btn-record-chat" onclick="toggleRecording('chat')"><i class="fa-solid fa-microphone"></i></button>
-                        </div>utton class="btn-icon" id="btn-record-chat" onclick="toggleRecording('chat')"><i class="fa-solid fa-microphone"></i></button>
-                    </div>div>
-                </div>div>
+                        </div>
+                    </div>
                 </div>
+
                 <div id="users-sidebar">
                     <div class="users-header"><h3>EN LIGNE — <span id="online-count">0</span></h3></div>
-                    <div id="online-users-list"></div>IGNE — <span id="online-count">0</span></h3></div>
-                </div>iv id="online-users-list"></div>
-            </div>div>
-        </div>div>
-        </div>
-        <div id="view-feed" class="view-section hidden">
-            <!-- HEADER DU FEED (IDENTITÉ) -->n hidden">
-            <div class="feed-view-header"> -->
-                <h3 style="margin:0; font-size:1.1rem;">Flux Social</h3>
-                <div id="feed-char-avatar-wrapper" style="position:relative;"></div>
-            </div>iv id="feed-char-avatar-wrapper" style="position:relative;"></div>
+                    <div id="online-users-list"></div>
+                </div>
             </div>
+        </div>
+
+        <div id="view-feed" class="view-section hidden">
+            <!-- HEADER DU FEED (IDENTITÉ) -->
+            <div class="feed-view-header">
+                <h3 style="margin:0; font-size:1.1rem;">Flux Social</h3>
+                <!-- feed-char-avatar-wrapper kept for JS compatibility but hidden -->
+                <div id="feed-char-avatar-wrapper" style="display:none; position:relative;"></div>
+            </div>
+
             <div class="feed-container">
                 <div class="post-create-box">
                     <textarea id="postContent" placeholder="Quoi de neuf ?"></textarea>
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-                        <div style="display:flex; gap:10px;">ter; justify-content:space-between; margin-bottom:10px;">
+                        <div style="display:flex; gap:10px;">
                              <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-image"></i><input type="file" id="postMediaFile" accept="image/*,video/*" class="hidden" onchange="previewPostFile()"></label>
-                             <button class="btn-icon" id="btn-record-feed" onclick="toggleRecording('feed')"><i class="fa-solid fa-microphone"></i></button>image/*,video/*" class="hidden" onchange="previewPostFile()"></label>
-                             <button class="btn-icon" onclick="togglePollUI()"><i class="fa-solid fa-chart-column"></i></button>fa-microphone"></i></button>
-                             <span id="postFileStatus" style="font-size:0.8em; color:#aaa; display:none;"></span>"></i></button>
-                        </div>span id="postFileStatus" style="font-size:0.8em; color:#aaa; display:none;"></span>
+                             <button class="btn-icon" id="btn-record-feed" onclick="toggleRecording('feed')"><i class="fa-solid fa-microphone"></i></button>
+                             <button class="btn-icon" onclick="togglePollUI()"><i class="fa-solid fa-chart-column"></i></button>
+                             <span id="postFileStatus" style="font-size:0.8em; color:#aaa; display:none;"></span>
+                        </div>
                         <div style="display:flex; gap:10px; align-items:center;">
                             <span id="char-count" style="font-size:0.8em; color:#666;">0/1000</span>
-                            <button class="btn-primary" onclick="submitPost()">Publier</button>span>
-                        </div>utton class="btn-primary" onclick="submitPost()">Publier</button>
-                    </div>div>
+                            <button class="btn-primary" onclick="submitPost()">Publier</button>
+                        </div>
+                    </div>
                     <div id="poll-creation-ui" class="hidden" style="background:#1e1f22; padding:10px; border-radius:4px; margin-bottom:10px;">
                         <input type="text" id="pollQuestion" placeholder="Question du sondage..." style="width:100%; background:#383a40; border:none; color:white; padding:8px; border-radius:4px; margin-bottom:8px; font-family:inherit;">
-                        <div id="pollOptions"></div>uestion" placeholder="Question du sondage..." style="width:100%; background:#383a40; border:none; color:white; padding:8px; border-radius:4px; margin-bottom:8px; font-family:inherit;">
+                        <div id="pollOptions"></div>
                         <button onclick="addPollOption()" class="btn-secondary full-width" style="margin-bottom:8px;">+ Option</button>
-                        <button onclick="closePollUI()" class="btn-secondary full-width">Annuler</button>bottom:8px;">+ Option</button>
-                    </div>utton onclick="closePollUI()" class="btn-secondary full-width">Annuler</button>
+                        <button onclick="closePollUI()" class="btn-secondary full-width">Annuler</button>
+                    </div>
                     <div style="display:flex; gap:10px; align-items:center; font-size:0.85rem;">
                         <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
-                            <input type="checkbox" id="postAnonymous"> 🕵️ Anonyme (Leak)ointer;">
-                        </label>ut type="checkbox" id="postAnonymous"> 🕵️ Anonyme (Leak)
+                            <input type="checkbox" id="postAnonymous"> 🕵️ Anonyme (Leak)
+                        </label>
                         <label style="display:flex; align-items:center; gap:5px; cursor:pointer; display:none;" id="breakingNewsLabel">
-                            <input type="checkbox" id="postBreakingNews"> 🚨 Breaking Newsinter; display:none;" id="breakingNewsLabel">
-                        </label>ut type="checkbox" id="postBreakingNews"> 🚨 Breaking News
-                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer; display:none;" id="articleFormatLabel">label>
-                            <input type="checkbox" id="postIsArticle" onchange="toggleArticleTitleField()"> 📰 Format Article
-                        </label>rl">
-                    </div>nput type="hidden" id="pollData">
-                    <!-- Article title field (hidden by default) -->
-                    <div id="articleTitleWrapper" style="display:none; margin-top:10px;">
-                        <input type="text" id="postArticleTitle" class="modal-input" placeholder="Gros Titre de l'article..." style="margin:0; font-family:'Playfair Display', serif; font-size:1rem; font-weight:700;">or" class="feed-typing-indicator hidden"></div>
-                    </div>iv id="feed-stream"></div>
-                    <input type="hidden" id="postMediaUrl">div>
-                    <input type="hidden" id="pollData">        </div>
+                            <input type="checkbox" id="postBreakingNews"> 🚨 Breaking News
+                        </label>
+                    </div>
+                    <input type="hidden" id="postMediaUrl">
+                    <input type="hidden" id="pollData">
                 </div>
-                <!-- Feed typing indicator --></div>
-                <div id="feed-typing-indicator" class="feed-typing-indicator hidden"></div>
-                <div id="feed-stream"></div>io.js"></script>
-            </div>ript src="app.js"></script> 
+                <div id="feed-stream"></div>
+            </div>
         </div>
 
-
-
-
-
-
-
-</html></body>    <script src="app.js"></script>     <script src="/socket.io/socket.io.js"></script>        </div></html>
+    </div>
+    
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script> 
+</body>
+</html>
