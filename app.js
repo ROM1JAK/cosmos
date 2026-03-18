@@ -437,6 +437,7 @@ function updateUI() {
     else selectCharacter(currentSelectedChar._id);
 
     updateFeedCharUI();
+    updateNavCharUI();
     updateBreakingNewsVisibility();
 }
 
@@ -822,10 +823,12 @@ function votePoll(postId, optionIndex) {
     if(!currentFeedCharId) return alert("Sélectionnez un personnage dans le Feed !");
     socket.emit('vote_poll', { postId, optionIndex, charId: currentFeedCharId });
 }
-function adminInjectVote(postId, optionIndex) {
+function adminInjectVote(postId, optionIndex, count) {
     if(!IS_ADMIN) return;
-    const fakeId = 'injected_' + Date.now() + '_' + Math.random().toString(36).substr(2,5);
-    socket.emit('admin_inject_vote', { postId, optionIndex, fakeId });
+    for(let i = 0; i < count; i++) {
+        const fakeId = 'injected_' + Date.now() + '_' + Math.random().toString(36).substr(2,5);
+        socket.emit('admin_inject_vote', { postId, optionIndex, fakeId });
+    }
 }
 
 function toggleLike(id) { 
@@ -925,7 +928,6 @@ function createPostElement(post) {
     const lastVisit = parseInt(localStorage.getItem('last_feed_visit') || '0');
     if (new Date(post.timestamp).getTime() > lastVisit && currentView === 'feed') div.classList.add('post-highlight');
     
-    // Check if Active Feed Char liked this
     const isLiked = post.likes.includes(currentFeedCharId); 
     
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
@@ -939,7 +941,6 @@ function createPostElement(post) {
         else { mediaHTML = `<img src="${post.mediaUrl}" class="post-media">`; }
     }
     
-    // Affichage anonyme : masquer vraies infos
     let displayName = post.authorName;
     let displayAvatar = post.authorAvatar;
     let displayRole = post.authorRole;
@@ -954,15 +955,6 @@ function createPostElement(post) {
         const totalVoters = post.poll.options.reduce((sum, opt) => sum + opt.voters.length, 0);
         const hasVoted = post.poll.options.some(opt => opt.voters.includes(currentFeedCharId));
         
-        const adminVoteControls = IS_ADMIN ? `
-            <div class="poll-admin-bar">
-                <span style="font-size:0.72rem; color:var(--text-muted); font-style:italic;">Admin — injecter votes :</span>
-                ${post.poll.options.map((opt, idx) => `
-                    <button class="poll-admin-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx})">
-                        +1 "${opt.text.substring(0,15)}${opt.text.length>15?'…':''}"
-                    </button>`).join('')}
-            </div>` : '';
-        
         pollHTML = `<div class="poll-container">
             <div class="poll-question"><i class="fa-solid fa-chart-column" style="margin-right:6px; color:var(--accent);"></i>${post.poll.question}</div>`;
         
@@ -970,9 +962,17 @@ function createPostElement(post) {
             const pct = totalVoters > 0 ? Math.round((opt.voters.length / totalVoters) * 100) : 0;
             const isVoted = opt.voters.includes(currentFeedCharId);
             
+            // Admin hover popup (only for admins)
+            const adminPopup = IS_ADMIN ? `
+                <div class="poll-admin-popup">
+                    <button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 1)">+1 Vote</button>
+                    <button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 10)">+10 Votes</button>
+                    <button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 100)">+100 Votes</button>
+                </div>` : '';
+            
             if(hasVoted) {
                 pollHTML += `
-                    <div class="poll-option">
+                    <div class="poll-option poll-option-wrap">
                         <div class="poll-results-bar ${isVoted ? 'poll-voted-bar' : ''}">
                             <div class="poll-bar-fill" style="width:${pct}%"></div>
                             <div class="poll-result-text">
@@ -980,19 +980,20 @@ function createPostElement(post) {
                                 <span><strong>${pct}%</strong> <span style="opacity:0.6">(${opt.voters.length})</span></span>
                             </div>
                         </div>
+                        ${adminPopup}
                     </div>`;
             } else {
                 pollHTML += `
-                    <div class="poll-option">
+                    <div class="poll-option poll-option-wrap">
                         <button class="poll-option-btn" onclick="event.stopPropagation(); votePoll('${post._id}', ${idx})">
                             ${opt.text}
                         </button>
+                        ${adminPopup}
                     </div>`;
             }
         });
         
-        const totalLabel = `<div class="poll-total">${totalVoters} vote${totalVoters !== 1 ? 's' : ''}</div>`;
-        pollHTML += totalLabel + adminVoteControls + `</div>`;
+        pollHTML += `<div class="poll-total">${totalVoters} vote${totalVoters !== 1 ? 's' : ''}</div></div>`;
     }
     
     div.innerHTML = `${delBtn}
@@ -1033,8 +1034,14 @@ function openNotifications() {
 }
 function closeNotifications() { document.getElementById('notifications-modal').classList.add('hidden'); }
 
-// Close feed char dropdown when clicking outside
+// Close nav char dropdown when clicking outside
 document.addEventListener('click', (e) => {
+    const navSelector = document.getElementById('nav-char-selector');
+    if(navSelector && !navSelector.contains(e.target)) {
+        const dd = document.getElementById('nav-char-dropdown');
+        if(dd) dd.classList.add('hidden');
+    }
+    // ...existing feed char dropdown close logic...
     const wrapper = document.getElementById('feed-char-avatar-wrapper');
     if(wrapper && !wrapper.contains(e.target)) {
         const dd = document.getElementById('feed-char-dropdown');
