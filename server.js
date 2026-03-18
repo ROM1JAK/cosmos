@@ -1,24 +1,17 @@
-import express from 'express';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
-import mongoose from 'mongoose';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+const express = require('express');
 const app = express();
-const http = createServer(app);
-const io = new Server(http, { maxHttpBufferSize: 10e6 });
+const http = require('http').createServer(app);
+const io = require('socket.io')(http, { maxHttpBufferSize: 10e6 }); 
+const mongoose = require('mongoose');
 
 app.use(express.static(__dirname));
 
 // CONFIGURATION
 const ADMIN_CODE = "ADMIN"; 
-const mongoURI = process.env.MONGO_URI || "mongodb://localhost:27017/convsmos"; 
+const mongoURI = process.env.MONGO_URI; 
 
-mongoose.connect(mongoURI)
+if (!mongoURI) console.error("ERREUR : Variable MONGO_URI manquante.");
+else mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
     .then(() => console.log('Connecté à MongoDB.'))
     .catch(err => console.error("Erreur MongoDB:", err));
 
@@ -113,6 +106,7 @@ async function createNotification(targetId, type, content, fromName) {
 
 io.on('connection', async (socket) => {
   
+  // --- LOGIN ---
   socket.on('login_request', async ({ username, code }) => {
       try {
           let user = await User.findOne({ username: username });
@@ -138,21 +132,9 @@ io.on('connection', async (socket) => {
           onlineUsers[socket.id] = user.username;
           broadcastUserList();
 
-          socket.emit('login_success', { 
-              username: user.username, 
-              userId: user.secretCode, 
-              isAdmin: user.isAdmin, 
-              uiTheme: user.uiTheme || 'default' 
-          });
+          socket.emit('login_success', { username: user.username, userId: user.secretCode, isAdmin: user.isAdmin, uiTheme: user.uiTheme || 'default' });
 
       } catch (e) { console.error(e); socket.emit('login_error', "Erreur serveur."); }
-  });
-
-  socket.on('save_theme', async ({ userId, theme }) => {
-      try {
-          await User.findOneAndUpdate({ secretCode: userId }, { uiTheme: theme });
-          socket.emit('theme_saved', theme);
-      } catch (e) { console.error(e); }
   });
 
   socket.on('change_username', async ({ userId, newUsername }) => {
@@ -239,16 +221,21 @@ io.on('connection', async (socket) => {
   socket.on('follow_character', async ({ followerCharId, targetCharId }) => {
       const targetChar = await Character.findById(targetCharId);
       const followerChar = await Character.findById(followerCharId);
+      
       if(!targetChar || !followerChar) return;
       if(String(followerChar._id) === String(targetChar._id)) return;
+
       const index = targetChar.followers.indexOf(followerCharId);
+      
       if(index === -1) {
           targetChar.followers.push(followerCharId);
           await createNotification(targetChar.ownerId, 'follow', `(${followerChar.name}) vous suit désormais`, followerChar.ownerUsername);
       } else {
           targetChar.followers.splice(index, 1);
       }
+      
       await targetChar.save();
+      
       const postCount = await Post.countDocuments({ authorCharId: targetChar._id });
       const charData = targetChar.toObject();
       charData.postCount = postCount;
@@ -288,6 +275,10 @@ io.on('connection', async (socket) => {
       const contacts = new Set(); messages.forEach(msg => { const other = (msg.senderName === username) ? msg.targetName : msg.senderName; if(other) contacts.add(other); });
       socket.emit('dm_contacts_data', Array.from(contacts));
   });
+  socket.on('dm_delete_history', async ({ userId, targetName }) => {
+      await Message.deleteMany({ $or: [ { ownerId: userId, targetName: targetName }, { targetName: targetName, ownerId: userId } ] }); 
+      io.emit('force_history_refresh', { roomId: 'global' }); 
+  });
 
   socket.on('send_dm', async (data) => {
       const senderUser = await User.findOne({ username: data.sender });
@@ -320,15 +311,19 @@ io.on('connection', async (socket) => {
   socket.on('create_post', async (postData) => {
       const newPost = new Post(postData);
       const savedPost = await newPost.save();
+      
       let displayPost = savedPost.toObject();
       if(displayPost.isAnonymous) {
           displayPost.authorName = "Source Anonyme";
           displayPost.authorAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E";
           displayPost.authorRole = "Leak";
       }
+      
       io.emit('new_post', displayPost);
+      
       let authorChar = null;
       if(postData.authorCharId) authorChar = await Character.findById(postData.authorCharId);
+      
       if(authorChar && authorChar.followers.length > 0) {
           const followersChars = await Character.find({ _id: { $in: authorChar.followers } });
           const notifiedOwners = new Set();
@@ -346,12 +341,15 @@ io.on('connection', async (socket) => {
   socket.on('like_post', async ({ postId, charId }) => { 
       const post = await Post.findById(postId);
       if(!post) return;
+      
       const index = post.likes.indexOf(charId);
       let action = 'unlike';
       if(index === -1) { post.likes.push(charId); action = 'like'; } 
       else { post.likes.splice(index, 1); }
+      
       await post.save();
       io.emit('post_updated', post);
+
       if (action === 'like' && post.ownerId) {
            const likerChar = await Character.findById(charId);
            const name = likerChar ? likerChar.name : "Inconnu";
@@ -366,6 +364,7 @@ io.on('connection', async (socket) => {
       post.comments.push(comment);
       await post.save();
       io.emit('post_updated', post);
+      
       if (post.ownerId !== comment.ownerId) {
           await createNotification(post.ownerId, 'reply', `(${comment.authorName}) a commenté votre post`, "Feed");
       }
@@ -382,18 +381,31 @@ io.on('connection', async (socket) => {
   socket.on('vote_poll', async ({ postId, optionIndex, charId }) => {
       const post = await Post.findById(postId);
       if(!post || !post.poll || !post.poll.options[optionIndex]) return;
+      
       const option = post.poll.options[optionIndex];
       const voterIndex = option.voters.indexOf(charId);
-      if(voterIndex === -1) { option.voters.push(charId); } 
-      else { option.voters.splice(voterIndex, 1); }
+      
+      if(voterIndex === -1) {
+          option.voters.push(charId);
+      } else {
+          option.voters.splice(voterIndex, 1);
+      }
+      
       await post.save();
       io.emit('post_updated', post);
   });
 
-  socket.on('admin_inject_vote', async ({ postId, optionIndex, fakeId }) => {
+  // CORRECTION 3 : INJECTION DE VOTES EN MASSE (Paramètre Count)
+  socket.on('admin_inject_vote', async ({ postId, optionIndex, count }) => {
       const post = await Post.findById(postId);
       if(!post || !post.poll || !post.poll.options[optionIndex]) return;
-      post.poll.options[optionIndex].voters.push(fakeId);
+      
+      const loopCount = count || 1;
+      for (let i = 0; i < loopCount; i++) {
+          const fakeId = 'injected_' + Date.now() + '_' + Math.random().toString(36).substr(2,5) + i;
+          post.poll.options[optionIndex].voters.push(fakeId);
+      }
+      
       await post.save();
       io.emit('post_updated', post);
   });
@@ -401,10 +413,14 @@ io.on('connection', async (socket) => {
   socket.on('mark_notifications_read', async (userId) => { await Notification.updateMany({ targetOwnerId: userId, isRead: false }, { isRead: true }); socket.emit('notifications_read_confirmed'); });
   socket.on('typing_start', (data) => { socket.to(data.roomId).emit('display_typing', data); });
   socket.on('typing_stop', (data) => { socket.to(data.roomId).emit('hide_typing', data); });
+  socket.on('save_theme', async ({ userId, theme }) => {
+      await User.findOneAndUpdate({ secretCode: userId }, { uiTheme: theme });
+      socket.emit('theme_saved', theme);
+  });
 
   socket.on('typing_feed_start', (data) => { socket.broadcast.emit('display_feed_typing', data); });
   socket.on('typing_feed_stop', (data) => { socket.broadcast.emit('hide_feed_typing', data); });
 });
 
 const port = process.env.PORT || 3000;
-http.listen(port, "0.0.0.0", () => { console.log(`Serveur prêt : ${port}`); });
+http.listen(port, () => { console.log(`Serveur prêt : ${port}`); });
