@@ -19,7 +19,8 @@ else mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: tru
 const UserSchema = new mongoose.Schema({
     username: { type: String, unique: true },
     secretCode: String, 
-    isAdmin: { type: Boolean, default: false }
+    isAdmin: { type: Boolean, default: false },
+    uiTheme: { type: String, default: 'default' }
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -131,7 +132,7 @@ io.on('connection', async (socket) => {
           onlineUsers[socket.id] = user.username;
           broadcastUserList();
 
-          socket.emit('login_success', { username: user.username, userId: user.secretCode, isAdmin: user.isAdmin });
+          socket.emit('login_success', { username: user.username, userId: user.secretCode, isAdmin: user.isAdmin, uiTheme: user.uiTheme || 'default' });
 
       } catch (e) { console.error(e); socket.emit('login_error', "Erreur serveur."); }
   });
@@ -424,6 +425,13 @@ io.on('connection', async (socket) => {
   socket.on('mark_notifications_read', async (userId) => { await Notification.updateMany({ targetOwnerId: userId, isRead: false }, { isRead: true }); socket.emit('notifications_read_confirmed'); });
   socket.on('typing_start', (data) => { socket.to(data.roomId).emit('display_typing', data); });
   socket.on('typing_stop', (data) => { socket.to(data.roomId).emit('hide_typing', data); });
+  socket.on('save_theme', async ({ userId, theme }) => {
+      await User.findOneAndUpdate({ secretCode: userId }, { uiTheme: theme });
+      socket.emit('theme_saved', theme);
+  });
+
+  socket.on('typing_feed_start', (data) => { socket.broadcast.emit('display_feed_typing', data); });
+  socket.on('typing_feed_stop', (data) => { socket.broadcast.emit('hide_feed_typing', data); });
 });
 
 const port = process.env.PORT || 3000;
