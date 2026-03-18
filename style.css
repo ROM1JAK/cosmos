@@ -745,3 +745,115 @@ input, textarea, select { transition: border-color 0.2s; }
 
 /* Hide old flat admin bar */
 .poll-admin-bar { display: none !important; }
+
+/* THEMES */
+body[data-theme="matrix"] {
+  --accent: #00d4aa;
+  --accent-glow: rgba(0, 212, 170, 0.35);
+  --accent-muted: rgba(0, 212, 170, 0.15);
+  --accent-soft: #33e8c0;
+}
+body[data-theme="blood"] {
+  --accent: #ff4757;
+  --accent-glow: rgba(255, 71, 87, 0.35);
+  --accent-muted: rgba(255, 71, 87, 0.15);
+  --accent-soft: #ff6b7a;
+}
+body[data-theme="cyber"] {
+  --accent: #f9ca24;
+  --accent-glow: rgba(249, 202, 36, 0.35);
+  --accent-muted: rgba(249, 202, 36, 0.15);
+  --accent-soft: #fbd94a;
+}
+body[data-theme="rose"] {
+  --accent: #fd79a8;
+  --accent-glow: rgba(253, 121, 168, 0.35);
+  --accent-muted: rgba(253, 121, 168, 0.15);
+  --accent-soft: #fe9ec0;
+}
+
+/* Theme swatches */
+.theme-swatch {
+  background: var(--swatch);
+  border: 2px solid transparent;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-display);
+  transition: all 0.2s;
+  opacity: 0.7;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+.theme-swatch:hover { opacity: 1; transform: scale(1.05); }
+.theme-swatch.active { opacity: 1; border-color: white; box-shadow: 0 0 12px var(--swatch); }
+
+/* ═══════════════════════════════════════
+   MODE JOURNALISTE — POST ARTICLE
+═══════════════════════════════════════ */
+.post-article {
+  padding: 0 !important;
+  overflow: hidden;
+}
+.post-article .post-banner {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  display: block;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
+.post-article .post-article-body {
+  padding: 18px 20px 16px;
+}
+.post-article .post-header {
+  padding: 0;
+  margin-bottom: 10px;
+}
+.post-article .post-article-title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: white;
+  margin-bottom: 8px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+.post-article .post-content {
+  text-align: justify;
+  font-size: 0.92rem;
+  line-height: 1.7;
+  color: var(--text-normal);
+  margin-bottom: 14px;
+}
+.post-article .post-actions {
+  padding: 12px 0 0;
+  margin: 0;
+}
+.post-article .post-media {
+  display: none; /* hidden — shown as banner instead */
+}
+
+/* ═══════════════════════════════════════
+   FEED TYPING INDICATOR
+═══════════════════════════════════════ */
+.feed-typing-indicator {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 6px 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-style: italic;
+  transition: opacity 0.3s;
+}
+.feed-typing-indicator.hidden { display: none; }
+.feed-typing-indicator::before {
+  content: '';
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: typingBounce 1.2s infinite;
+}
