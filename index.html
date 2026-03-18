@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="icone.png">
 </head>
-<body>
+<body data-theme="default">
 
     <nav id="top-nav">
         <button class="nav-btn active" id="btn-view-chat" onclick="switchView('chat')"><i class="fa-solid fa-comments"></i> Chat</button>
@@ -37,6 +37,17 @@
             <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                 <h2>Profil</h2> <button onclick="closeUserSettingsModal()" class="btn-secondary">X</button>
             </div>
+            
+            <div style="margin-bottom:15px; text-align:left;">
+                <p style="font-size:0.8rem; color:var(--text-muted); margin:0 0 8px; font-weight:bold; text-transform:uppercase;">Identité Visuelle</p>
+                <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+                    <button class="theme-swatch" style="--swatch:#6c63ff" onclick="changeTheme('default')">Cosmos</button>
+                    <button class="theme-swatch" style="--swatch:#00d4aa" onclick="changeTheme('matrix')">Matrice</button>
+                    <button class="theme-swatch" style="--swatch:#ff4757" onclick="changeTheme('blood')">Sang</button>
+                    <button class="theme-swatch" style="--swatch:#f9ca24" onclick="changeTheme('cyber')">Cyber</button>
+                </div>
+            </div>
+            
             <input type="text" id="settingsUsernameInput" class="modal-input" placeholder="Pseudo">
             <button onclick="submitUsernameChange()" class="btn-primary full-width" style="margin-bottom:10px;">Changer Pseudo</button>
             <div class="password-wrapper" style="margin-bottom:10px;">
@@ -78,24 +89,15 @@
             <h2 id="profileName">Nom</h2>
             <span id="profileRole" class="profile-role-tag">Rôle</span>
         </div>
-        
         <div class="profile-stats">
-            <div class="stat-item">
-                <span id="profilePostCount" class="stat-value">0</span>
-                <span class="stat-label">Posts</span>
-            </div>
-            <div class="stat-item" id="btn-view-followers" style="cursor:pointer;">
-                <span id="profileFollowersCount" class="stat-value">0</span>
-                <span class="stat-label">Abonnés</span>
-            </div>
+            <div class="stat-item"><span id="profilePostCount" class="stat-value">0</span><span class="stat-label">Posts</span></div>
+            <div class="stat-item" id="btn-view-followers" style="cursor:pointer;"><span id="profileFollowersCount" class="stat-value">0</span><span class="stat-label">Abonnés</span></div>
         </div>
-
         <div class="profile-body">
             <div style="font-size:0.8rem; color:#666; margin-bottom:10px; font-weight:bold;">À PROPOS</div>
             <p id="profileDesc" class="profile-desc-text"></p>
             <div id="profileOwner" style="margin-top:10px; color:#444; font-size:0.8em;"></div>
         </div>
-
         <div class="profile-actions-footer">
             <button id="btn-dm-profile" class="btn-primary full-width">Message Privé</button>
             <button id="btn-sub-profile" class="btn-secondary full-width">Suivre</button>
@@ -135,33 +137,27 @@
                         <button id="btn-account-main" class="btn-login" onclick="openAccountUI()">Connexion</button>
                     </div>
                     <div class="sidebar-section">
-                        <h3>SALONS</h3>
-                        <div id="roomList"></div>
-                        <button class="btn-add-room" onclick="createRoomPrompt()">+ Créer Salon</button>
+                        <h3>SALONS</h3><div id="roomList"></div><button class="btn-add-room" onclick="createRoomPrompt()">+ Créer Salon</button>
                     </div>
                     <div class="sidebar-section">
                         <h3>PERSONNAGES</h3>
                         <div id="myCharList"></div>
                         <div class="create-form-toggle" onclick="toggleCreateForm()">+ Nouveau</div>
                         <div id="create-char-form" class="create-form hidden">
-                            <input type="text" id="newCharName" placeholder="Nom">
-                            <input type="text" id="newCharRole" placeholder="Rôle">
+                            <input type="text" id="newCharName" placeholder="Nom"><input type="text" id="newCharRole" placeholder="Rôle">
                             <label class="file-upload-label"><span>Image</span><input type="file" id="newCharFile" accept="image/*"></label>
-                            <input type="hidden" id="newCharBase64">
-                            <textarea id="newCharDesc" placeholder="Bio..." rows="2"></textarea>
+                            <input type="hidden" id="newCharBase64"><textarea id="newCharDesc" placeholder="Bio..." rows="2"></textarea>
                             <input type="color" id="newCharColor" value="#5c7cfa" style="width:100%; height:30px; border:none;">
                             <input type="text" id="newCharPartyName" placeholder="Parti Politique (optionnel)">
                             <label class="file-upload-label"><span>Logo du Parti</span><input type="file" id="newCharPartyFile" accept="image/*"></label>
-                            <input type="hidden" id="newCharPartyBase64">
-                            <button onclick="createCharacter()" class="btn-primary">Créer</button>
+                            <input type="hidden" id="newCharPartyBase64"><button onclick="createCharacter()" class="btn-primary">Créer</button>
                         </div>
                         <div id="edit-char-form" class="create-form hidden">
                             <h4 style="margin:0 0 5px 0; color:#eab308;">Modifier</h4>
                             <input type="hidden" id="editCharId"><input type="hidden" id="editCharOriginalName">
                             <input type="text" id="editCharName" placeholder="Nom"><input type="text" id="editCharRole" placeholder="Rôle">
                             <label class="file-upload-label"><span>Changer Image</span><input type="file" id="editCharFile" accept="image/*"></label>
-                            <input type="hidden" id="editCharBase64">
-                            <textarea id="editCharDesc" rows="2"></textarea>
+                            <input type="hidden" id="editCharBase64"><textarea id="editCharDesc" rows="2"></textarea>
                             <input type="color" id="editCharColor" style="width:100%; height:30px; border:none;">
                             <input type="text" id="editCharPartyName" placeholder="Parti Politique (optionnel)">
                             <label class="file-upload-label"><span>Logo du Parti</span><input type="file" id="editCharPartyFile" accept="image/*"></label>
@@ -190,8 +186,7 @@
                             <div id="char-bar-horizontal" class="char-bar-content hidden-bar"></div>
                         </div>
                         <div id="context-bar" class="hidden">
-                            <div class="context-info"><span id="context-icon"></span> <span id="context-text"></span></div>
-                            <button class="btn-close-reply" onclick="cancelContext()">X</button>
+                            <div class="context-info"><span id="context-icon"></span> <span id="context-text"></span></div><button class="btn-close-reply" onclick="cancelContext()">X</button>
                         </div>
                         <div id="mention-suggestions" class="hidden"></div>
                         <div id="chat-staging" class="chat-staging hidden"></div>
@@ -216,10 +211,13 @@
         <div id="view-feed" class="view-section hidden">
             <div class="feed-view-header">
                 <h3 style="margin:0; font-size:1.1rem;">Flux Social</h3>
-                <div id="feed-char-avatar-wrapper" style="position:relative;"></div>
             </div>
 
             <div class="feed-container">
+                <div style="display:flex; justify-content:flex-end; margin-bottom: 8px;">
+                    <div id="feed-char-avatar-wrapper" style="position:relative;"></div>
+                </div>
+                
                 <div class="post-create-box">
                     <textarea id="postContent" placeholder="Quoi de neuf ?"></textarea>
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
@@ -241,16 +239,15 @@
                         <button onclick="closePollUI()" class="btn-secondary full-width">Annuler</button>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center; font-size:0.85rem;">
-                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
-                            <input type="checkbox" id="postAnonymous"> 🕵️ Anonyme (Leak)
-                        </label>
-                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer; display:none;" id="breakingNewsLabel">
-                            <input type="checkbox" id="postBreakingNews"> 🚨 Breaking News
-                        </label>
+                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" id="postAnonymous"> 🕵️ Anonyme (Leak)</label>
+                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer; display:none;" id="breakingNewsLabel"><input type="checkbox" id="postBreakingNews"> 🚨 Breaking News</label>
                     </div>
                     <input type="hidden" id="postMediaUrl">
                     <input type="hidden" id="pollData">
                 </div>
+                
+                <div id="feed-typing-indicator" class="feed-typing-indicator hidden"></div>
+                
                 <div id="feed-stream"></div>
             </div>
         </div>
