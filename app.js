@@ -1,5 +1,3 @@
-
-
 var socket = io();
 const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
 
@@ -422,47 +420,65 @@ function toggleCharBar() {
 function updateUI() {
     const list = document.getElementById('myCharList');
     const bar = document.getElementById('char-bar-horizontal');
-    const feedSel = document.getElementById('activeFeedCharSelect');
-    list.innerHTML = ""; bar.innerHTML = ""; feedSel.innerHTML = "";
+    list.innerHTML = ""; bar.innerHTML = "";
     
     // Narrateur Admin
     if(IS_ADMIN) {
         bar.innerHTML += `<img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" id="avatar-opt-narrateur" class="avatar-choice" title="Narrateur" onclick="selectCharacter('narrateur')">`;
     }
-    
-    // Feed Dropdown Default
-    if (myCharacters.length === 0) {
-        feedSel.innerHTML = '<option value="">Aucun perso</option>';
-        currentFeedCharId = null;
-    }
 
     myCharacters.forEach((char, index) => {
         list.innerHTML += `<div class="char-item"><img src="${char.avatar}" class="mini-avatar"><div class="char-info"><div class="char-name-list" style="color:${char.color}">${char.name}</div><div class="char-role-list">${char.role}</div></div><div class="char-actions"><button class="btn-mini-action" onclick="prepareEditCharacter('${char._id}')"><i class="fa-solid fa-gear"></i></button><button class="btn-mini-action" onclick="deleteCharacter('${char._id}')" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button></div></div>`;
         bar.innerHTML += `<img src="${char.avatar}" id="avatar-opt-${char._id}" class="avatar-choice" title="${char.name}" onclick="selectCharacter('${char._id}')">`;
-        
-        // Feed Selector Option
-        const opt = document.createElement('option');
-        opt.value = char._id;
-        opt.text = char.name;
-        opt.dataset.avatar = char.avatar;
-        opt.dataset.role = char.role;
-        feedSel.appendChild(opt);
-        
-        // Select first by default if not set
         if (index === 0 && !currentFeedCharId) currentFeedCharId = char._id;
     });
 
     if (!currentSelectedChar) { if(myCharacters.length > 0) selectCharacter(myCharacters[0]._id); else if(IS_ADMIN) selectCharacter('narrateur'); }
     else selectCharacter(currentSelectedChar._id);
-    
-    // Listen to feed selector changes
-    feedSel.onchange = (e) => { 
-        currentFeedCharId = e.target.value;
-        updateBreakingNewsVisibility();
-    };
-    if(currentFeedCharId) feedSel.value = currentFeedCharId;
-    
+
+    updateFeedCharUI();
     updateBreakingNewsVisibility();
+}
+
+function updateFeedCharUI() {
+    // Rebuild feed character dropdown
+    const container = document.getElementById('feed-char-avatar-wrapper');
+    if(!container) return;
+    
+    const char = currentFeedCharId ? myCharacters.find(c => c._id === currentFeedCharId) : null;
+    const avatarSrc = char ? char.avatar : 'https://cdn-icons-png.flaticon.com/512/1144/1144760.png';
+    const charName = char ? char.name : 'Aucun';
+    
+    container.innerHTML = `
+        <div class="feed-char-trigger" onclick="toggleFeedCharDropdown()" title="Changer de personnage">
+            <img src="${avatarSrc}" class="feed-char-avatar-btn" id="feed-active-avatar">
+            <i class="fa-solid fa-chevron-down feed-char-chevron"></i>
+        </div>
+        <div id="feed-char-dropdown" class="feed-char-dropdown hidden">
+            ${myCharacters.map(c => `
+                <div class="feed-char-option ${c._id === currentFeedCharId ? 'active' : ''}" onclick="selectFeedChar('${c._id}')">
+                    <img src="${c.avatar}" class="feed-char-opt-avatar">
+                    <div>
+                        <div class="feed-char-opt-name" style="color:${c.color}">${c.name}</div>
+                        <div class="feed-char-opt-role">${c.role}</div>
+                    </div>
+                    ${c._id === currentFeedCharId ? '<i class="fa-solid fa-check" style="margin-left:auto; color:var(--accent);"></i>' : ''}
+                </div>`).join('')}
+        </div>`;
+}
+
+function toggleFeedCharDropdown() {
+    const dd = document.getElementById('feed-char-dropdown');
+    if(dd) dd.classList.toggle('hidden');
+}
+
+function selectFeedChar(charId) {
+    currentFeedCharId = charId;
+    const dd = document.getElementById('feed-char-dropdown');
+    if(dd) dd.classList.add('hidden');
+    updateFeedCharUI();
+    updateBreakingNewsVisibility();
+    loadFeed();
 }
 
 function updateBreakingNewsVisibility() {
@@ -590,7 +606,7 @@ async function sendMessage() {
     if (currentContext && currentContext.type === 'edit') { socket.emit('edit_message', { id: currentContext.data.id, newContent: content }); txt.value = ''; cancelContext(); return; }
     if(!currentSelectedChar) return alert("Perso requis !");
     
-    const baseMsg = { senderName: currentSelectedChar.name, senderColor: currentSelectedChar.color || "#fff", senderAvatar: currentSelectedChar.avatar, senderRole: currentSelectedChar.role, ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null };
+    const baseMsg = { senderName: currentSelectedChar.name, senderColor: currentSelectedChar.color || "#fff", senderAvatar: currentSelectedChar.avatar, senderRole: currentSelectedChar.role, partyName: currentSelectedChar.partyName || null, partyLogo: currentSelectedChar.partyLogo || null, ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: (currentContext && currentContext.type === 'reply') ? { id: currentContext.data.id, author: currentContext.data.author, content: currentContext.data.content } : null };
     if (finalMediaUrl) socket.emit('message_rp', { ...baseMsg, content: finalMediaUrl, type: finalMediaType });
     if (content) socket.emit('message_rp', { ...baseMsg, content: content, type: "text" });
     txt.value = ''; cancelContext();
@@ -677,7 +693,10 @@ function displayMessage(msg, isDm = false) {
     innerHTML += `<div class="msg-col-avatar">`;
     if(!isGroup) { innerHTML += `<img src="${senderAvatar}" class="avatar-img" ${avatarClick}>`; }
     innerHTML += `</div><div class="msg-col-content">`;
-    if(!isGroup) { innerHTML += `<div class="msg-header"><span class="char-name" style="color:${senderColor}" ${avatarClick}>${senderName}</span>${senderRole ? `<span class="char-role">${senderRole}</span>` : ''}<span class="timestamp">${msg.date}</span></div>`; }
+    if(!isGroup) { 
+        const partyBadgeHTML = (!isDm && msg.partyName && msg.partyLogo) ? `<span class="party-badge"><img src="${msg.partyLogo}" class="party-logo"> ${msg.partyName}</span>` : '';
+        innerHTML += `<div class="msg-header"><span class="char-name" style="color:${senderColor}" ${avatarClick}>${senderName}</span>${partyBadgeHTML}${senderRole ? `<span class="char-role">${senderRole}</span>` : ''}<span class="timestamp">${msg.date}</span></div>`; 
+    }
     innerHTML += contentHTML + editedTag;
     innerHTML += `</div>${actionsHTML}</div>`;
     div.innerHTML = innerHTML;
@@ -797,6 +816,16 @@ function submitPost() {
     pollOptions = [];
     document.getElementById('poll-creation-ui').classList.add('hidden');
     pollUIOpen = false;
+}
+
+function votePoll(postId, optionIndex) {
+    if(!currentFeedCharId) return alert("Sélectionnez un personnage dans le Feed !");
+    socket.emit('vote_poll', { postId, optionIndex, charId: currentFeedCharId });
+}
+function adminInjectVote(postId, optionIndex) {
+    if(!IS_ADMIN) return;
+    const fakeId = 'injected_' + Date.now() + '_' + Math.random().toString(36).substr(2,5);
+    socket.emit('admin_inject_vote', { postId, optionIndex, fakeId });
 }
 
 function toggleLike(id) { 
@@ -925,33 +954,45 @@ function createPostElement(post) {
         const totalVoters = post.poll.options.reduce((sum, opt) => sum + opt.voters.length, 0);
         const hasVoted = post.poll.options.some(opt => opt.voters.includes(currentFeedCharId));
         
+        const adminVoteControls = IS_ADMIN ? `
+            <div class="poll-admin-bar">
+                <span style="font-size:0.72rem; color:var(--text-muted); font-style:italic;">Admin — injecter votes :</span>
+                ${post.poll.options.map((opt, idx) => `
+                    <button class="poll-admin-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx})">
+                        +1 "${opt.text.substring(0,15)}${opt.text.length>15?'…':''}"
+                    </button>`).join('')}
+            </div>` : '';
+        
         pollHTML = `<div class="poll-container">
-            <div class="poll-question">${post.poll.question}</div>`;
+            <div class="poll-question"><i class="fa-solid fa-chart-column" style="margin-right:6px; color:var(--accent);"></i>${post.poll.question}</div>`;
         
         post.poll.options.forEach((opt, idx) => {
             const pct = totalVoters > 0 ? Math.round((opt.voters.length / totalVoters) * 100) : 0;
             const isVoted = opt.voters.includes(currentFeedCharId);
             
-            if(hasVoted || totalVoters === 0) {
+            if(hasVoted) {
                 pollHTML += `
                     <div class="poll-option">
-                        <div class="poll-results" style="width: ${pct}%;">
+                        <div class="poll-results-bar ${isVoted ? 'poll-voted-bar' : ''}">
+                            <div class="poll-bar-fill" style="width:${pct}%"></div>
                             <div class="poll-result-text">
-                                <span>${opt.text}</span>
-                                <span>${pct}%</span>
+                                <span>${isVoted ? '✓ ' : ''}${opt.text}</span>
+                                <span><strong>${pct}%</strong> <span style="opacity:0.6">(${opt.voters.length})</span></span>
                             </div>
                         </div>
                     </div>`;
             } else {
                 pollHTML += `
                     <div class="poll-option">
-                        <button class="poll-option-btn" onclick="event.stopPropagation(); socket.emit('vote_poll', { postId: '${post._id}', optionIndex: ${idx}, charId: '${currentFeedCharId}' })">
+                        <button class="poll-option-btn" onclick="event.stopPropagation(); votePoll('${post._id}', ${idx})">
                             ${opt.text}
                         </button>
                     </div>`;
             }
         });
-        pollHTML += `</div>`;
+        
+        const totalLabel = `<div class="poll-total">${totalVoters} vote${totalVoters !== 1 ? 's' : ''}</div>`;
+        pollHTML += totalLabel + adminVoteControls + `</div>`;
     }
     
     div.innerHTML = `${delBtn}
@@ -991,3 +1032,12 @@ function openNotifications() {
     socket.emit('mark_notifications_read', PLAYER_ID); notifications.forEach(n=>n.isRead=true); updateNotificationBadge();
 }
 function closeNotifications() { document.getElementById('notifications-modal').classList.add('hidden'); }
+
+// Close feed char dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const wrapper = document.getElementById('feed-char-avatar-wrapper');
+    if(wrapper && !wrapper.contains(e.target)) {
+        const dd = document.getElementById('feed-char-dropdown');
+        if(dd) dd.classList.add('hidden');
+    }
+});
