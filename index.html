@@ -19,14 +19,6 @@
             <i class="fa-solid fa-bell"></i>
             <span id="notif-badge" class="hidden"></span>
         </button>
-        <!-- Character selector in nav -->
-        <div id="nav-char-selector" style="position:relative; margin-left:auto;">
-            <div class="nav-char-trigger" onclick="toggleNavCharDropdown()" title="Changer de personnage">
-                <img id="nav-active-avatar" src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" class="nav-char-avatar">
-                <i class="fa-solid fa-chevron-down nav-char-chevron"></i>
-            </div>
-            <div id="nav-char-dropdown" class="nav-char-dropdown hidden"></div>
-        </div>
     </nav>
 
     <div id="mobile-overlay" onclick="toggleSidebar()"></div>
@@ -54,6 +46,17 @@
                 <button onclick="toggleSecretVisibility()" class="btn-eye"><i class="fa-solid fa-eye"></i></button>
             </div>
             <button onclick="toggleNotifications()" id="btn-notif-toggle" class="btn-secondary full-width">Notifs</button>
+            <!-- THEME PICKER -->
+            <div style="margin-top:14px; margin-bottom:6px; text-align:left;">
+                <div style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:8px; font-weight:700;">THÈME</div>
+                <div id="theme-picker" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+                    <button class="theme-swatch" data-theme="default" style="--swatch:#6c63ff" onclick="applyTheme('default')">Cosmos</button>
+                    <button class="theme-swatch" data-theme="matrix" style="--swatch:#00d4aa" onclick="applyTheme('matrix')">Matrice</button>
+                    <button class="theme-swatch" data-theme="blood" style="--swatch:#ff4757" onclick="applyTheme('blood')">Sang</button>
+                    <button class="theme-swatch" data-theme="cyber" style="--swatch:#f9ca24" onclick="applyTheme('cyber')">Cyberpunk</button>
+                    <button class="theme-swatch" data-theme="rose" style="--swatch:#fd79a8" onclick="applyTheme('rose')">Rose</button>
+                </div>
+            </div>
             <p id="settings-msg" style="height:1.2em; color:#23a559; margin:5px 0;"></p>
             <button onclick="logoutUser()" class="btn-logout">Déconnexion</button>
         </div>
@@ -229,8 +232,7 @@
             <!-- HEADER DU FEED (IDENTITÉ) -->
             <div class="feed-view-header">
                 <h3 style="margin:0; font-size:1.1rem;">Flux Social</h3>
-                <!-- feed-char-avatar-wrapper kept for JS compatibility but hidden -->
-                <div id="feed-char-avatar-wrapper" style="display:none; position:relative;"></div>
+                <div id="feed-char-avatar-wrapper" style="position:relative;"></div>
             </div>
 
             <div class="feed-container">
@@ -265,6 +267,8 @@
                     <input type="hidden" id="postMediaUrl">
                     <input type="hidden" id="pollData">
                 </div>
+                <!-- Feed typing indicator -->
+                <div id="feed-typing-indicator" class="feed-typing-indicator hidden"></div>
                 <div id="feed-stream"></div>
             </div>
         </div>
