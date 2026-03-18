@@ -20,7 +20,7 @@ const UserSchema = new mongoose.Schema({
     username: { type: String, unique: true },
     secretCode: String, 
     isAdmin: { type: Boolean, default: false },
-    uiTheme: { type: String, default: 'default' }
+    uiTheme: { type: String, default: 'default' } // THÈMES
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -28,8 +28,7 @@ const CharacterSchema = new mongoose.Schema({
     name: String, color: String, avatar: String, role: String, 
     ownerId: String, ownerUsername: String, description: String,
     followers: [String],
-    partyName: String,
-    partyLogo: String,
+    partyName: String, partyLogo: String,
     isOfficial: { type: Boolean, default: false }
 });
 const Character = mongoose.model('Character', CharacterSchema);
@@ -37,9 +36,7 @@ const Character = mongoose.model('Character', CharacterSchema);
 const MessageSchema = new mongoose.Schema({
     content: String, type: String, 
     senderName: String, senderColor: String, senderAvatar: String, senderRole: String, 
-    partyName: String, partyLogo: String,
-    ownerId: String,
-    targetName: String, targetOwnerId: String,
+    partyName: String, partyLogo: String, ownerId: String, targetName: String, targetOwnerId: String,
     roomId: { type: String, required: true },
     replyTo: { id: String, author: String, content: String },
     edited: { type: Boolean, default: false },
@@ -53,40 +50,21 @@ const RoomSchema = new mongoose.Schema({
 const Room = mongoose.model('Room', RoomSchema);
 
 const PostSchema = new mongoose.Schema({
-    content: String,
-    mediaUrl: String,
-    mediaType: String,
-    authorCharId: String,
-    authorName: String, authorAvatar: String, authorRole: String, authorColor: String, ownerId: String,
-    partyName: String,
-    partyLogo: String,
+    content: String, mediaUrl: String, mediaType: String,
+    authorCharId: String, authorName: String, authorAvatar: String, authorRole: String, authorColor: String, ownerId: String,
+    partyName: String, partyLogo: String,
     likes: [String], 
-    comments: [{
-        id: String, authorCharId: String, authorName: String, authorAvatar: String, content: String, 
-        mediaUrl: String, mediaType: String,
-        ownerId: String, date: String
-    }],
-    date: String,
-    timestamp: { type: Date, default: Date.now },
+    comments: [{ id: String, authorCharId: String, authorName: String, authorAvatar: String, content: String, mediaUrl: String, mediaType: String, ownerId: String, date: String }],
+    date: String, timestamp: { type: Date, default: Date.now },
     isAnonymous: { type: Boolean, default: false },
     isBreakingNews: { type: Boolean, default: false },
-    poll: {
-        question: String,
-        options: [{
-            text: String,
-            voters: [String]
-        }]
-    }
+    poll: { question: String, options: [{ text: String, voters: [String] }] }
 });
 const Post = mongoose.model('Post', PostSchema);
 
 const NotificationSchema = new mongoose.Schema({
-    targetOwnerId: String, 
-    type: String, 
-    content: String,
-    fromName: String,
-    isRead: { type: Boolean, default: false },
-    timestamp: { type: Date, default: Date.now }
+    targetOwnerId: String, type: String, content: String, fromName: String,
+    isRead: { type: Boolean, default: false }, timestamp: { type: Date, default: Date.now }
 });
 const Notification = mongoose.model('Notification', NotificationSchema);
 
@@ -106,34 +84,23 @@ async function createNotification(targetId, type, content, fromName) {
 
 io.on('connection', async (socket) => {
   
-  // --- LOGIN ---
   socket.on('login_request', async ({ username, code }) => {
       try {
           let user = await User.findOne({ username: username });
           const isAdmin = (code === ADMIN_CODE);
-
           if (user) {
-              if (user.secretCode !== code && !isAdmin) {
-                  socket.emit('login_error', "Mot de passe incorrect.");
-                  return;
-              }
+              if (user.secretCode !== code && !isAdmin) return socket.emit('login_error', "Mot de passe incorrect.");
               if(isAdmin && !user.isAdmin) { user.isAdmin = true; await user.save(); }
           } else {
               const existingCode = await User.findOne({ secretCode: code });
-              if(existingCode) {
-                   socket.emit('login_error', "Code déjà pris.");
-                   return;
-              }
+              if(existingCode) return socket.emit('login_error', "Code déjà pris.");
               user = new User({ username, secretCode: code, isAdmin });
               await user.save();
           }
-
           await Character.updateMany({ ownerId: code }, { ownerUsername: username });
           onlineUsers[socket.id] = user.username;
           broadcastUserList();
-
           socket.emit('login_success', { username: user.username, userId: user.secretCode, isAdmin: user.isAdmin, uiTheme: user.uiTheme || 'default' });
-
       } catch (e) { console.error(e); socket.emit('login_error', "Erreur serveur."); }
   });
 
@@ -177,8 +144,7 @@ io.on('connection', async (socket) => {
       const char = await Character.findOne({ name: charName }).sort({_id: -1});
       if(char) {
           const postCount = await Post.countDocuments({ authorCharId: char._id });
-          const charData = char.toObject();
-          charData.postCount = postCount;
+          const charData = char.toObject(); charData.postCount = postCount;
           socket.emit('char_profile_data', charData);
       }
   });
@@ -195,61 +161,33 @@ io.on('connection', async (socket) => {
   
   socket.on('edit_char', async (data) => {
       await Character.findByIdAndUpdate(data.charId, { 
-          name: data.newName, 
-          role: data.newRole, 
-          avatar: data.newAvatar, 
-          color: data.newColor, 
-          description: data.newDescription,
-          partyName: data.partyName,
-          partyLogo: data.partyLogo,
-          isOfficial: data.isOfficial
+          name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor, description: data.newDescription, partyName: data.partyName, partyLogo: data.partyLogo, isOfficial: data.isOfficial
       });
       await Message.updateMany({ senderName: data.originalName, ownerId: data.ownerId }, { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }});
       await Post.updateMany({ authorName: data.originalName, ownerId: data.ownerId }, { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor }});
-      
-      const myChars = await Character.find({ ownerId: data.ownerId });
-      socket.emit('my_chars_data', myChars);
+      socket.emit('my_chars_data', await Character.find({ ownerId: data.ownerId }));
       io.emit('force_history_refresh', { roomId: data.currentRoomId });
       io.emit('reload_posts'); 
   });
 
-  socket.on('delete_char', async (charId) => {
-      await Character.findByIdAndDelete(charId);
-      socket.emit('char_deleted_success', charId);
-  });
+  socket.on('delete_char', async (charId) => { await Character.findByIdAndDelete(charId); socket.emit('char_deleted_success', charId); });
 
   socket.on('follow_character', async ({ followerCharId, targetCharId }) => {
       const targetChar = await Character.findById(targetCharId);
       const followerChar = await Character.findById(followerCharId);
-      
-      if(!targetChar || !followerChar) return;
-      if(String(followerChar._id) === String(targetChar._id)) return;
-
+      if(!targetChar || !followerChar || String(followerChar._id) === String(targetChar._id)) return;
       const index = targetChar.followers.indexOf(followerCharId);
-      
-      if(index === -1) {
-          targetChar.followers.push(followerCharId);
-          await createNotification(targetChar.ownerId, 'follow', `(${followerChar.name}) vous suit désormais`, followerChar.ownerUsername);
-      } else {
-          targetChar.followers.splice(index, 1);
-      }
-      
+      if(index === -1) { targetChar.followers.push(followerCharId); await createNotification(targetChar.ownerId, 'follow', `(${followerChar.name}) vous suit désormais`, followerChar.ownerUsername); } 
+      else { targetChar.followers.splice(index, 1); }
       await targetChar.save();
-      
-      const postCount = await Post.countDocuments({ authorCharId: targetChar._id });
-      const charData = targetChar.toObject();
-      charData.postCount = postCount;
+      const charData = targetChar.toObject(); charData.postCount = await Post.countDocuments({ authorCharId: targetChar._id });
       socket.emit('char_profile_updated', charData);
   });
 
   socket.on('get_followers_list', async (targetCharId) => {
       const char = await Character.findById(targetCharId);
-      if(char && char.followers.length > 0) {
-          const followers = await Character.find({ _id: { $in: char.followers } }).select('name avatar role ownerUsername');
-          socket.emit('followers_list_data', followers);
-      } else {
-          socket.emit('followers_list_data', []);
-      }
+      if(char && char.followers.length > 0) socket.emit('followers_list_data', await Character.find({ _id: { $in: char.followers } }).select('name avatar role ownerUsername'));
+      else socket.emit('followers_list_data', []);
   });
 
   socket.on('create_room', async (roomData) => { await new Room(roomData).save(); io.emit('rooms_data', await Room.find()); });
@@ -261,10 +199,9 @@ io.on('connection', async (socket) => {
       const roomId = (typeof data === 'object') ? data.roomId : data;
       const requesterId = (typeof data === 'object') ? data.userId : null;
       const query = { roomId: roomId };
-      if (requesterId) { query.$or = [ { targetName: { $exists: false } }, { targetName: "" }, { ownerId: requesterId }, { targetOwnerId: requesterId } ]; } 
-      else { query.$or = [{ targetName: { $exists: false } }, { targetName: "" }]; }
-      const history = await Message.find(query).sort({ timestamp: 1 }).limit(200);
-      socket.emit('history_data', history);
+      if (requesterId) query.$or = [ { targetName: { $exists: false } }, { targetName: "" }, { ownerId: requesterId }, { targetOwnerId: requesterId } ];
+      else query.$or = [{ targetName: { $exists: false } }, { targetName: "" }];
+      socket.emit('history_data', await Message.find(query).sort({ timestamp: 1 }).limit(200));
   });
   socket.on('request_dm_history', async ({ myUsername, targetUsername }) => {
       const messages = await Message.find({ roomId: 'dm', $or: [ { senderName: myUsername, targetName: targetUsername }, { senderName: targetUsername, targetName: myUsername } ] }).sort({ timestamp: 1 });
@@ -296,8 +233,7 @@ io.on('connection', async (socket) => {
     if (!msgData.roomId) return; 
     if (msgData.senderName === "Narrateur") { const user = await User.findOne({ secretCode: msgData.ownerId }); if (!user || !user.isAdmin) return; }
     if (msgData.targetName) { const targetChar = await Character.findOne({ name: msgData.targetName }).sort({_id: -1}); if (targetChar) msgData.targetOwnerId = targetChar.ownerId; }
-    const newMessage = new Message(msgData);
-    const savedMsg = await newMessage.save();
+    const savedMsg = await new Message(msgData).save();
     io.to(msgData.roomId).emit('message_rp', savedMsg);
     if (msgData.replyTo && msgData.replyTo.id) {
         const originalMsg = await Message.findById(msgData.replyTo.id);
@@ -309,21 +245,16 @@ io.on('connection', async (socket) => {
   socket.on('admin_clear_room', async (roomId) => { await Message.deleteMany({ roomId: roomId }); io.to(roomId).emit('history_cleared'); });
 
   socket.on('create_post', async (postData) => {
-      const newPost = new Post(postData);
-      const savedPost = await newPost.save();
-      
+      const savedPost = await new Post(postData).save();
       let displayPost = savedPost.toObject();
       if(displayPost.isAnonymous) {
           displayPost.authorName = "Source Anonyme";
           displayPost.authorAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E";
           displayPost.authorRole = "Leak";
       }
-      
       io.emit('new_post', displayPost);
       
-      let authorChar = null;
-      if(postData.authorCharId) authorChar = await Character.findById(postData.authorCharId);
-      
+      let authorChar = postData.authorCharId ? await Character.findById(postData.authorCharId) : null;
       if(authorChar && authorChar.followers.length > 0) {
           const followersChars = await Character.find({ _id: { $in: authorChar.followers } });
           const notifiedOwners = new Set();
@@ -341,19 +272,15 @@ io.on('connection', async (socket) => {
   socket.on('like_post', async ({ postId, charId }) => { 
       const post = await Post.findById(postId);
       if(!post) return;
-      
       const index = post.likes.indexOf(charId);
       let action = 'unlike';
       if(index === -1) { post.likes.push(charId); action = 'like'; } 
       else { post.likes.splice(index, 1); }
-      
       await post.save();
       io.emit('post_updated', post);
-
       if (action === 'like' && post.ownerId) {
            const likerChar = await Character.findById(charId);
-           const name = likerChar ? likerChar.name : "Inconnu";
-           await createNotification(post.ownerId, 'like', `(${name}) a aimé votre post`, "Feed");
+           await createNotification(post.ownerId, 'like', `(${likerChar ? likerChar.name : "Inconnu"}) a aimé votre post`, "Feed");
       }
   });
 
@@ -364,12 +291,8 @@ io.on('connection', async (socket) => {
       post.comments.push(comment);
       await post.save();
       io.emit('post_updated', post);
-      
-      if (post.ownerId !== comment.ownerId) {
-          await createNotification(post.ownerId, 'reply', `(${comment.authorName}) a commenté votre post`, "Feed");
-      }
+      if (post.ownerId !== comment.ownerId) await createNotification(post.ownerId, 'reply', `(${comment.authorName}) a commenté votre post`, "Feed");
   });
-
   socket.on('delete_comment', async ({ postId, commentId }) => {
       const post = await Post.findById(postId);
       if(!post) return;
@@ -381,31 +304,21 @@ io.on('connection', async (socket) => {
   socket.on('vote_poll', async ({ postId, optionIndex, charId }) => {
       const post = await Post.findById(postId);
       if(!post || !post.poll || !post.poll.options[optionIndex]) return;
-      
       const option = post.poll.options[optionIndex];
       const voterIndex = option.voters.indexOf(charId);
-      
-      if(voterIndex === -1) {
-          option.voters.push(charId);
-      } else {
-          option.voters.splice(voterIndex, 1);
-      }
-      
+      if(voterIndex === -1) option.voters.push(charId); else option.voters.splice(voterIndex, 1);
       await post.save();
       io.emit('post_updated', post);
   });
 
-  // CORRECTION 3 : INJECTION DE VOTES EN MASSE (Paramètre Count)
   socket.on('admin_inject_vote', async ({ postId, optionIndex, count }) => {
       const post = await Post.findById(postId);
       if(!post || !post.poll || !post.poll.options[optionIndex]) return;
-      
       const loopCount = count || 1;
       for (let i = 0; i < loopCount; i++) {
           const fakeId = 'injected_' + Date.now() + '_' + Math.random().toString(36).substr(2,5) + i;
           post.poll.options[optionIndex].voters.push(fakeId);
       }
-      
       await post.save();
       io.emit('post_updated', post);
   });
@@ -413,6 +326,7 @@ io.on('connection', async (socket) => {
   socket.on('mark_notifications_read', async (userId) => { await Notification.updateMany({ targetOwnerId: userId, isRead: false }, { isRead: true }); socket.emit('notifications_read_confirmed'); });
   socket.on('typing_start', (data) => { socket.to(data.roomId).emit('display_typing', data); });
   socket.on('typing_stop', (data) => { socket.to(data.roomId).emit('hide_typing', data); });
+  
   socket.on('save_theme', async ({ userId, theme }) => {
       await User.findOneAndUpdate({ secretCode: userId }, { uiTheme: theme });
       socket.emit('theme_saved', theme);
