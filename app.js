@@ -199,6 +199,9 @@ socket.on('login_success', (data) => {
     document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`;
     document.getElementById('btn-account-main').innerHTML = '<i class="fa-solid fa-user"></i> Mon Profil';
     closeLoginModal();
+    // Apply saved theme
+    const savedTheme = data.uiTheme || localStorage.getItem('ui_theme') || 'default';
+    applyTheme(savedTheme, false);
     socket.emit('request_initial_data', PLAYER_ID);
     socket.emit('request_dm_contacts', USERNAME);
     const lastTab = localStorage.getItem('last_tab');
@@ -217,15 +220,64 @@ function checkAutoLogin() {
     else openLoginModal();
 }
 
-socket.on('connect', () => { checkAutoLogin(); setupEmojiPicker(); });
-socket.on('update_user_list', (users) => {
-    allOnlineUsers = users;
-    const listDiv = document.getElementById('online-users-list');
-    document.getElementById('online-count').textContent = users.length;
-    listDiv.innerHTML = "";
-    users.forEach(u => listDiv.innerHTML += `<div class="online-user" onclick="startDmFromList('${u}')"><span class="status-dot"></span><span>${u}</span></div>`);
+socket.on('connect', () => { 
+    checkAutoLogin(); 
+    setupEmojiPicker(); 
+    const t = localStorage.getItem('ui_theme');
+    if(t) applyTheme(t, false);
 });
-socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId && !currentDmTarget) socket.emit('request_history', currentRoomId); });
+
+// ── THEMES ──────────────────────────────────────────────
+const THEMES = {
+    default: { accent: '#6c63ff', glow: 'rgba(108,99,255,0.35)', muted: 'rgba(108,99,255,0.15)', soft: '#8b85ff' },
+    matrix:  { accent: '#00d4aa', glow: 'rgba(0,212,170,0.35)',   muted: 'rgba(0,212,170,0.15)',  soft: '#33e8c0' },
+    blood:   { accent: '#ff4757', glow: 'rgba(255,71,87,0.35)',    muted: 'rgba(255,71,87,0.15)',  soft: '#ff6b7a' },
+    cyber:   { accent: '#f9ca24', glow: 'rgba(249,202,36,0.35)',   muted: 'rgba(249,202,36,0.15)', soft: '#fbd94a' },
+    rose:    { accent: '#fd79a8', glow: 'rgba(253,121,168,0.35)',  muted: 'rgba(253,121,168,0.15)',soft: '#fe9ec0' },
+};
+
+function applyTheme(themeName, save = true) {
+    const t = THEMES[themeName] || THEMES.default;
+    document.body.setAttribute('data-theme', themeName);
+    const r = document.documentElement.style;
+    r.setProperty('--accent', t.accent);
+    r.setProperty('--accent-glow', t.glow);
+    r.setProperty('--accent-muted', t.muted);
+    r.setProperty('--accent-soft', t.soft);
+    // Update swatch active state
+    document.querySelectorAll('.theme-swatch').forEach(el => {
+        el.classList.toggle('active', el.dataset.theme === themeName);
+    });
+    localStorage.setItem('ui_theme', themeName);
+    if(save && PLAYER_ID) socket.emit('save_theme', { userId: PLAYER_ID, theme: themeName });
+}
+
+socket.on('theme_saved', (theme) => {
+    const msg = document.getElementById('settings-msg');
+    if(msg) { msg.textContent = 'Thème sauvegardé !'; setTimeout(() => { msg.textContent = ''; }, 2000); }
+});
+
+// ── FEED TYPING ──────────────────────────────────────────
+let feedTypingTimeout = null;
+let feedTypingUsers = new Set();
+
+function updateFeedTypingUI() {
+    const el = document.getElementById('feed-typing-indicator');
+    if(!el) return;
+    if(feedTypingUsers.size === 0) { el.classList.add('hidden'); return; }
+    const names = [...feedTypingUsers].join(', ');
+    el.textContent = `${names} est en train d'écrire un post...`;
+    el.classList.remove('hidden');
+}
+
+socket.on('display_feed_typing', (data) => {
+    feedTypingUsers.add(data.charName);
+    updateFeedTypingUI();
+});
+socket.on('hide_feed_typing', (data) => {
+    feedTypingUsers.delete(data.charName);
+    updateFeedTypingUI();
+});
 
 const txtInput = document.getElementById('txtInput');
 txtInput.addEventListener('input', () => {
@@ -422,7 +474,6 @@ function updateUI() {
     const bar = document.getElementById('char-bar-horizontal');
     list.innerHTML = ""; bar.innerHTML = "";
     
-    // Narrateur Admin
     if(IS_ADMIN) {
         bar.innerHTML += `<img src="https://cdn-icons-png.flaticon.com/512/1144/1144760.png" id="avatar-opt-narrateur" class="avatar-choice" title="Narrateur" onclick="selectCharacter('narrateur')">`;
     }
@@ -437,7 +488,6 @@ function updateUI() {
     else selectCharacter(currentSelectedChar._id);
 
     updateFeedCharUI();
-    updateNavCharUI();
     updateBreakingNewsVisibility();
 }
 
@@ -924,6 +974,10 @@ function createPostElement(post) {
     
     if(post.isBreakingNews) div.classList.add('post-breaking-news');
     if(post.isAnonymous) div.classList.add('post-anonymous');
+
+    // MODE JOURNALISTE: long post or breaking news
+    const isArticle = post.isBreakingNews || (post.content && post.content.length > 300);
+    if(isArticle) div.classList.add('post-article');
     
     const lastVisit = parseInt(localStorage.getItem('last_feed_visit') || '0');
     if (new Date(post.timestamp).getTime() > lastVisit && currentView === 'feed') div.classList.add('post-highlight');
@@ -931,15 +985,6 @@ function createPostElement(post) {
     const isLiked = post.likes.includes(currentFeedCharId); 
     
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
-    let mediaHTML = "";
-    if(post.mediaUrl) {
-        if(post.mediaType === 'video' || post.mediaUrl.includes('/video/upload')) {
-             const ytId = getYoutubeId(post.mediaUrl);
-             if(ytId) mediaHTML = `<iframe class="post-media" src="https://www.youtube.com/embed/${ytId}" frameborder="0" allowfullscreen></iframe>`;
-             else mediaHTML = `<video class="post-media" controls src="${post.mediaUrl}"></video>`;
-        } else if (post.mediaType === 'audio') { mediaHTML = `<audio controls src="${post.mediaUrl}" style="width:100%; margin-top:10px;"></audio>`; } 
-        else { mediaHTML = `<img src="${post.mediaUrl}" class="post-media">`; }
-    }
     
     let displayName = post.authorName;
     let displayAvatar = post.authorAvatar;
@@ -949,70 +994,73 @@ function createPostElement(post) {
         displayAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E";
         displayRole = "Leak";
     }
+
+    // Article title: first 10 words
+    const articleTitle = isArticle ? post.content.split(/\s+/).slice(0, 10).join(' ') + (post.content.split(/\s+/).length > 10 ? '…' : '') : '';
+
+    let mediaHTML = "";
+    let bannerHTML = "";
+    if(post.mediaUrl) {
+        if(post.mediaType === 'video' || post.mediaUrl.includes('/video/upload')) {
+             const ytId = getYoutubeId(post.mediaUrl);
+             if(ytId) mediaHTML = `<iframe class="post-media" src="https://www.youtube.com/embed/${ytId}" frameborder="0" allowfullscreen></iframe>`;
+             else mediaHTML = `<video class="post-media" controls src="${post.mediaUrl}"></video>`;
+        } else if (post.mediaType === 'audio') { 
+            mediaHTML = `<audio controls src="${post.mediaUrl}" style="width:100%; margin-top:10px;"></audio>`; 
+        } else { 
+            if(isArticle) bannerHTML = `<img src="${post.mediaUrl}" class="post-banner">`;
+            else mediaHTML = `<img src="${post.mediaUrl}" class="post-media">`;
+        }
+    }
     
+    // Poll HTML (unchanged)
     let pollHTML = "";
     if(post.poll && post.poll.options && post.poll.options.length > 0) {
         const totalVoters = post.poll.options.reduce((sum, opt) => sum + opt.voters.length, 0);
         const hasVoted = post.poll.options.some(opt => opt.voters.includes(currentFeedCharId));
-        
-        pollHTML = `<div class="poll-container">
-            <div class="poll-question"><i class="fa-solid fa-chart-column" style="margin-right:6px; color:var(--accent);"></i>${post.poll.question}</div>`;
-        
+        pollHTML = `<div class="poll-container"><div class="poll-question"><i class="fa-solid fa-chart-column" style="margin-right:6px; color:var(--accent);"></i>${post.poll.question}</div>`;
         post.poll.options.forEach((opt, idx) => {
             const pct = totalVoters > 0 ? Math.round((opt.voters.length / totalVoters) * 100) : 0;
             const isVoted = opt.voters.includes(currentFeedCharId);
-            
-            // Admin hover popup (only for admins)
-            const adminPopup = IS_ADMIN ? `
-                <div class="poll-admin-popup">
-                    <button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 1)">+1 Vote</button>
-                    <button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 10)">+10 Votes</button>
-                    <button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 100)">+100 Votes</button>
-                </div>` : '';
-            
+            const adminPopup = IS_ADMIN ? `<div class="poll-admin-popup"><button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 1)">+1 Vote</button><button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 10)">+10 Votes</button><button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 100)">+100 Votes</button></div>` : '';
             if(hasVoted) {
-                pollHTML += `
-                    <div class="poll-option poll-option-wrap">
-                        <div class="poll-results-bar ${isVoted ? 'poll-voted-bar' : ''}">
-                            <div class="poll-bar-fill" style="width:${pct}%"></div>
-                            <div class="poll-result-text">
-                                <span>${isVoted ? '✓ ' : ''}${opt.text}</span>
-                                <span><strong>${pct}%</strong> <span style="opacity:0.6">(${opt.voters.length})</span></span>
-                            </div>
-                        </div>
-                        ${adminPopup}
-                    </div>`;
+                pollHTML += `<div class="poll-option poll-option-wrap"><div class="poll-results-bar ${isVoted ? 'poll-voted-bar' : ''}"><div class="poll-bar-fill" style="width:${pct}%"></div><div class="poll-result-text"><span>${isVoted ? '✓ ' : ''}${opt.text}</span><span><strong>${pct}%</strong> <span style="opacity:0.6">(${opt.voters.length})</span></span></div></div>${adminPopup}</div>`;
             } else {
-                pollHTML += `
-                    <div class="poll-option poll-option-wrap">
-                        <button class="poll-option-btn" onclick="event.stopPropagation(); votePoll('${post._id}', ${idx})">
-                            ${opt.text}
-                        </button>
-                        ${adminPopup}
-                    </div>`;
+                pollHTML += `<div class="poll-option poll-option-wrap"><button class="poll-option-btn" onclick="event.stopPropagation(); votePoll('${post._id}', ${idx})">${opt.text}</button>${adminPopup}</div>`;
             }
         });
-        
         pollHTML += `<div class="poll-total">${totalVoters} vote${totalVoters !== 1 ? 's' : ''}</div></div>`;
     }
-    
-    div.innerHTML = `${delBtn}
-        <div class="post-header" onclick="event.stopPropagation(); openProfile('${displayName.replace(/'/g, "\\'")}')">
-            <img src="${displayAvatar}" class="post-avatar">
-            <div class="post-meta">
-                <div class="post-author">${displayName}${post.partyName && post.partyLogo && !post.isAnonymous ? `<span class="party-badge"><img src="${post.partyLogo}" class="party-logo"> ${post.partyName}</span>` : ''}</div>
-                <div class="post-role">${displayRole}</div>
+
+    const headerHTML = `<div class="post-header" onclick="event.stopPropagation(); openProfile('${displayName.replace(/'/g, "\\'")}')">
+        <img src="${displayAvatar}" class="post-avatar">
+        <div class="post-meta">
+            <div class="post-author">${displayName}${post.partyName && post.partyLogo && !post.isAnonymous ? `<span class="party-badge"><img src="${post.partyLogo}" class="party-logo"> ${post.partyName}</span>` : ''}</div>
+            <div class="post-role">${displayRole}</div>
+        </div>
+        <span class="post-date">${post.date}</span>
+    </div>`;
+
+    const actionsHTML = `<div class="post-actions">
+        <button class="action-item ${isLiked?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
+        <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
+    </div>`;
+
+    if(isArticle) {
+        div.innerHTML = `${delBtn}${bannerHTML}
+            <div class="post-article-body">
+                ${headerHTML}
+                <div class="post-article-title">${articleTitle}</div>
+                <div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
+                ${mediaHTML}${pollHTML}${actionsHTML}
             </div>
-            <span class="post-date">${post.date}</span>
-        </div>
-        <div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
-        ${mediaHTML}
-        ${pollHTML}
-        <div class="post-actions">
-            <button class="action-item ${isLiked?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
-            <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
-        </div>
-        <div class="comments-list hidden">${generateCommentsHTML(post.comments, post._id)}</div>`;
+            <div class="comments-list hidden">${generateCommentsHTML(post.comments, post._id)}</div>`;
+    } else {
+        div.innerHTML = `${delBtn}${headerHTML}
+            <div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
+            ${mediaHTML}${pollHTML}${actionsHTML}
+            <div class="comments-list hidden">${generateCommentsHTML(post.comments, post._id)}</div>`;
+    }
     return div;
 }
 
@@ -1034,14 +1082,8 @@ function openNotifications() {
 }
 function closeNotifications() { document.getElementById('notifications-modal').classList.add('hidden'); }
 
-// Close nav char dropdown when clicking outside
+// Close feed char dropdown when clicking outside
 document.addEventListener('click', (e) => {
-    const navSelector = document.getElementById('nav-char-selector');
-    if(navSelector && !navSelector.contains(e.target)) {
-        const dd = document.getElementById('nav-char-dropdown');
-        if(dd) dd.classList.add('hidden');
-    }
-    // ...existing feed char dropdown close logic...
     const wrapper = document.getElementById('feed-char-avatar-wrapper');
     if(wrapper && !wrapper.contains(e.target)) {
         const dd = document.getElementById('feed-char-dropdown');
