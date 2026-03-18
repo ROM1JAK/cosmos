@@ -437,7 +437,6 @@ function updateUI() {
     else selectCharacter(currentSelectedChar._id);
 
     updateFeedCharUI();
-    updateNavCharUI();
     updateBreakingNewsVisibility();
 }
 
@@ -448,7 +447,6 @@ function updateFeedCharUI() {
     
     const char = currentFeedCharId ? myCharacters.find(c => c._id === currentFeedCharId) : null;
     const avatarSrc = char ? char.avatar : 'https://cdn-icons-png.flaticon.com/512/1144/1144760.png';
-    const charName = char ? char.name : 'Aucun';
     
     container.innerHTML = `
         <div class="feed-char-trigger" onclick="toggleFeedCharDropdown()" title="Changer de personnage">
@@ -708,7 +706,7 @@ function displayMessage(msg, isDm = false) {
 function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
 
-// --- FEED LOGIC (UPDATED WITH FEED CHAR ID) ---
+// --- FEED LOGIC ---
 function loadFeed() { socket.emit('request_feed'); }
 document.getElementById('postContent').addEventListener('input', (e) => { document.getElementById('char-count').textContent = `${e.target.value.length}/1000`; });
 
@@ -823,12 +821,11 @@ function votePoll(postId, optionIndex) {
     if(!currentFeedCharId) return alert("Sélectionnez un personnage dans le Feed !");
     socket.emit('vote_poll', { postId, optionIndex, charId: currentFeedCharId });
 }
+
+// CORRECTION 3 : Boutons Admin Injection
 function adminInjectVote(postId, optionIndex, count) {
     if(!IS_ADMIN) return;
-    for(let i = 0; i < count; i++) {
-        const fakeId = 'injected_' + Date.now() + '_' + Math.random().toString(36).substr(2,5);
-        socket.emit('admin_inject_vote', { postId, optionIndex, fakeId });
-    }
+    socket.emit('admin_inject_vote', { postId, optionIndex, count });
 }
 
 function toggleLike(id) { 
@@ -962,7 +959,7 @@ function createPostElement(post) {
             const pct = totalVoters > 0 ? Math.round((opt.voters.length / totalVoters) * 100) : 0;
             const isVoted = opt.voters.includes(currentFeedCharId);
             
-            // Admin hover popup (only for admins)
+            // CORRECTION 3 : Boutons d'injections modifiés et regroupés
             const adminPopup = IS_ADMIN ? `
                 <div class="poll-admin-popup">
                     <button class="poll-admin-popup-btn" onclick="event.stopPropagation(); adminInjectVote('${post._id}', ${idx}, 1)">+1 Vote</button>
@@ -1036,12 +1033,6 @@ function closeNotifications() { document.getElementById('notifications-modal').c
 
 // Close nav char dropdown when clicking outside
 document.addEventListener('click', (e) => {
-    const navSelector = document.getElementById('nav-char-selector');
-    if(navSelector && !navSelector.contains(e.target)) {
-        const dd = document.getElementById('nav-char-dropdown');
-        if(dd) dd.classList.add('hidden');
-    }
-    // ...existing feed char dropdown close logic...
     const wrapper = document.getElementById('feed-char-avatar-wrapper');
     if(wrapper && !wrapper.contains(e.target)) {
         const dd = document.getElementById('feed-char-dropdown');
