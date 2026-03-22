@@ -342,53 +342,16 @@ socket.on('receive_dm', (msg) => {
     if (msg.sender !== USERNAME && notificationsEnabled) notifSound.play().catch(e=>{});
 });
 
-// [NOUVEAU] Gestion entreprises lors de la création de personnage
-let newCharCompanies = [];
-
-async function addCompanyToNewChar() {
-    const name = document.getElementById('newCompanyName').value.trim();
-    const role = document.getElementById('newCompanyRole').value.trim();
-    const logoFile = document.getElementById('newCompanyLogoFile').files[0];
-    if(!name) return;
-    let logo = null;
-    if(logoFile) {
-        const btn = document.querySelector('[onclick="addCompanyToNewChar()"]');
-        if(btn) btn.textContent = '⏳ Upload...';
-        logo = await uploadToCloudinary(logoFile);
-        if(btn) btn.textContent = '+ Ajouter cette entreprise';
-    }
-    newCharCompanies.push({ name, role, logo, description: '' });
-    renderNewCharCompanies();
-    document.getElementById('newCompanyName').value = '';
-    document.getElementById('newCompanyRole').value = '';
-    document.getElementById('newCompanyLogoFile').value = '';
-}
-
-function renderNewCharCompanies() {
-    const list = document.getElementById('newCharCompaniesList');
-    list.innerHTML = newCharCompanies.map((co, i) => `
-        <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; background:var(--bg-tertiary); border-radius:var(--radius-sm); margin-bottom:6px; border:1px solid var(--border);">
-            ${co.logo ? `<img src="${co.logo}" style="width:24px;height:24px;border-radius:4px;object-fit:cover;">` : '<i class="fa-solid fa-building" style="color:var(--text-muted); font-size:0.9rem;"></i>'}
-            <span style="flex:1; font-size:0.82rem; font-weight:600;">${co.name}</span>
-            <span style="font-size:0.72rem; color:var(--text-muted);">${co.role}</span>
-            <button onclick="removeNewCharCompany(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:0.8rem;"><i class="fa-solid fa-xmark"></i></button>
-        </div>`).join('');
-    document.getElementById('newCharCompaniesData').value = JSON.stringify(newCharCompanies);
-}
-
-function removeNewCharCompany(i) {
-    newCharCompanies.splice(i, 1);
-    renderNewCharCompanies();
-}
-
 async function createCharacter() {
     if (myCharacters.length >= 20) return alert("Limite 20 persos.");
     const name = document.getElementById('newCharName').value.trim();
     const role = document.getElementById('newCharRole').value.trim();
     const partyName = document.getElementById('newCharPartyName').value.trim();
-    const capital = parseFloat(document.getElementById('newCharCapital').value) || 0;
     const fileInput = document.getElementById('newCharFile');
     const partyFileInput = document.getElementById('newCharPartyFile');
+    // [NOUVEAU] Capital
+    const capitalEl = document.getElementById('newCharCapital');
+    const capital = capitalEl ? (parseFloat(capitalEl.value) || 0) : 0;
     
     let avatar = fileInput.files[0] ? await uploadToCloudinary(fileInput.files[0]) : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
     let partyLogo = partyFileInput.files[0] ? await uploadToCloudinary(partyFileInput.files[0]) : null;
@@ -404,14 +367,13 @@ async function createCharacter() {
         partyName: partyName || null, 
         partyLogo: partyLogo || null, 
         isOfficial,
-        companies: newCharCompanies,
+        companies: newCharCompanies || [],
         capital
     });
-    // Reset form
     toggleCreateForm();
     fileInput.value = ""; partyFileInput.value = "";
-    document.getElementById('newCharPartyName').value = '';
-    document.getElementById('newCharCapital').value = '';
+    document.getElementById('newCharPartyName').value = "";
+    if(capitalEl) capitalEl.value = '';
     newCharCompanies = [];
     renderNewCharCompanies();
 }
@@ -552,20 +514,6 @@ function updateBreakingNewsVisibility() {
 let currentProfileChar = null;
 
 function openProfile(name) { 
-    // [FIX] Réinitialiser immédiatement pour éviter l'affichage du profil précédent
-    currentProfileChar = null;
-    const els = {
-        profileName: '...', profileRole: '', profileDesc: '', profileOwner: '',
-        profileFollowersCount: '0', profilePostCount: '0'
-    };
-    Object.entries(els).forEach(([id, v]) => { const el = document.getElementById(id); if(el) el.textContent = v; });
-    const av = document.getElementById('profileAvatar'); if(av) av.src = '';
-    const pb = document.getElementById('profilePartyBadge'); if(pb) pb.style.display = 'none';
-    const af = document.getElementById('profileActivityFeed'); if(af) af.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">Chargement...</div>';
-    const cg = document.getElementById('profileCompaniesGrid'); if(cg) cg.innerHTML = '';
-    const cs = document.getElementById('profileCompaniesSection'); if(cs) cs.style.display = 'none';
-    closeBioEdit();
-
     document.getElementById('profile-overlay').classList.remove('hidden'); 
     document.getElementById('profile-slide-panel').classList.add('open');
     socket.emit('get_char_profile', name); 
@@ -604,9 +552,6 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileFollowersCount').textContent = followersCount;
     document.getElementById('profilePostCount').textContent = char.postCount || 0;
 
-    // [NOUVEAU] Capital dans la bio section
-    const ownerEl = document.getElementById('profileOwner');
-
     // Admin edit followers
     const adminFollowersBtn = document.getElementById('adminEditFollowers');
     if(adminFollowersBtn) { 
@@ -619,17 +564,9 @@ socket.on('char_profile_data', (char) => {
 
     // Bio
     document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
-    ownerEl.innerHTML = `Joué par : ${char.ownerUsername || "Inconnu"}`;
+    document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
     if(char.partyName && char.partyLogo) {
-        ownerEl.innerHTML += ` <span class="party-badge" style="display:inline-flex;"><img src="${char.partyLogo}" class="party-logo"> ${char.partyName}</span>`;
-    }
-    // [NOUVEAU] Afficher capital + bouton admin
-    if(char.capital !== undefined && char.capital !== null) {
-        const capHTML = char.capital > 0 ? `💰 ${Number(char.capital).toLocaleString('fr-FR')} crédits` : '';
-        if(capHTML) ownerEl.innerHTML += `<div class="profile-capital-badge">${capHTML}</div>`;
-    }
-    if(IS_ADMIN) {
-        ownerEl.innerHTML += `<button class="admin-stat-btn" style="margin-left:6px;" onclick="adminEditCapital('${char._id}', ${char.capital||0})"><i class="fa-solid fa-coins"></i> Capital</button>`;
+        document.getElementById('profileOwner').innerHTML += ` <span class="party-badge" style="display:inline-flex;"><img src="${char.partyLogo}" class="party-logo"> ${char.partyName}</span>`;
     }
 
     // [NOUVEAU] Bouton modifier bio — visible seulement si c'est un de nos persos
@@ -952,7 +889,17 @@ socket.on('message_rp', (msg) => {
 socket.on('message_deleted', (msgId) => { const el = document.getElementById(`msg-${msgId}`); if(el) el.remove(); });
 socket.on('message_updated', (data) => { const el = document.getElementById(`content-${data.id}`); if(el) { el.innerHTML = formatText(data.newContent); const meta = el.closest('.msg-col-content').querySelector('.timestamp'); if(meta && !meta.textContent.includes('(modifié)')) meta.textContent += ' (modifié)'; } });
 
-function formatText(text) { if(!text) return ""; return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\*(.*?)\*/g, '<i>$1</i>').replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>'); }
+function formatText(text) { 
+    if(!text) return ""; 
+    // [NOUVEAU] Détecter les messages cryptés AVANT tout autre traitement
+    if(text.includes('[CRYPTO]')) {
+        return text.replace(/\[CRYPTO\](.*?)\|(.*?)\[\/CRYPTO\]/g, (match, enc, glitch) => {
+            const safeEnc = enc.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            return `<div class="crypto-message"><span class="crypto-icon"><i class="fa-solid fa-lock"></i></span><span class="crypto-glitch">${glitch}…</span><button class="crypto-unlock-btn" onclick="openDecryptModal(null,'${safeEnc}')"><i class="fa-solid fa-key"></i> Déchiffrer</button></div>`;
+        });
+    }
+    return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\*(.*?)\*/g, '<i>$1</i>').replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>'); 
+}
 function getYoutubeId(url) { const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/); return (match && match[2].length === 11) ? match[2] : null; }
 
 function createCustomAudioPlayer(src) {
@@ -1453,25 +1400,24 @@ function updateActuAdminForm() {
 }
 function loadActualites() { socket.emit('request_events'); }
 function submitEvent() {
-    // [FIX] Utilise les valeurs des menus déroulants
     const jour = document.getElementById('actuJour').value;
     const dateRaw = document.getElementById('actuDate').value;
     const heure = document.getElementById('actuHeure').value;
-    const minute = document.getElementById('actuMinute').value;
+    const minuteEl = document.getElementById('actuMinute');
+    const minute = minuteEl ? minuteEl.value : '00';
     const evenement = document.getElementById('actuEvenement').value.trim();
     if(!evenement) return;
-    const heureFormatted = heure && minute ? `${heure}h${minute}` : (heure ? `${heure}h00` : '');
-    // Format date lisible
+    const heureFormatted = heure ? `${heure}h${minute}` : '';
     let dateFormatted = dateRaw;
     if(dateRaw) {
-        const d = new Date(dateRaw);
+        const d = new Date(dateRaw + 'T12:00:00');
         if(!isNaN(d)) dateFormatted = d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' });
     }
     socket.emit('create_event', { jour, date: dateFormatted, heure: heureFormatted, evenement });
     document.getElementById('actuJour').value = '';
     document.getElementById('actuDate').value = '';
     document.getElementById('actuHeure').value = '';
-    document.getElementById('actuMinute').value = '00';
+    if(minuteEl) minuteEl.value = '00';
     document.getElementById('actuEvenement').value = '';
 }
 function deleteEvent(id) { if(confirm('Supprimer cet événement ?')) socket.emit('delete_event', id); }
@@ -1502,14 +1448,13 @@ socket.on('events_data', (events) => {
     });
 });
 
-// ==================== BANDEAU D'ALERTE [NOUVEAU] ====================
+// ==================== BANDEAU D'ALERTE GLOBAL [NOUVEAU] ====================
 socket.on('alert_data', (alert) => {
     const banner = document.getElementById('global-alert-banner');
     if(!banner) return;
     document.getElementById('global-alert-text').textContent = alert.message;
     banner.className = `global-alert-banner alert-${alert.color}`;
     banner.classList.remove('hidden');
-    // Appliquer filtre de couleur sur le body
     document.body.setAttribute('data-alert', alert.color);
 });
 socket.on('alert_cleared', () => {
@@ -1517,11 +1462,8 @@ socket.on('alert_cleared', () => {
     if(banner) banner.classList.add('hidden');
     document.body.removeAttribute('data-alert');
 });
-function dismissAlert() {
-    document.getElementById('global-alert-banner').classList.add('hidden');
-}
+function dismissAlert() { document.getElementById('global-alert-banner').classList.add('hidden'); }
 
-// Modale admin alerte
 let selectedAlertColor = 'red';
 function selectAlertColor(color) {
     selectedAlertColor = color;
@@ -1537,16 +1479,10 @@ function submitAlert(active) {
 }
 function closeAdminAlertModal() { document.getElementById('admin-alert-modal').classList.add('hidden'); }
 
-// Afficher bouton admin dans les settings
-socket.on('login_success_hook', () => {});
-function showAdminAlertBtn() {
-    const w = document.getElementById('admin-alert-btn-wrapper');
-    if(w && IS_ADMIN) w.classList.remove('hidden');
-}
-// Hook sur IS_ADMIN après login — on surcharge openUserSettingsModal
-const _originalOpenSettings = openUserSettingsModal;
+// Afficher bouton admin alerte dans les settings
+const _origOpenSettings = openUserSettingsModal;
 function openUserSettingsModal() {
-    _originalOpenSettings();
+    _origOpenSettings();
     const w = document.getElementById('admin-alert-btn-wrapper');
     if(w) { if(IS_ADMIN) w.classList.remove('hidden'); else w.classList.add('hidden'); }
 }
@@ -1561,9 +1497,6 @@ function adminEditCapital(charId, currentCapital) {
 }
 
 // ==================== MESSAGES CRYPTÉS [NOUVEAU] ====================
-// Stockage local des mots de passe déjà entrés pour chaque message
-const decryptedMessages = {};
-
 function simpleEncrypt(text, password) {
     let result = '';
     for(let i = 0; i < text.length; i++) {
@@ -1585,7 +1518,6 @@ function generateGlitch(text) {
     const glitchChars = '▓█▒░⣿⣶⣤⣀◆◇■□▪▫';
     return text.split('').map(() => glitchChars[Math.floor(Math.random() * glitchChars.length)]).join('');
 }
-
 function openCryptoModal() {
     if(!currentSelectedChar) return alert("Sélectionnez un personnage d'abord.");
     document.getElementById('cryptoContent').value = '';
@@ -1593,7 +1525,6 @@ function openCryptoModal() {
     document.getElementById('crypto-modal').classList.remove('hidden');
 }
 function closeCryptoModal() { document.getElementById('crypto-modal').classList.add('hidden'); }
-
 function sendCryptoMessage() {
     const content = document.getElementById('cryptoContent').value.trim();
     const password = document.getElementById('cryptoPassword').value.trim();
@@ -1601,8 +1532,7 @@ function sendCryptoMessage() {
     if(!password) return alert("Mot de passe requis.");
     if(!currentSelectedChar) return alert("Perso requis !");
     const encrypted = simpleEncrypt(content, password);
-    const glitch = generateGlitch(content.substring(0, 30));
-    // Format: [CRYPTO]<encrypted>|<glitch>[/CRYPTO]
+    const glitch = generateGlitch(content.substring(0, 25));
     const payload = `[CRYPTO]${encrypted}|${glitch}[/CRYPTO]`;
     const baseMsg = { 
         senderName: currentSelectedChar.name, senderColor: currentSelectedChar.color || "#fff", 
@@ -1614,7 +1544,6 @@ function sendCryptoMessage() {
     socket.emit('message_rp', { ...baseMsg, content: payload, type: 'text' });
     closeCryptoModal();
 }
-
 function openDecryptModal(msgId, encryptedData) {
     document.getElementById('decryptMsgId').value = encryptedData;
     document.getElementById('decryptPassword').value = '';
@@ -1628,25 +1557,37 @@ function tryDecrypt() {
     if(!password) return;
     const result = simpleDecrypt(encrypted, password);
     const resultEl = document.getElementById('decryptResult');
-    if(result && result.length > 0 && result !== encrypted) {
-        resultEl.innerHTML = `<div style="background:var(--accent-muted); border:1px solid var(--accent); padding:10px; border-radius:var(--radius-sm); margin-top:8px;"><i class="fa-solid fa-unlock" style="color:var(--accent);"></i> <strong>Déchiffré :</strong><br>${escapeHtml(result)}</div>`;
+    if(result && result.length > 0) {
+        resultEl.innerHTML = `<div style="background:var(--accent-muted);border:1px solid var(--accent);padding:10px;border-radius:var(--radius-sm);margin-top:8px;"><i class="fa-solid fa-unlock" style="color:var(--accent);"></i> <strong>Déchiffré :</strong><br>${escapeHtml(result)}</div>`;
     } else {
-        resultEl.innerHTML = `<div style="color:var(--danger); margin-top:8px;"><i class="fa-solid fa-lock"></i> Mot de passe incorrect.</div>`;
+        resultEl.innerHTML = `<div style="color:var(--danger);margin-top:8px;"><i class="fa-solid fa-lock"></i> Mot de passe incorrect.</div>`;
     }
 }
 
-// Override formatText pour gérer [CRYPTO]...[/CRYPTO]
-const _origFormatText = formatText;
-function formatText(text) {
-    if(!text) return "";
-    // Gérer les messages cryptés
-    text = text.replace(/\[CRYPTO\](.*?)\|(.*?)\[\/CRYPTO\]/g, (match, enc, glitch) => {
-        const safeEnc = enc.replace(/"/g, '&quot;');
-        return `<div class="crypto-message">
-            <span class="crypto-icon"><i class="fa-solid fa-lock"></i></span>
-            <span class="crypto-glitch">${glitch}…</span>
-            <button class="crypto-unlock-btn" onclick="openDecryptModal(null, '${safeEnc}')"><i class="fa-solid fa-key"></i> Déchiffrer</button>
-        </div>`;
-    });
-    return _origFormatText(text);
+// ==================== CRÉATION PERSO — ENTREPRISES [NOUVEAU] ====================
+let newCharCompanies = [];
+async function addCompanyToNewChar() {
+    const name = document.getElementById('newCompanyName').value.trim();
+    const role = document.getElementById('newCompanyRole').value.trim();
+    const logoFile = document.getElementById('newCompanyLogoFile').files[0];
+    if(!name) return;
+    let logo = null;
+    if(logoFile) logo = await uploadToCloudinary(logoFile);
+    newCharCompanies.push({ name, role: role || '', logo, description: '' });
+    renderNewCharCompanies();
+    document.getElementById('newCompanyName').value = '';
+    document.getElementById('newCompanyRole').value = '';
+    document.getElementById('newCompanyLogoFile').value = '';
 }
+function renderNewCharCompanies() {
+    const list = document.getElementById('newCharCompaniesList');
+    if(!list) return;
+    list.innerHTML = newCharCompanies.map((co, i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:5px;border:1px solid var(--border);">
+            ${co.logo ? `<img src="${co.logo}" style="width:22px;height:22px;border-radius:4px;object-fit:cover;">` : '<i class="fa-solid fa-building" style="color:var(--text-muted);"></i>'}
+            <span style="flex:1;font-size:0.82rem;font-weight:600;">${co.name}</span>
+            <span style="font-size:0.72rem;color:var(--text-muted);">${co.role}</span>
+            <button onclick="removeNewCharCompany(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:0.8rem;"><i class="fa-solid fa-xmark"></i></button>
+        </div>`).join('');
+}
+function removeNewCharCompany(i) { newCharCompanies.splice(i, 1); renderNewCharCompanies(); }
