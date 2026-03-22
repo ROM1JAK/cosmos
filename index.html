@@ -6,7 +6,6 @@
     <title>ConvSmos</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="icone.png">
 </head>
@@ -15,6 +14,7 @@
     <nav id="top-nav">
         <button class="nav-btn active" id="btn-view-chat" onclick="switchView('chat')"><i class="fa-solid fa-comments"></i> Chat</button>
         <button class="nav-btn" id="btn-view-feed" onclick="switchView('feed')"><i class="fa-solid fa-bullhorn"></i> Feed</button>
+        <button class="nav-btn" id="btn-view-presse" onclick="switchView('presse')"><i class="fa-solid fa-newspaper"></i> Presse</button>
         <button class="nav-btn" id="btn-notifs" onclick="openNotifications()" style="position:relative;">
             <i class="fa-solid fa-bell"></i>
             <span id="notif-badge" class="hidden"></span>
@@ -28,18 +28,7 @@
             <h2>Connexion</h2>
             <input type="text" id="loginPseudoInput" placeholder="Pseudo" class="modal-input">
             <input type="password" id="loginCodeInput" placeholder="Code Secret" class="modal-input">
-            <button onclick="submitLogin()" class="btn-primary full-width" style="margin-top:10px; margin-bottom:15px;">Go</button>
-            
-            <div style="border-top: 1px solid var(--border); padding-top: 15px; display: flex; flex-direction: column; align-items: center;">
-                <div id="g_id_onload"
-                     data-client_id="REMPLACE_CECI_PAR_TON_CLIENT_ID_GOOGLE.apps.googleusercontent.com"
-                     data-context="signin"
-                     data-ux_mode="popup"
-                     data-callback="handleGoogleLogin">
-                </div>
-                <div class="g_id_signin" data-type="standard" data-shape="rectangular" data-theme="filled_black" data-text="signin_with" data-size="large" data-logo_alignment="left"></div>
-            </div>
-
+            <button onclick="submitLogin()" class="btn-primary full-width" style="margin-top:10px;">Go</button>
             <p id="login-error-msg" style="color: #da373c; margin-top: 10px; display:none;"></p>
         </div>
     </div>
@@ -57,6 +46,7 @@
                     <button class="theme-swatch" style="--swatch:#00d4aa" onclick="changeTheme('matrix')">Matrice</button>
                     <button class="theme-swatch" style="--swatch:#ff4757" onclick="changeTheme('blood')">Sang</button>
                     <button class="theme-swatch" style="--swatch:#f9ca24" onclick="changeTheme('cyber')">Cyber</button>
+                    <button class="theme-swatch" style="--swatch:#3d1a5c" onclick="changeTheme('ombra')" title="...">Ombra</button>
                 </div>
             </div>
             
@@ -100,6 +90,7 @@
             <img id="profileAvatar" src="" class="profile-avatar-large">
             <h2 id="profileName">Nom</h2>
             <span id="profileRole" class="profile-role-tag">Rôle</span>
+            <div id="profilePartyBadge" style="margin-top:8px; display:none;"></div>
         </div>
         <div class="profile-stats">
             <div class="stat-item"><span id="profilePostCount" class="stat-value">0</span><span class="stat-label">Posts</span></div>
@@ -227,6 +218,7 @@
             </div>
 
             <div class="feed-container">
+                
                 <div class="post-create-box">
                     <textarea id="postContent" placeholder="Quoi de neuf ?"></textarea>
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
@@ -261,6 +253,53 @@
             </div>
         </div>
 
+        <!-- PRESSE VIEW -->
+        <div id="view-presse" class="view-section hidden">
+            <div class="feed-view-header">
+                <h3 style="margin:0; font-size:1.1rem;">📰 La Presse</h3>
+                <div id="presse-char-avatar-wrapper" style="position:relative;"></div>
+            </div>
+            <div class="presse-container">
+                <div id="presse-write-box" class="presse-write-box hidden">
+                    <div class="presse-write-header">
+                        <i class="fa-solid fa-feather-pointed"></i>
+                        <span>Rédiger un article</span>
+                    </div>
+                    <input type="text" id="presseTitle" placeholder="Titre de l'article..." class="presse-title-input">
+                    <textarea id="presseContent" placeholder="Contenu de l'article..." rows="6"></textarea>
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px;">
+                        <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-image"></i><input type="file" id="presseMediaFile" accept="image/*,video/*" class="hidden" onchange="previewPresseFile()"></label>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:0.85rem;"><input type="checkbox" id="presseBreaking"> 🚨 Breaking News</label>
+                            <button class="btn-primary" onclick="submitArticle()">Publier</button>
+                        </div>
+                    </div>
+                    <input type="hidden" id="presseMediaUrl">
+                </div>
+                <div id="presse-no-journalist" class="presse-notice hidden">
+                    <i class="fa-solid fa-id-card" style="font-size:2rem; color:var(--text-dim); margin-bottom:12px;"></i>
+                    <p>Seuls les personnages avec le rôle <strong>Journaliste</strong> peuvent publier dans la Presse.</p>
+                </div>
+                <div id="presse-stream"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- OMBRA MODAL -->
+    <div id="ombra-modal" class="modal-overlay hidden" style="z-index:9999;">
+        <div class="ombra-box">
+            <div class="ombra-header">
+                <div class="ombra-title"><span class="ombra-dot"></span> OMBRA</div>
+                <span style="font-size:0.7rem; color:#9b7fc7; letter-spacing:0.1em;">RÉSEAU CHIFFRÉ · ANONYME</span>
+                <button onclick="closeOmbra()" style="background:none; border:none; color:#6b4a9a; cursor:pointer; margin-left:auto; font-size:1.1rem;">✕</button>
+            </div>
+            <div id="ombra-messages"></div>
+            <div class="ombra-input-zone">
+                <input id="ombraInput" type="text" placeholder="Message chiffré..." autocomplete="off" onkeyup="if(event.key==='Enter') sendOmbraMessage()">
+                <button onclick="sendOmbraMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
     </div>
     
     <script src="/socket.io/socket.io.js"></script>
