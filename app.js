@@ -80,9 +80,8 @@ function switchView(view) {
         localStorage.setItem('last_feed_visit', Date.now().toString());
         loadFeed();
     }
-    if(view === 'presse') {
-        loadPresse();
-    }
+    if(view === 'presse') { loadPresse(); }
+    if(view === 'actualites') { loadActualites(); updateActuAdminForm(); }
 }
 
 async function toggleRecording(source) { 
@@ -204,12 +203,8 @@ function changeTheme(themeName) {
 }
 
 // OMBRA DARKWEB
-function generateOmbraAlias() {
-    const num = Math.floor(Math.random() * 900) + 100;
-    return `User#${num}`;
-}
+function handleOmbraOverlayClick(e) { if(e.target === document.getElementById('ombra-modal')) closeOmbra(); }
 function openOmbra() {
-    if(!ombraAlias) ombraAlias = generateOmbraAlias();
     document.getElementById('ombra-modal').classList.remove('hidden');
     socket.emit('ombra_join', { alias: ombraAlias });
 }
@@ -245,6 +240,7 @@ socket.on('login_success', (data) => {
     localStorage.setItem('rp_username', data.username);
     localStorage.setItem('rp_code', data.userId);
     USERNAME = data.username; PLAYER_ID = data.userId; IS_ADMIN = data.isAdmin;
+    ombraAlias = data.ombraAlias || null;
     
     if(data.uiTheme) changeTheme(data.uiTheme);
     
@@ -954,6 +950,13 @@ document.addEventListener('click', (e) => {
 });
 
 // ==================== PRESSE ====================
+const URGENCY_CONFIG = {
+    urgent:   { label: '🚨 URGENT',               cls: 'urgency-urgent'   },
+    enquete:  { label: '🔍 ENQUÊTE',              cls: 'urgency-enquete'  },
+    officiel: { label: '📢 COMMUNIQUÉ OFFICIEL',  cls: 'urgency-officiel' },
+    economie: { label: '📉 ÉCONOMIE',             cls: 'urgency-economie' }
+};
+
 async function previewPresseFile() {
     const file = document.getElementById('presseMediaFile').files[0];
     if(file) {
@@ -966,7 +969,7 @@ function submitArticle() {
     const title = document.getElementById('presseTitle').value.trim();
     const content = document.getElementById('presseContent').value.trim();
     const mediaUrl = document.getElementById('presseMediaUrl').value.trim();
-    const isBreakingNews = document.getElementById('presseBreaking').checked;
+    const urgencyLevel = document.getElementById('presseUrgency').value || null;
     if(!title && !content) return alert("Article vide.");
     if(!currentPresseCharId) return alert("Aucun journaliste sélectionné.");
     const char = myCharacters.find(c => c._id === currentPresseCharId);
@@ -985,7 +988,8 @@ function submitArticle() {
         content: `[TITRE]${title}[/TITRE]\n${content}`,
         mediaUrl, mediaType,
         date: new Date().toLocaleDateString(), ownerId: PLAYER_ID,
-        isAnonymous: false, isBreakingNews,
+        isAnonymous: false, isBreakingNews: urgencyLevel === 'urgent',
+        urgencyLevel,
         isArticle: true, poll: null
     };
 
@@ -994,22 +998,23 @@ function submitArticle() {
     document.getElementById('presseContent').value = '';
     document.getElementById('presseMediaUrl').value = '';
     document.getElementById('presseMediaFile').value = '';
-    document.getElementById('presseBreaking').checked = false;
+    document.getElementById('presseUrgency').value = '';
 }
 
 function createArticleElement(post) {
     const div = document.createElement('div');
     div.className = 'article-card';
-    if(post.isBreakingNews) div.classList.add('article-breaking');
+    if(post.isHeadline) div.classList.add('article-headline');
+    if(post.urgencyLevel === 'urgent') div.classList.add('article-breaking');
     div.id = `article-${post._id}`;
 
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="article-del-btn" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
+    const headlineBtn = IS_ADMIN ? `<button class="article-headline-btn" onclick="event.stopPropagation(); toggleHeadline('${post._id}', ${!post.isHeadline})" title="${post.isHeadline ? 'Retirer de la Une' : 'Mettre à la Une'}"><i class="fa-solid fa-star"></i> ${post.isHeadline ? 'Retirer la Une' : 'La Une'}</button>` : '';
 
-    // Extraire titre et corps
     let titleText = '', bodyText = post.content || '';
     const titleMatch = post.content && post.content.match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
     if(titleMatch) { titleText = titleMatch[1]; bodyText = titleMatch[2]; }
-    else { 
+    else {
         const words = (post.content || '').split(/\s+/);
         titleText = words.slice(0, 8).join(' ') + (words.length > 8 ? '...' : '');
     }
@@ -1019,12 +1024,29 @@ function createArticleElement(post) {
 
     const partyHTML = post.partyName && post.partyLogo ? `<span class="party-badge"><img src="${post.partyLogo}" class="party-logo"> ${post.partyName}</span>` : '';
 
+    let urgencyHTML = '';
+    if(post.urgencyLevel && URGENCY_CONFIG[post.urgencyLevel]) {
+        const uc = URGENCY_CONFIG[post.urgencyLevel];
+        urgencyHTML = `<span class="article-urgency-tag ${uc.cls}">${uc.label}</span>`;
+    }
+
+    // Lettrine : première lettre du corps en grand
+    let articleBodyHTML = '';
+    if(bodyText && bodyText.trim().length > 0) {
+        const firstChar = bodyText.trim().charAt(0);
+        const rest = bodyText.trim().slice(1);
+        articleBodyHTML = `<div class="article-content"><span class="article-dropcap">${escapeHtml(firstChar)}</span>${formatText(rest)}</div>`;
+    } else {
+        articleBodyHTML = `<div class="article-content"></div>`;
+    }
+
     div.innerHTML = `
         ${bannerHTML}
         <div class="article-body">
             ${delBtn}
-            ${post.isBreakingNews ? '<div class="article-breaking-tag">🚨 URGENT</div>' : ''}
-            <h2 class="article-title">${titleText}</h2>
+            ${headlineBtn}
+            ${urgencyHTML}
+            <h2 class="article-title">${escapeHtml(titleText)}</h2>
             <div class="article-byline" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
                 <img src="${post.authorAvatar}" class="article-author-avatar">
                 <div>
@@ -1034,14 +1056,17 @@ function createArticleElement(post) {
                 <span class="article-date">${post.date}</span>
             </div>
             <div class="article-separator"></div>
-            <div class="article-content">${formatText(bodyText)}</div>
+            ${articleBodyHTML}
             <div class="article-actions">
                 <button class="action-item ${post.likes.includes(currentFeedCharId)?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
-                <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
             </div>
-        </div>
-        <div class="comments-list hidden">${generateCommentsHTML(post.comments, post._id)}</div>`;
+        </div>`;
     return div;
+}
+
+function toggleHeadline(postId, value) {
+    if(!IS_ADMIN) return;
+    socket.emit('set_headline', { postId, value });
 }
 
 function loadPresse() { socket.emit('request_presse'); }
@@ -1058,11 +1083,55 @@ socket.on('presse_data', (articles) => {
 });
 
 socket.on('new_article', (post) => {
-    const c = document.getElementById('presse-stream');
-    if(c) { 
-        const empty = c.querySelector('div[style*="text-align:center"]');
-        if(empty) empty.remove();
-        c.prepend(createArticleElement(post)); 
+    if(currentView === 'presse') {
+        loadPresse();
+    } else {
+        document.getElementById('btn-view-presse').classList.add('nav-notify');
     }
-    if(currentView !== 'presse') document.getElementById('btn-view-presse').classList.add('nav-notify');
+});
+
+// ==================== ACTUALITÉS ====================
+function updateActuAdminForm() {
+    const form = document.getElementById('actu-admin-form');
+    if(form) { if(IS_ADMIN) form.classList.remove('hidden'); else form.classList.add('hidden'); }
+}
+function loadActualites() { socket.emit('request_events'); }
+function submitEvent() {
+    const jour = document.getElementById('actuJour').value.trim();
+    const date = document.getElementById('actuDate').value.trim();
+    const heure = document.getElementById('actuHeure').value.trim();
+    const evenement = document.getElementById('actuEvenement').value.trim();
+    if(!evenement) return;
+    socket.emit('create_event', { jour, date, heure, evenement });
+    document.getElementById('actuJour').value = '';
+    document.getElementById('actuDate').value = '';
+    document.getElementById('actuHeure').value = '';
+    document.getElementById('actuEvenement').value = '';
+}
+function deleteEvent(id) { if(confirm('Supprimer cet événement ?')) socket.emit('delete_event', id); }
+
+socket.on('events_data', (events) => {
+    const c = document.getElementById('events-list'); if(!c) return;
+    c.innerHTML = '';
+    if(events.length === 0) {
+        c.innerHTML = '<div class="actu-empty"><i class="fa-solid fa-calendar-xmark"></i><p>Aucun événement planifié.</p></div>';
+        return;
+    }
+    let lastDate = null;
+    events.forEach(ev => {
+        if(ev.date !== lastDate) {
+            lastDate = ev.date;
+            c.innerHTML += `<div class="actu-date-header"><span>${ev.jour ? ev.jour + ' · ' : ''}${ev.date}</span></div>`;
+        }
+        const delBtn = IS_ADMIN ? `<button class="actu-del-btn" onclick="deleteEvent('${ev._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
+        c.innerHTML += `
+            <div class="actu-event-item">
+                <div class="actu-time">${ev.heure || '—'}</div>
+                <div class="actu-dot-line"><div class="actu-dot"></div><div class="actu-line"></div></div>
+                <div class="actu-event-body">
+                    <span class="actu-event-text">${escapeHtml(ev.evenement)}</span>
+                    ${delBtn}
+                </div>
+            </div>`;
+    });
 });
