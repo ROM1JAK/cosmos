@@ -157,7 +157,44 @@ document.getElementById('txtInput').addEventListener('input', function(e) {
 });
 
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
-function toggleCreateForm() { document.getElementById('create-char-form').classList.toggle('hidden'); }
+function toggleCreateForm() { openCharModal('create'); }
+
+// [NOUVEAU] Navigation onglets modale perso
+function switchCharTab(mode, tab) {
+    const prefix = mode === 'create' ? 'create' : 'edit';
+    document.querySelectorAll(`#char-modal-${mode} .char-tab-content`).forEach(el => el.classList.remove('active-tab'));
+    document.querySelectorAll(`#char-modal-${mode} .char-tab`).forEach(el => el.classList.remove('active'));
+    const content = document.getElementById(`${prefix}-tab-${tab}`);
+    if(content) content.classList.add('active-tab');
+    // Activer le bouton correspondant
+    const tabs = document.querySelectorAll(`#char-modal-${mode} .char-tab`);
+    const tabNames = ['identite','parti','entreprises','capital'];
+    const idx = tabNames.indexOf(tab);
+    if(tabs[idx]) tabs[idx].classList.add('active');
+}
+
+// [NOUVEAU] Modales centrées pour création/édition de personnage
+function openCharModal(mode) {
+    document.getElementById('char-modal').classList.remove('hidden');
+    if(mode === 'create') {
+        document.getElementById('char-modal-title').textContent = '✨ Nouveau Personnage';
+        document.getElementById('char-modal-create').classList.remove('hidden');
+        document.getElementById('char-modal-edit').classList.add('hidden');
+    } else {
+        document.getElementById('char-modal-title').textContent = '✏️ Modifier le Personnage';
+        document.getElementById('char-modal-create').classList.add('hidden');
+        document.getElementById('char-modal-edit').classList.remove('hidden');
+    }
+}
+function closeCharModal() {
+    document.getElementById('char-modal').classList.add('hidden');
+    newCharCompanies = [];
+    const list = document.getElementById('newCharCompaniesList');
+    if(list) list.innerHTML = '';
+    editCharCompanies = [];
+    const editList = document.getElementById('editCharCompaniesList');
+    if(editList) editList.innerHTML = '';
+}
 function toggleNotifications() {
     notificationsEnabled = !notificationsEnabled; const btn = document.getElementById('btn-notif-toggle');
     if(btn) { btn.innerHTML = notificationsEnabled ? '<i class="fa-solid fa-bell"></i> Notifs : ON' : '<i class="fa-solid fa-bell-slash"></i> Notifs : OFF'; btn.style.opacity = notificationsEnabled ? "1" : "0.5"; }
@@ -172,6 +209,9 @@ function openUserSettingsModal() {
     document.getElementById('settingsUsernameInput').value = USERNAME || ""; 
     document.getElementById('settingsCodeInput').value = PLAYER_ID || ""; 
     document.getElementById('settings-msg').textContent = ""; 
+    // [FIX] Afficher bouton alerte admin directement ici (sans redéfinition)
+    const w = document.getElementById('admin-alert-btn-wrapper');
+    if(w) { if(IS_ADMIN) w.classList.remove('hidden'); else w.classList.add('hidden'); }
     document.getElementById('user-settings-modal').classList.remove('hidden'); 
 }
 function closeUserSettingsModal() { document.getElementById('user-settings-modal').classList.add('hidden'); }
@@ -379,22 +419,50 @@ async function createCharacter() {
 }
 function prepareEditCharacter(id) {
     const char = myCharacters.find(c => c._id === id); if (!char) return;
-    document.getElementById('editCharId').value = char._id; document.getElementById('editCharOriginalName').value = char.name; document.getElementById('editCharName').value = char.name;
-    document.getElementById('editCharRole').value = char.role; document.getElementById('editCharDesc').value = char.description; document.getElementById('editCharColor').value = char.color;
-    document.getElementById('editCharBase64').value = char.avatar; document.getElementById('editCharPartyName').value = char.partyName || ""; document.getElementById('editCharPartyBase64').value = char.partyLogo || "";
-    document.getElementById('edit-char-form').classList.remove('hidden'); document.getElementById('create-char-form').classList.add('hidden');
+    document.getElementById('editCharId').value = char._id;
+    document.getElementById('editCharOriginalName').value = char.name;
+    document.getElementById('editCharName').value = char.name;
+    document.getElementById('editCharRole').value = char.role;
+    document.getElementById('editCharDesc').value = char.description || '';
+    document.getElementById('editCharColor').value = char.color || '#5c7cfa';
+    document.getElementById('editCharBase64').value = char.avatar;
+    document.getElementById('editCharPartyName').value = char.partyName || '';
+    document.getElementById('editCharPartyBase64').value = char.partyLogo || '';
+    document.getElementById('editCharCapital').value = char.capital || 0;
+    // Charger les entreprises existantes
+    editCharCompanies = (char.companies || []).map(c => ({...c}));
+    renderEditCharCompanies();
+    openCharModal('edit');
 }
-function cancelEditCharacter() { document.getElementById('edit-char-form').classList.add('hidden'); }
+function cancelEditCharacter() { closeCharModal(); }
 async function submitEditCharacter() {
-    const file = document.getElementById('editCharFile').files[0]; const partyFile = document.getElementById('editCharPartyFile').files[0];
-    let newAvatar = document.getElementById('editCharBase64').value; let newPartyLogo = document.getElementById('editCharPartyBase64').value;
+    const file = document.getElementById('editCharFile').files[0];
+    const partyFile = document.getElementById('editCharPartyFile').files[0];
+    let newAvatar = document.getElementById('editCharBase64').value;
+    let newPartyLogo = document.getElementById('editCharPartyBase64').value;
     const newPartyName = document.getElementById('editCharPartyName').value.trim();
+    const newCapital = parseFloat(document.getElementById('editCharCapital').value) || 0;
     if (file) { const url = await uploadToCloudinary(file); if (url) newAvatar = url; }
     if (partyFile) { const url = await uploadToCloudinary(partyFile); if (url) newPartyLogo = url; }
     const newRole = document.getElementById('editCharRole').value.trim();
     const isOfficial = newRole.includes('Journaliste') || newRole.includes('Gouvernement') || newRole.includes('Presse');
-    socket.emit('edit_char', { charId: document.getElementById('editCharId').value, originalName: document.getElementById('editCharOriginalName').value, newName: document.getElementById('editCharName').value.trim(), newRole: newRole, newAvatar, newColor: document.getElementById('editCharColor').value, newDescription: document.getElementById('editCharDesc').value.trim(), ownerId: PLAYER_ID, currentRoomId: currentRoomId, partyName: newPartyName || null, partyLogo: newPartyLogo || null, isOfficial });
-    cancelEditCharacter(); document.getElementById('editCharFile').value = ""; document.getElementById('editCharPartyFile').value = "";
+    socket.emit('edit_char', {
+        charId: document.getElementById('editCharId').value,
+        originalName: document.getElementById('editCharOriginalName').value,
+        newName: document.getElementById('editCharName').value.trim(),
+        newRole, newAvatar,
+        newColor: document.getElementById('editCharColor').value,
+        newDescription: document.getElementById('editCharDesc').value.trim(),
+        ownerId: PLAYER_ID, currentRoomId,
+        partyName: newPartyName || null,
+        partyLogo: newPartyLogo || null,
+        isOfficial,
+        capital: newCapital,
+        companies: editCharCompanies
+    });
+    closeCharModal();
+    document.getElementById('editCharFile').value = '';
+    document.getElementById('editCharPartyFile').value = '';
 }
 socket.on('my_chars_data', (chars) => { 
     myCharacters = chars; updateUI(); 
@@ -1479,13 +1547,7 @@ function submitAlert(active) {
 }
 function closeAdminAlertModal() { document.getElementById('admin-alert-modal').classList.add('hidden'); }
 
-// Afficher bouton admin alerte dans les settings
-const _origOpenSettings = openUserSettingsModal;
-function openUserSettingsModal() {
-    _origOpenSettings();
-    const w = document.getElementById('admin-alert-btn-wrapper');
-    if(w) { if(IS_ADMIN) w.classList.remove('hidden'); else w.classList.add('hidden'); }
-}
+// [FIX] La logique admin-alert est désormais directement dans openUserSettingsModal ci-dessus
 
 // ==================== CAPITAL ADMIN [NOUVEAU] ====================
 function adminEditCapital(charId, currentCapital) {
@@ -1591,3 +1653,31 @@ function renderNewCharCompanies() {
         </div>`).join('');
 }
 function removeNewCharCompany(i) { newCharCompanies.splice(i, 1); renderNewCharCompanies(); }
+
+// [NOUVEAU] Entreprises dans modification
+let editCharCompanies = [];
+async function addCompanyToEditChar() {
+    const name = document.getElementById('editCompanyName').value.trim();
+    const role = document.getElementById('editCompanyRole').value.trim();
+    const logoFile = document.getElementById('editCompanyLogoFile').files[0];
+    if(!name) return;
+    let logo = null;
+    if(logoFile) logo = await uploadToCloudinary(logoFile);
+    editCharCompanies.push({ name, role: role || '', logo, description: '' });
+    renderEditCharCompanies();
+    document.getElementById('editCompanyName').value = '';
+    document.getElementById('editCompanyRole').value = '';
+    document.getElementById('editCompanyLogoFile').value = '';
+}
+function renderEditCharCompanies() {
+    const list = document.getElementById('editCharCompaniesList');
+    if(!list) return;
+    list.innerHTML = editCharCompanies.map((co, i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-bottom:5px;border:1px solid var(--border);">
+            ${co.logo ? `<img src="${co.logo}" style="width:22px;height:22px;border-radius:4px;object-fit:cover;">` : '<i class="fa-solid fa-building" style="color:var(--text-muted);"></i>'}
+            <span style="flex:1;font-size:0.82rem;font-weight:600;">${co.name}</span>
+            <span style="font-size:0.72rem;color:var(--text-muted);">${co.role}</span>
+            <button onclick="removeEditCharCompany(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:0.8rem;"><i class="fa-solid fa-xmark"></i></button>
+        </div>`).join('');
+}
+function removeEditCharCompany(i) { editCharCompanies.splice(i, 1); renderEditCharCompanies(); }
