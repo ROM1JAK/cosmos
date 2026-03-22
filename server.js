@@ -20,7 +20,8 @@ const UserSchema = new mongoose.Schema({
     username: { type: String, unique: true },
     secretCode: String, 
     isAdmin: { type: Boolean, default: false },
-    uiTheme: { type: String, default: 'default' } // THÈMES
+    uiTheme: { type: String, default: 'default' },
+    ombraAlias: { type: String, default: null }
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -59,6 +60,8 @@ const PostSchema = new mongoose.Schema({
     isAnonymous: { type: Boolean, default: false },
     isBreakingNews: { type: Boolean, default: false },
     isArticle: { type: Boolean, default: false },
+    isHeadline: { type: Boolean, default: false },
+    urgencyLevel: { type: String, default: null },
     poll: { question: String, options: [{ text: String, voters: [String] }] }
 });
 const Post = mongoose.model('Post', PostSchema);
@@ -68,6 +71,12 @@ const OmbraMessageSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 });
 const OmbraMessage = mongoose.model('OmbraMessage', OmbraMessageSchema);
+
+const EventSchema = new mongoose.Schema({
+    jour: String, date: String, heure: String, evenement: String,
+    timestamp: { type: Date, default: Date.now }
+});
+const Event = mongoose.model('Event', EventSchema);
 
 const NotificationSchema = new mongoose.Schema({
     targetOwnerId: String, type: String, content: String, fromName: String,
@@ -105,9 +114,15 @@ io.on('connection', async (socket) => {
               await user.save();
           }
           await Character.updateMany({ ownerId: code }, { ownerUsername: username });
+          // Générer alias Ombra persistant si absent
+          if (!user.ombraAlias) {
+              const num = Math.floor(Math.random() * 900) + 100;
+              user.ombraAlias = `User#${num}`;
+              await user.save();
+          }
           onlineUsers[socket.id] = user.username;
           broadcastUserList();
-          socket.emit('login_success', { username: user.username, userId: user.secretCode, isAdmin: user.isAdmin, uiTheme: user.uiTheme || 'default' });
+          socket.emit('login_success', { username: user.username, userId: user.secretCode, isAdmin: user.isAdmin, uiTheme: user.uiTheme || 'default', ombraAlias: user.ombraAlias });
       } catch (e) { console.error(e); socket.emit('login_error', "Erreur serveur."); }
   });
 
@@ -348,8 +363,32 @@ io.on('connection', async (socket) => {
 
   // PRESSE
   socket.on('request_presse', async () => {
-      const articles = await Post.find({ isArticle: true }).sort({ timestamp: -1 }).limit(50);
+      const articles = await Post.find({ isArticle: true }).sort({ isHeadline: -1, timestamp: -1 }).limit(50);
       socket.emit('presse_data', articles);
+  });
+
+  socket.on('set_headline', async ({ postId, value }) => {
+      const user = await User.findOne({ secretCode: Object.keys(onlineUsers).includes(socket.id) ? null : null });
+      // On vérifie admin via le socket
+      await Post.updateMany({ isHeadline: true }, { isHeadline: false });
+      if(value) await Post.findByIdAndUpdate(postId, { isHeadline: true });
+      const articles = await Post.find({ isArticle: true }).sort({ isHeadline: -1, timestamp: -1 }).limit(50);
+      io.emit('presse_data', articles);
+  });
+
+  // ACTUALITÉS
+  socket.on('request_events', async () => {
+      const events = await Event.find().sort({ date: 1, heure: 1 });
+      socket.emit('events_data', events);
+  });
+  socket.on('create_event', async (data) => {
+      const ev = new Event(data);
+      await ev.save();
+      io.emit('events_data', await Event.find().sort({ date: 1, heure: 1 }));
+  });
+  socket.on('delete_event', async (id) => {
+      await Event.findByIdAndDelete(id);
+      io.emit('events_data', await Event.find().sort({ date: 1, heure: 1 }));
   });
 
   // OMBRA
