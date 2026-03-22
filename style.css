@@ -590,3 +590,43 @@ body[data-theme="ombra"] { --accent: #7c3aed; --accent-glow: rgba(124,58,237,0.3
 .actu-empty { text-align: center; padding: 48px 20px; color: var(--text-muted); }
 .actu-empty i { font-size: 2.5rem; margin-bottom: 12px; display: block; color: var(--text-dim); }
 
+
+/* ==================== BANDEAU D'ALERTE GLOBAL [NOUVEAU] ==================== */
+.global-alert-banner { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 8px 20px; font-family: var(--font-display); font-size: 0.82rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; flex-shrink: 0; position: relative; z-index: 200; animation: alertPulse 3s infinite; }
+.global-alert-banner.hidden { display: none; }
+.alert-red    { background: rgba(218,55,60,0.92); color: white; border-bottom: 2px solid #ff4757; }
+.alert-orange { background: rgba(245,158,11,0.92); color: white; border-bottom: 2px solid #f59e0b; }
+.alert-yellow { background: rgba(234,179,8,0.92); color: #000; border-bottom: 2px solid #eab308; }
+.alert-blue   { background: rgba(59,130,246,0.92); color: white; border-bottom: 2px solid #3b82f6; }
+@keyframes alertPulse { 0%,100%{opacity:1;} 50%{opacity:0.88;} }
+.alert-dismiss-btn { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; margin-left: 8px; transition: all 0.2s; }
+.alert-dismiss-btn:hover { background: rgba(0,0,0,0.4); }
+
+/* Filtre de teinte selon l'alerte */
+body[data-alert="red"]    { box-shadow: inset 0 0 0 2px rgba(218,55,60,0.3); }
+body[data-alert="orange"] { box-shadow: inset 0 0 0 2px rgba(245,158,11,0.3); }
+body[data-alert="yellow"] { box-shadow: inset 0 0 0 2px rgba(234,179,8,0.3); }
+body[data-alert="blue"]   { box-shadow: inset 0 0 0 2px rgba(59,130,246,0.3); }
+
+/* Boutons couleur alerte */
+.alert-color-btn { flex: 1; border: 2px solid transparent; color: white; padding: 7px 6px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.72rem; font-weight: 700; font-family: var(--font-main); transition: all 0.2s; }
+.alert-color-btn.active-alert-btn { border-color: white; box-shadow: 0 0 10px rgba(255,255,255,0.3); transform: scale(1.05); }
+
+/* ==================== FORMULAIRE CRÉATION PERSONNAGE AMÉLIORÉ [NOUVEAU] ==================== */
+.char-form-section { background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.char-form-section-title { font-family: var(--font-display); font-size: 0.65rem; font-weight: 700; color: var(--accent-soft); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 2px; }
+#create-char-form { gap: 10px !important; }
+#create-char-form input[type="text"],
+#create-char-form textarea,
+#create-char-form input[type="number"] { background: var(--bg-tertiary); border: 1px solid var(--border); color: white; padding: 8px 10px; border-radius: var(--radius-sm); font-family: var(--font-main); font-size: 0.85rem; width: 100%; transition: border-color 0.2s; }
+#create-char-form input:focus, #create-char-form textarea:focus { outline: none; border-color: var(--accent); }
+
+/* ==================== CAPITAL BADGE [NOUVEAU] ==================== */
+.profile-capital-badge { display: inline-flex; align-items: center; gap: 5px; background: linear-gradient(135deg, rgba(234,179,8,0.15), rgba(245,158,11,0.1)); border: 1px solid rgba(234,179,8,0.3); padding: 4px 10px; border-radius: 12px; font-size: 0.78rem; color: #fbbf24; font-weight: 700; margin-top: 6px; }
+
+/* ==================== MESSAGES CRYPTÉS [NOUVEAU] ==================== */
+.crypto-message { display: flex; align-items: center; gap: 10px; background: linear-gradient(135deg, rgba(108,99,255,0.08), rgba(139,133,255,0.05)); border: 1px solid rgba(108,99,255,0.2); border-radius: var(--radius); padding: 10px 14px; margin: 4px 0; }
+.crypto-icon { color: var(--accent-soft); font-size: 1rem; flex-shrink: 0; }
+.crypto-glitch { font-family: monospace; font-size: 0.82rem; color: var(--text-muted); letter-spacing: 0.05em; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crypto-unlock-btn { background: var(--accent-muted); border: 1px solid rgba(108,99,255,0.3); color: var(--accent-soft); padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.75rem; font-weight: 600; white-space: nowrap; transition: all 0.2s; font-family: var(--font-main); }
+.crypto-unlock-btn:hover { background: rgba(108,99,255,0.25); border-color: var(--accent); color: white; }
