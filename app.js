@@ -1,15 +1,4 @@
 var socket = io();
-
-// --- CONNEXION GOOGLE ---
-window.handleGoogleLogin = function(response) {
-    const payload = JSON.parse(atob(response.credential.split('.')[1]));
-    socket.emit('google_login_request', {
-        email: payload.email,
-        name: payload.name,
-        googleId: payload.sub
-    });
-};
-
 const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
 
 const CLOUDINARY_BASE_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz'; 
@@ -48,6 +37,13 @@ let lastMessageData = { author: null, time: 0, ownerId: null };
 let pollOptions = [];
 let pollUIOpen = false; 
 
+// OMBRA
+let ombraAlias = null;
+let ombraHistory = [];
+
+// PRESSE
+let currentPresseCharId = null;
+
 const COMMON_EMOJIS = ["😀", "😂", "😉", "😍", "😎", "🥳", "😭", "😡", "🤔", "👍", "👎", "❤️", "💔", "🔥", "✨", "🎉", "💩", "👻", "💀", "👽", "🤖", "👋", "🙌", "🙏", "💪", "👀", "🍕", "🍻", "🚀", "💯"];
 
 async function uploadToCloudinary(file, resourceType) {
@@ -83,6 +79,9 @@ function switchView(view) {
         document.getElementById('btn-view-feed').classList.remove('nav-notify');
         localStorage.setItem('last_feed_visit', Date.now().toString());
         loadFeed();
+    }
+    if(view === 'presse') {
+        loadPresse();
     }
 }
 
@@ -186,6 +185,10 @@ function submitUsernameChange() {
 
 // THEMES LOGIC
 function changeTheme(themeName) {
+    if(themeName === 'ombra') {
+        openOmbra();
+        return;
+    }
     document.body.setAttribute('data-theme', themeName);
     document.querySelectorAll('.theme-swatch').forEach(btn => btn.classList.remove('active'));
     
@@ -199,6 +202,44 @@ function changeTheme(themeName) {
 
     if(PLAYER_ID) socket.emit('save_theme', { userId: PLAYER_ID, theme: themeName });
 }
+
+// OMBRA DARKWEB
+function generateOmbraAlias() {
+    const num = Math.floor(Math.random() * 900) + 100;
+    return `User#${num}`;
+}
+function openOmbra() {
+    if(!ombraAlias) ombraAlias = generateOmbraAlias();
+    document.getElementById('ombra-modal').classList.remove('hidden');
+    socket.emit('ombra_join', { alias: ombraAlias });
+}
+function closeOmbra() {
+    document.getElementById('ombra-modal').classList.add('hidden');
+    socket.emit('ombra_leave', { alias: ombraAlias });
+}
+function sendOmbraMessage() {
+    const input = document.getElementById('ombraInput');
+    const content = input.value.trim();
+    if(!content) return;
+    socket.emit('ombra_message', { alias: ombraAlias, content, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) });
+    input.value = '';
+}
+function appendOmbraMessage(alias, content, date, isSelf) {
+    const messages = document.getElementById('ombra-messages');
+    const div = document.createElement('div');
+    div.className = `ombra-msg ${isSelf ? 'ombra-self' : ''}`;
+    div.innerHTML = `<span class="ombra-alias">${alias}</span><span class="ombra-content">${escapeHtml(content)}</span><span class="ombra-time">${date}</span>`;
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+}
+function escapeHtml(text) { const d = document.createElement('div'); d.appendChild(document.createTextNode(text)); return d.innerHTML; }
+
+socket.on('ombra_message', (data) => { appendOmbraMessage(data.alias, data.content, data.date, data.alias === ombraAlias); });
+socket.on('ombra_history', (history) => {
+    const messages = document.getElementById('ombra-messages');
+    messages.innerHTML = '';
+    history.forEach(m => appendOmbraMessage(m.alias, m.content, m.date, m.alias === ombraAlias));
+});
 
 socket.on('login_success', (data) => {
     localStorage.setItem('rp_username', data.username);
@@ -219,7 +260,7 @@ socket.on('username_change_error', (msg) => { document.getElementById('settings-
 
 function checkAutoLogin() {
     const savedUser = localStorage.getItem('rp_username'); const savedCode = localStorage.getItem('rp_code');
-    if (savedUser && savedCode) socket.emit('login_request', { username: savedUser, code: savedCode });
+    if (savedUser && savedCode) socket.emit('login_request', { username: savedUser, code: savedCode }); else openLoginModal();
 }
 
 socket.on('connect', () => { checkAutoLogin(); setupEmojiPicker(); });
@@ -378,7 +419,7 @@ function updateUI() {
     if (!currentSelectedChar) { if(myCharacters.length > 0) selectCharacter(myCharacters[0]._id); else if(IS_ADMIN) selectCharacter('narrateur'); }
     else selectCharacter(currentSelectedChar._id);
 
-    updateFeedCharUI(); updateBreakingNewsVisibility();
+    updateFeedCharUI(); updatePresseCharUI(); updateBreakingNewsVisibility();
 }
 
 // FEED AVATAR SELECTOR
@@ -408,6 +449,45 @@ function selectFeedChar(charId) {
     updateFeedCharUI(); updateBreakingNewsVisibility(); loadFeed();
 }
 
+// PRESSE CHAR SELECTOR
+function updatePresseCharUI() {
+    const container = document.getElementById('presse-char-avatar-wrapper'); if(!container) return;
+    const journalistChars = myCharacters.filter(c => c.role && (c.role.toLowerCase().includes('journaliste') || c.isOfficial));
+    if(!currentPresseCharId && journalistChars.length > 0) currentPresseCharId = journalistChars[0]._id;
+    const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
+    const avatarSrc = char ? char.avatar : 'https://cdn-icons-png.flaticon.com/512/1144/1144760.png';
+    container.innerHTML = `
+        <div class="feed-char-trigger" onclick="togglePresseCharDropdown()" title="Changer de journaliste">
+            <img src="${avatarSrc}" class="feed-char-avatar-btn">
+            <i class="fa-solid fa-chevron-down feed-char-chevron"></i>
+        </div>
+        <div id="presse-char-dropdown" class="feed-char-dropdown hidden">
+            ${journalistChars.length === 0 ? '<div style="padding:12px; color:#777; font-size:0.82rem;">Aucun journaliste</div>' : journalistChars.map(c => `
+                <div class="feed-char-option ${c._id === currentPresseCharId ? 'active' : ''}" onclick="selectPresseChar('${c._id}')">
+                    <img src="${c.avatar}" class="feed-char-opt-avatar">
+                    <div><div class="feed-char-opt-name" style="color:${c.color}">${c.name}</div><div class="feed-char-opt-role">${c.role}</div></div>
+                    ${c._id === currentPresseCharId ? '<i class="fa-solid fa-check" style="margin-left:auto; color:var(--accent);"></i>' : ''}
+                </div>`).join('')}
+        </div>`;
+    // Afficher ou masquer la zone de rédaction
+    updatePresseWriteBox();
+}
+function togglePresseCharDropdown() { const dd = document.getElementById('presse-char-dropdown'); if(dd) dd.classList.toggle('hidden'); }
+function selectPresseChar(charId) {
+    currentPresseCharId = charId;
+    const dd = document.getElementById('presse-char-dropdown'); if(dd) dd.classList.add('hidden');
+    updatePresseCharUI();
+}
+function updatePresseWriteBox() {
+    const writeBox = document.getElementById('presse-write-box');
+    const notice = document.getElementById('presse-no-journalist');
+    if(!writeBox || !notice) return;
+    const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
+    const isJournalist = char && (char.role && (char.role.toLowerCase().includes('journaliste') || char.isOfficial));
+    if(isJournalist) { writeBox.classList.remove('hidden'); notice.classList.add('hidden'); }
+    else { writeBox.classList.add('hidden'); notice.classList.remove('hidden'); }
+}
+
 function updateBreakingNewsVisibility() {
     const label = document.getElementById('breakingNewsLabel'); if(!label) return;
     const char = myCharacters.find(c => c._id === currentFeedCharId);
@@ -427,7 +507,20 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileName').textContent = char.name; document.getElementById('profileRole').textContent = char.role;
     document.getElementById('profileAvatar').src = char.avatar; document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
-    if(char.partyName && char.partyLogo) document.getElementById('profileOwner').innerHTML += `<div class="party-badge"><img src="${char.partyLogo}" class="party-logo"> ${char.partyName}</div>`;
+    if(char.partyName && char.partyLogo) document.getElementById('profileOwner').innerHTML += `<div class="party-badge" style="margin-top:6px; display:inline-flex;"><img src="${char.partyLogo}" class="party-logo"> ${char.partyName}</div>`;
+    
+    // Parti dans le header du profil
+    const partyBadgeEl = document.getElementById('profilePartyBadge');
+    if(char.partyName) {
+        partyBadgeEl.style.display = 'block';
+        partyBadgeEl.innerHTML = char.partyLogo 
+            ? `<span class="profile-party-tag"><img src="${char.partyLogo}" class="party-logo" style="width:18px;height:18px;"> ${char.partyName}</span>`
+            : `<span class="profile-party-tag">🏛️ ${char.partyName}</span>`;
+    } else {
+        partyBadgeEl.style.display = 'none';
+        partyBadgeEl.innerHTML = '';
+    }
+    
     document.getElementById('profilePostCount').textContent = char.postCount || 0;
     const count = char.followers ? char.followers.length : 0; document.getElementById('profileFollowersCount').textContent = `${count}`;
     document.getElementById('btn-view-followers').onclick = () => socket.emit('get_followers_list', char._id);
@@ -744,6 +837,7 @@ function generateCommentsHTML(comments, postId) {
 function createPostElement(post) {
     const div = document.createElement('div'); div.className = 'post-card'; div.id = `post-${post._id}`;
     
+    // NOUVEAU : MODE JOURNALISTE
     const isJournalistMode = post.content && (post.content.length > 300 || post.isBreakingNews);
     
     if(post.isBreakingNews) div.classList.add('post-breaking-news');
@@ -756,6 +850,7 @@ function createPostElement(post) {
     const isLiked = post.likes.includes(currentFeedCharId); 
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
     
+    // GESTION MÉDIAS ET BANNIÈRE JOURNALISTE
     let mediaHTML = "";
     let bannerHTML = "";
     if(post.mediaUrl) {
@@ -770,6 +865,7 @@ function createPostElement(post) {
         }
     }
     
+    // GESTION TITRE JOURNALISTE
     let articleTitleHTML = "";
     if (isJournalistMode && post.content) {
         const words = post.content.split(/\s+/);
@@ -850,4 +946,123 @@ document.addEventListener('click', (e) => {
         const dd = document.getElementById('feed-char-dropdown');
         if(dd) dd.classList.add('hidden');
     }
+    const pwrapper = document.getElementById('presse-char-avatar-wrapper');
+    if(pwrapper && !pwrapper.contains(e.target)) {
+        const pdd = document.getElementById('presse-char-dropdown');
+        if(pdd) pdd.classList.add('hidden');
+    }
+});
+
+// ==================== PRESSE ====================
+async function previewPresseFile() {
+    const file = document.getElementById('presseMediaFile').files[0];
+    if(file) {
+        const url = await uploadToCloudinary(file);
+        if(url) document.getElementById('presseMediaUrl').value = url;
+    }
+}
+
+function submitArticle() {
+    const title = document.getElementById('presseTitle').value.trim();
+    const content = document.getElementById('presseContent').value.trim();
+    const mediaUrl = document.getElementById('presseMediaUrl').value.trim();
+    const isBreakingNews = document.getElementById('presseBreaking').checked;
+    if(!title && !content) return alert("Article vide.");
+    if(!currentPresseCharId) return alert("Aucun journaliste sélectionné.");
+    const char = myCharacters.find(c => c._id === currentPresseCharId);
+    if(!char) return alert("Personnage introuvable.");
+
+    let mediaType = null;
+    if(mediaUrl) {
+        if(getYoutubeId(mediaUrl) || mediaUrl.match(/\.(mp4|webm|ogg)$/i) || mediaUrl.includes('/video/upload')) mediaType = 'video';
+        else if(mediaUrl.includes('.webm') || mediaUrl.includes('/raw/upload')) mediaType = 'audio';
+        else mediaType = 'image';
+    }
+
+    const articleData = {
+        authorCharId: char._id, authorName: char.name, authorAvatar: char.avatar, authorRole: char.role, authorColor: char.color,
+        partyName: char.partyName, partyLogo: char.partyLogo,
+        content: `[TITRE]${title}[/TITRE]\n${content}`,
+        mediaUrl, mediaType,
+        date: new Date().toLocaleDateString(), ownerId: PLAYER_ID,
+        isAnonymous: false, isBreakingNews,
+        isArticle: true, poll: null
+    };
+
+    socket.emit('create_post', articleData);
+    document.getElementById('presseTitle').value = '';
+    document.getElementById('presseContent').value = '';
+    document.getElementById('presseMediaUrl').value = '';
+    document.getElementById('presseMediaFile').value = '';
+    document.getElementById('presseBreaking').checked = false;
+}
+
+function createArticleElement(post) {
+    const div = document.createElement('div');
+    div.className = 'article-card';
+    if(post.isBreakingNews) div.classList.add('article-breaking');
+    div.id = `article-${post._id}`;
+
+    const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="article-del-btn" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
+
+    // Extraire titre et corps
+    let titleText = '', bodyText = post.content || '';
+    const titleMatch = post.content && post.content.match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
+    if(titleMatch) { titleText = titleMatch[1]; bodyText = titleMatch[2]; }
+    else { 
+        const words = (post.content || '').split(/\s+/);
+        titleText = words.slice(0, 8).join(' ') + (words.length > 8 ? '...' : '');
+    }
+
+    let bannerHTML = '';
+    if(post.mediaUrl && post.mediaType === 'image') bannerHTML = `<img src="${post.mediaUrl}" class="article-banner">`;
+
+    const partyHTML = post.partyName && post.partyLogo ? `<span class="party-badge"><img src="${post.partyLogo}" class="party-logo"> ${post.partyName}</span>` : '';
+
+    div.innerHTML = `
+        ${bannerHTML}
+        <div class="article-body">
+            ${delBtn}
+            ${post.isBreakingNews ? '<div class="article-breaking-tag">🚨 URGENT</div>' : ''}
+            <h2 class="article-title">${titleText}</h2>
+            <div class="article-byline" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
+                <img src="${post.authorAvatar}" class="article-author-avatar">
+                <div>
+                    <span class="article-author-name">${post.authorName}</span>${partyHTML}
+                    <span class="article-author-role">${post.authorRole}</span>
+                </div>
+                <span class="article-date">${post.date}</span>
+            </div>
+            <div class="article-separator"></div>
+            <div class="article-content">${formatText(bodyText)}</div>
+            <div class="article-actions">
+                <button class="action-item ${post.likes.includes(currentFeedCharId)?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
+                <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
+            </div>
+        </div>
+        <div class="comments-list hidden">${generateCommentsHTML(post.comments, post._id)}</div>`;
+    return div;
+}
+
+function loadPresse() { socket.emit('request_presse'); }
+
+socket.on('presse_data', (articles) => {
+    const c = document.getElementById('presse-stream'); 
+    if(!c) return;
+    c.innerHTML = '';
+    if(articles.length === 0) {
+        c.innerHTML = '<div style="text-align:center; padding:40px; color:#555;"><i class="fa-solid fa-newspaper" style="font-size:2.5rem; margin-bottom:12px; display:block;"></i>Aucun article publié.</div>';
+        return;
+    }
+    articles.forEach(p => c.appendChild(createArticleElement(p)));
+});
+
+socket.on('new_article', (post) => {
+    const c = document.getElementById('presse-stream');
+    if(c) { 
+        const empty = c.querySelector('div[style*="text-align:center"]');
+        if(empty) empty.remove();
+        c.prepend(createArticleElement(post)); 
+    }
+    if(currentView !== 'presse') document.getElementById('btn-view-presse').classList.add('nav-notify');
 });
