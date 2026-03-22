@@ -13,6 +13,7 @@
 
     <!-- [NOUVEAU] Bandeau d'alerte global Admin -->
 <div id="global-alert-banner" class="global-alert-banner hidden">
+    <i class="fa-solid fa-triangle-exclamation"></i>
     <span id="global-alert-text"></span>
     <button onclick="dismissAlert()" class="alert-dismiss-btn">✕</button>
 </div>
@@ -64,7 +65,7 @@
                 <button onclick="toggleSecretVisibility()" class="btn-eye"><i class="fa-solid fa-eye"></i></button>
             </div>
             <button onclick="toggleNotifications()" id="btn-notif-toggle" class="btn-secondary full-width">Notifs</button>
-            <!-- [NOUVEAU] Bouton alerte admin -->
+            <!-- [NOUVEAU] Bouton alerte admin (affiché seulement si admin) -->
             <div id="admin-alert-btn-wrapper" class="hidden" style="margin-top:8px;">
                 <button onclick="closeUserSettingsModal(); document.getElementById('admin-alert-modal').classList.remove('hidden');" class="btn-warning full-width" style="border:none; cursor:pointer; padding:9px; border-radius:var(--radius-sm); font-weight:700; font-family:var(--font-main);">
                     <i class="fa-solid fa-triangle-exclamation"></i> Bandeau d'Alerte
@@ -278,9 +279,9 @@
                                 <label class="file-upload-label"><span><i class="fa-solid fa-image"></i> Avatar</span><input type="file" id="newCharFile" accept="image/*"></label>
                                 <input type="hidden" id="newCharBase64">
                                 <textarea id="newCharDesc" placeholder="Bio..." rows="2"></textarea>
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <label style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">Couleur :</label>
-                                    <input type="color" id="newCharColor" value="#5c7cfa" style="flex:1; height:32px; border:none; border-radius:4px; cursor:pointer;">
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <label style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">Couleur :</label>
+                                    <input type="color" id="newCharColor" value="#5c7cfa" style="flex:1;height:32px;border:none;border-radius:4px;cursor:pointer;">
                                 </div>
                             </div>
                             <div class="char-form-section">
@@ -289,28 +290,27 @@
                                 <label class="file-upload-label"><span><i class="fa-solid fa-flag"></i> Logo du Parti</span><input type="file" id="newCharPartyFile" accept="image/*"></label>
                                 <input type="hidden" id="newCharPartyBase64">
                             </div>
-                            <!-- [NOUVEAU] Section Entreprises dans création -->
+                            <!-- [NOUVEAU] Entreprises -->
                             <div class="char-form-section">
-                                <div class="char-form-section-title">Entreprises <span style="font-weight:400; font-size:0.72rem;">(optionnel)</span></div>
+                                <div class="char-form-section-title">Entreprises <span style="font-weight:400;font-size:0.7rem;">(optionnel)</span></div>
                                 <div id="newCharCompaniesList"></div>
-                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:6px;">
-                                    <input type="text" id="newCompanyName" placeholder="Nom entreprise" style="background:var(--bg-tertiary); border:1px solid var(--border); color:white; padding:7px 10px; border-radius:var(--radius-sm); font-family:var(--font-main); font-size:0.82rem;">
-                                    <input type="text" id="newCompanyRole" placeholder="Poste" style="background:var(--bg-tertiary); border:1px solid var(--border); color:white; padding:7px 10px; border-radius:var(--radius-sm); font-family:var(--font-main); font-size:0.82rem;">
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                                    <input type="text" id="newCompanyName" placeholder="Nom entreprise" style="background:var(--bg-tertiary);border:1px solid var(--border);color:white;padding:7px 10px;border-radius:var(--radius-sm);font-family:var(--font-main);font-size:0.82rem;">
+                                    <input type="text" id="newCompanyRole" placeholder="Poste" style="background:var(--bg-tertiary);border:1px solid var(--border);color:white;padding:7px 10px;border-radius:var(--radius-sm);font-family:var(--font-main);font-size:0.82rem;">
                                 </div>
-                                <label class="file-upload-label" style="margin-bottom:6px;"><span><i class="fa-solid fa-building"></i> Logo entreprise</span><input type="file" id="newCompanyLogoFile" accept="image/*"></label>
-                                <button type="button" onclick="addCompanyToNewChar()" class="btn-secondary" style="width:100%; font-size:0.78rem; padding:6px;">+ Ajouter cette entreprise</button>
-                                <input type="hidden" id="newCharCompaniesData" value="[]">
+                                <label class="file-upload-label" style="margin-top:5px;"><span><i class="fa-solid fa-building"></i> Logo entreprise</span><input type="file" id="newCompanyLogoFile" accept="image/*"></label>
+                                <button type="button" onclick="addCompanyToNewChar()" class="btn-secondary" style="width:100%;font-size:0.78rem;padding:6px;margin-top:4px;">+ Ajouter cette entreprise</button>
                             </div>
                             <!-- [NOUVEAU] Capital -->
                             <div class="char-form-section">
                                 <div class="char-form-section-title">Capital Financier</div>
-                                <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="display:flex;align-items:center;gap:8px;">
                                     <span style="font-size:1.1rem;">💰</span>
-                                    <input type="number" id="newCharCapital" placeholder="0" min="0" style="flex:1; background:var(--bg-tertiary); border:1px solid var(--border); color:white; padding:8px 10px; border-radius:var(--radius-sm); font-family:var(--font-main); font-size:0.88rem;">
-                                    <span style="font-size:0.75rem; color:var(--text-muted);">crédits</span>
+                                    <input type="number" id="newCharCapital" placeholder="0" min="0" style="flex:1;background:var(--bg-tertiary);border:1px solid var(--border);color:white;padding:8px 10px;border-radius:var(--radius-sm);font-family:var(--font-main);font-size:0.88rem;">
+                                    <span style="font-size:0.75rem;color:var(--text-muted);">crédits</span>
                                 </div>
                             </div>
-                            <button onclick="createCharacter()" class="btn-primary" style="margin-top:4px;"><i class="fa-solid fa-plus"></i> Créer le personnage</button>
+                            <button onclick="createCharacter()" class="btn-primary"><i class="fa-solid fa-plus"></i> Créer le personnage</button>
                         </div>
                         <div id="edit-char-form" class="create-form hidden">
                             <h4 style="margin:0 0 5px 0; color:#eab308;">Modifier</h4>
@@ -355,7 +355,7 @@
                         <div id="input-zone">
                             <button class="btn-icon" onclick="document.getElementById('chat-img-input').click()"><i class="fa-solid fa-circle-plus"></i></button>
                             <input id="txtInput" type="text" autocomplete="off" placeholder="Envoyer un message...">
-                            <!-- [NOUVEAU] Bouton message crypté -->
+                            <!-- [NOUVEAU] Message crypté -->
                             <button class="btn-icon" onclick="openCryptoModal()" title="Message crypté"><i class="fa-solid fa-lock"></i></button>
                             <button class="btn-icon" id="btn-emoji" onclick="toggleEmojiPicker()"><i class="fa-solid fa-face-smile"></i></button>
                             <button class="btn-icon" id="btn-record-chat" onclick="toggleRecording('chat')"><i class="fa-solid fa-microphone"></i></button>
@@ -457,27 +457,30 @@
             <div class="actu-container">
                 <div id="actu-admin-form" class="actu-form-box hidden">
                     <div class="presse-write-header"><i class="fa-solid fa-calendar-plus"></i><span>Ajouter un événement</span></div>
-                    <!-- [AMÉLIORÉ] Menus déroulants pour jour, heure, minutes -->
-                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:10px;">
-                        <select id="actuJour" class="modal-input" style="margin:0; cursor:pointer;">
+                    <!-- [AMÉLIORÉ] Menus déroulants -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
+                        <select id="actuJour" class="modal-input" style="margin:0;cursor:pointer;">
                             <option value="">— Jour —</option>
                             <option>Lundi</option><option>Mardi</option><option>Mercredi</option>
                             <option>Jeudi</option><option>Vendredi</option><option>Samedi</option><option>Dimanche</option>
                         </select>
                         <input type="date" id="actuDate" class="modal-input" style="margin:0;">
-                        <div style="display:flex; gap:4px;">
-                            <select id="actuHeure" class="modal-input" style="margin:0; flex:1; cursor:pointer; padding:8px 4px;">
+                        <div style="display:flex;gap:4px;">
+                            <select id="actuHeure" class="modal-input" style="margin:0;flex:1;cursor:pointer;padding:8px 4px;">
                                 <option value="">h</option>
-                                <script>for(let h=0;h<24;h++) document.write(`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`);</script>
+                                <option>00</option><option>01</option><option>02</option><option>03</option><option>04</option><option>05</option>
+                                <option>06</option><option>07</option><option>08</option><option>09</option><option>10</option><option>11</option>
+                                <option>12</option><option>13</option><option>14</option><option>15</option><option>16</option><option>17</option>
+                                <option>18</option><option>19</option><option>20</option><option>21</option><option>22</option><option>23</option>
                             </select>
-                            <select id="actuMinute" class="modal-input" style="margin:0; flex:1; cursor:pointer; padding:8px 4px;">
-                                <option value="00">00</option>
-                                <script>for(let m=5;m<60;m+=5) document.write(`<option value="${String(m).padStart(2,'0')}">${String(m).padStart(2,'0')}</option>`);</script>
+                            <select id="actuMinute" class="modal-input" style="margin:0;flex:1;cursor:pointer;padding:8px 4px;">
+                                <option>00</option><option>05</option><option>10</option><option>15</option><option>20</option><option>25</option>
+                                <option>30</option><option>35</option><option>40</option><option>45</option><option>50</option><option>55</option>
                             </select>
                         </div>
                     </div>
-                    <div style="display:flex; gap:8px;">
-                        <input type="text" id="actuEvenement" placeholder="Description de l'événement..." class="modal-input" style="flex:1; margin:0;">
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" id="actuEvenement" placeholder="Description de l'événement..." class="modal-input" style="flex:1;margin:0;">
                         <button class="btn-primary" onclick="submitEvent()">Ajouter</button>
                     </div>
                 </div>
@@ -490,17 +493,17 @@
     <!-- [NOUVEAU] Modale Admin — Bandeau d'alerte -->
     <div id="admin-alert-modal" class="modal-overlay hidden" onclick="closeAdminAlertModal()">
         <div class="modal-box" style="max-width:400px;" onclick="event.stopPropagation()">
-            <h3 style="color:white; margin:0 0 16px;"><i class="fa-solid fa-triangle-exclamation"></i> Bandeau d'Alerte Global</h3>
+            <h3 style="color:white;margin:0 0 16px;"><i class="fa-solid fa-triangle-exclamation"></i> Bandeau d'Alerte Global</h3>
             <input type="text" id="alertMessage" class="modal-input" placeholder="Ex: Couvre-feu activé, Tempête radioactive...">
-            <label style="font-size:0.78rem; color:var(--text-muted); display:block; margin:8px 0 4px;">Couleur d'alerte :</label>
-            <div style="display:flex; gap:8px; margin-bottom:12px;">
+            <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin:8px 0 4px;">Couleur :</label>
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
                 <button class="alert-color-btn" data-color="red" onclick="selectAlertColor('red')" style="background:#da373c;">🚨 Rouge</button>
                 <button class="alert-color-btn" data-color="orange" onclick="selectAlertColor('orange')" style="background:#f59e0b;">⚠️ Orange</button>
-                <button class="alert-color-btn" data-color="yellow" onclick="selectAlertColor('yellow')" style="background:#eab308; color:#000;">☢️ Jaune</button>
+                <button class="alert-color-btn" data-color="yellow" onclick="selectAlertColor('yellow')" style="background:#eab308;color:#000;">☢️ Jaune</button>
                 <button class="alert-color-btn" data-color="blue" onclick="selectAlertColor('blue')" style="background:#3b82f6;">🌊 Bleu</button>
             </div>
             <input type="hidden" id="alertColor" value="red">
-            <div style="display:flex; gap:8px;">
+            <div style="display:flex;gap:8px;">
                 <button class="btn-primary" onclick="submitAlert(true)" style="flex:1;"><i class="fa-solid fa-broadcast-tower"></i> Activer</button>
                 <button class="btn-secondary" onclick="submitAlert(false)" style="flex:1;"><i class="fa-solid fa-xmark"></i> Désactiver</button>
             </div>
@@ -510,28 +513,28 @@
     <!-- [NOUVEAU] Modale — Message Crypté -->
     <div id="crypto-modal" class="modal-overlay hidden" onclick="closeCryptoModal()">
         <div class="modal-box" style="max-width:380px;" onclick="event.stopPropagation()">
-            <h3 style="color:var(--accent-soft); margin:0 0 12px;"><i class="fa-solid fa-lock"></i> Message Crypté</h3>
-            <p style="font-size:0.8rem; color:var(--text-muted); margin:0 0 12px;">Le texte sera brouillé. Seuls ceux qui connaissent le mot de passe RP peuvent le lire.</p>
-            <textarea id="cryptoContent" rows="3" class="modal-input" placeholder="Votre message secret..." style="resize:none; width:100%;"></textarea>
+            <h3 style="color:var(--accent-soft);margin:0 0 12px;"><i class="fa-solid fa-lock"></i> Message Crypté</h3>
+            <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 12px;">Seuls ceux qui connaissent le mot de passe RP peuvent lire ce message.</p>
+            <textarea id="cryptoContent" rows="3" class="modal-input" placeholder="Votre message secret..." style="resize:none;width:100%;"></textarea>
             <input type="text" id="cryptoPassword" class="modal-input" placeholder="Mot de passe RP (pour déchiffrer)">
-            <div style="display:flex; gap:8px; margin-top:10px;">
+            <div style="display:flex;gap:8px;margin-top:10px;">
                 <button class="btn-primary" onclick="sendCryptoMessage()" style="flex:1;"><i class="fa-solid fa-paper-plane"></i> Envoyer</button>
                 <button class="btn-secondary" onclick="closeCryptoModal()">Annuler</button>
             </div>
         </div>
     </div>
 
-    <!-- [NOUVEAU] Modale — Déchiffrer un message -->
+    <!-- [NOUVEAU] Modale — Déchiffrer -->
     <div id="decrypt-modal" class="modal-overlay hidden" onclick="closeDecryptModal()">
         <div class="modal-box" style="max-width:360px;" onclick="event.stopPropagation()">
-            <h3 style="color:var(--accent-soft); margin:0 0 12px;"><i class="fa-solid fa-unlock"></i> Déchiffrer</h3>
-            <input type="text" id="decryptPassword" class="modal-input" placeholder="Mot de passe RP...">
+            <h3 style="color:var(--accent-soft);margin:0 0 12px;"><i class="fa-solid fa-unlock"></i> Déchiffrer le message</h3>
+            <input type="text" id="decryptPassword" class="modal-input" placeholder="Mot de passe RP..." onkeyup="if(event.key==='Enter') tryDecrypt()">
             <input type="hidden" id="decryptMsgId">
-            <div style="display:flex; gap:8px; margin-top:10px;">
+            <div style="display:flex;gap:8px;margin-top:10px;">
                 <button class="btn-primary" onclick="tryDecrypt()" style="flex:1;">Déchiffrer</button>
                 <button class="btn-secondary" onclick="closeDecryptModal()">Annuler</button>
             </div>
-            <div id="decryptResult" style="margin-top:10px; font-size:0.88rem; color:var(--text-normal);"></div>
+            <div id="decryptResult" style="margin-top:10px;font-size:0.88rem;"></div>
         </div>
     </div>
 
