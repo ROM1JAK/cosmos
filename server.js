@@ -20,7 +20,7 @@ const UserSchema = new mongoose.Schema({
     username: { type: String, unique: true },
     secretCode: String, 
     isAdmin: { type: Boolean, default: false },
-    uiTheme: { type: String, default: 'default' }
+    uiTheme: { type: String, default: 'default' } // THÈMES
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -58,9 +58,16 @@ const PostSchema = new mongoose.Schema({
     date: String, timestamp: { type: Date, default: Date.now },
     isAnonymous: { type: Boolean, default: false },
     isBreakingNews: { type: Boolean, default: false },
+    isArticle: { type: Boolean, default: false },
     poll: { question: String, options: [{ text: String, voters: [String] }] }
 });
 const Post = mongoose.model('Post', PostSchema);
+
+const OmbraMessageSchema = new mongoose.Schema({
+    alias: String, content: String, date: String,
+    timestamp: { type: Date, default: Date.now }
+});
+const OmbraMessage = mongoose.model('OmbraMessage', OmbraMessageSchema);
 
 const NotificationSchema = new mongoose.Schema({
     targetOwnerId: String, type: String, content: String, fromName: String,
@@ -84,7 +91,6 @@ async function createNotification(targetId, type, content, fromName) {
 
 io.on('connection', async (socket) => {
   
-  // CONNEXION CLASSIQUE
   socket.on('login_request', async ({ username, code }) => {
       try {
           let user = await User.findOne({ username: username });
@@ -105,44 +111,6 @@ io.on('connection', async (socket) => {
       } catch (e) { console.error(e); socket.emit('login_error', "Erreur serveur."); }
   });
 
-  // CONNEXION GOOGLE
-  socket.on('google_login_request', async (profile) => {
-      try {
-          let user = await User.findOne({ secretCode: profile.googleId });
-          
-          if (!user) {
-              let baseName = profile.name.replace(/\s+/g, '').substring(0, 15);
-              let uniqueName = baseName;
-              let counter = 1;
-              
-              while(await User.findOne({ username: uniqueName })) {
-                  uniqueName = baseName + counter;
-                  counter++;
-              }
-              
-              user = new User({ 
-                  username: uniqueName, 
-                  secretCode: profile.googleId, 
-                  isAdmin: false 
-              });
-              await user.save();
-          }
-          
-          await Character.updateMany({ ownerId: user.secretCode }, { ownerUsername: user.username });
-          onlineUsers[socket.id] = user.username;
-          broadcastUserList();
-          socket.emit('login_success', { 
-              username: user.username, 
-              userId: user.secretCode, 
-              isAdmin: user.isAdmin, 
-              uiTheme: user.uiTheme || 'default' 
-          });
-      } catch (e) { 
-          console.error(e);
-          socket.emit('login_error', "Erreur de connexion avec Google."); 
-      }
-  });
-
   socket.on('change_username', async ({ userId, newUsername }) => {
       try {
           const existing = await User.findOne({ username: newUsername });
@@ -159,7 +127,7 @@ io.on('connection', async (socket) => {
 
   socket.on('request_initial_data', async (userId) => {
       socket.emit('rooms_data', await Room.find());
-      let posts = await Post.find().sort({ timestamp: -1 }).limit(50);
+      let posts = await Post.find({ isArticle: { $ne: true } }).sort({ timestamp: -1 }).limit(50);
       posts = posts.map(p => {
           let displayPost = p.toObject();
           if(displayPost.isAnonymous) {
@@ -291,7 +259,11 @@ io.on('connection', async (socket) => {
           displayPost.authorAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E";
           displayPost.authorRole = "Leak";
       }
-      io.emit('new_post', displayPost);
+      if(displayPost.isArticle) {
+          io.emit('new_article', displayPost);
+      } else {
+          io.emit('new_post', displayPost);
+      }
       
       let authorChar = postData.authorCharId ? await Character.findById(postData.authorCharId) : null;
       if(authorChar && authorChar.followers.length > 0) {
@@ -373,6 +345,26 @@ io.on('connection', async (socket) => {
 
   socket.on('typing_feed_start', (data) => { socket.broadcast.emit('display_feed_typing', data); });
   socket.on('typing_feed_stop', (data) => { socket.broadcast.emit('hide_feed_typing', data); });
+
+  // PRESSE
+  socket.on('request_presse', async () => {
+      const articles = await Post.find({ isArticle: true }).sort({ timestamp: -1 }).limit(50);
+      socket.emit('presse_data', articles);
+  });
+
+  // OMBRA
+  socket.on('ombra_join', async ({ alias }) => {
+      socket.join('ombra');
+      const history = await OmbraMessage.find().sort({ timestamp: -1 }).limit(60);
+      socket.emit('ombra_history', history.reverse());
+  });
+  socket.on('ombra_leave', () => { socket.leave('ombra'); });
+  socket.on('ombra_message', async ({ alias, content, date }) => {
+      if(!alias || !content) return;
+      const msg = new OmbraMessage({ alias, content, date });
+      await msg.save();
+      io.to('ombra').emit('ombra_message', { alias, content, date });
+  });
 });
 
 const port = process.env.PORT || 3000;
