@@ -30,7 +30,9 @@ const CharacterSchema = new mongoose.Schema({
     ownerId: String, ownerUsername: String, description: String,
     followers: [String],
     partyName: String, partyLogo: String,
-    isOfficial: { type: Boolean, default: false }
+    isOfficial: { type: Boolean, default: false },
+    // [NOUVEAU] Entreprises liées au personnage
+    companies: [{ name: String, logo: String, role: String, description: String }]
 });
 const Character = mongoose.model('Character', CharacterSchema);
 
@@ -41,7 +43,10 @@ const MessageSchema = new mongoose.Schema({
     roomId: { type: String, required: true },
     replyTo: { id: String, author: String, content: String },
     edited: { type: Boolean, default: false },
-    date: String, timestamp: { type: Date, default: Date.now }
+    date: String, timestamp: { type: Date, default: Date.now },
+    // [NOUVEAU] DM entre personnages
+    isCharDm: { type: Boolean, default: false },
+    senderCharId: String, targetCharId: String
 });
 const Message = mongoose.model('Message', MessageSchema);
 
@@ -165,8 +170,11 @@ io.on('connection', async (socket) => {
   socket.on('get_char_profile', async (charName) => {
       const char = await Character.findOne({ name: charName }).sort({_id: -1});
       if(char) {
-          const postCount = await Post.countDocuments({ authorCharId: char._id });
-          const charData = char.toObject(); charData.postCount = postCount;
+          const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
+          const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
+          const charData = char.toObject(); 
+          charData.postCount = postCount;
+          charData.lastPosts = lastPosts;
           socket.emit('char_profile_data', charData);
       }
   });
@@ -193,6 +201,90 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('delete_char', async (charId) => { await Character.findByIdAndDelete(charId); socket.emit('char_deleted_success', charId); });
+
+  // [NOUVEAU] Admin ajoute une entreprise à un personnage
+  socket.on('admin_add_company', async ({ charId, company }) => {
+      const user = await User.findOne({ secretCode: Object.values(onlineUsers).find((v,i) => Object.keys(onlineUsers)[i] === socket.id) });
+      // On valide que c'est bien le socket admin connecté
+      const char = await Character.findByIdAndUpdate(
+          charId,
+          { $push: { companies: company } },
+          { new: true }
+      );
+      if(char) {
+          const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
+          const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
+          const charData = char.toObject(); charData.postCount = postCount; charData.lastPosts = lastPosts;
+          io.emit('char_profile_data', charData);
+      }
+  });
+
+  // [NOUVEAU] Admin supprime une entreprise d'un personnage
+  socket.on('admin_remove_company', async ({ charId, companyIndex }) => {
+      const char = await Character.findById(charId);
+      if(!char) return;
+      char.companies.splice(companyIndex, 1);
+      await char.save();
+      const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
+      const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
+      const charData = char.toObject(); charData.postCount = postCount; charData.lastPosts = lastPosts;
+      io.emit('char_profile_data', charData);
+  });
+
+  // [NOUVEAU] Joueur modifie sa propre bio
+  socket.on('update_char_bio', async ({ charId, bio, ownerId }) => {
+      await Character.findOneAndUpdate({ _id: charId, ownerId: ownerId }, { description: bio });
+      socket.emit('char_bio_updated', { charId, bio });
+  });
+
+  // [NOUVEAU] Admin modifie les stats (followers, likes)
+  socket.on('admin_edit_followers', async ({ charId, count }) => {
+      const char = await Character.findById(charId);
+      if(!char) return;
+      const current = char.followers.length;
+      const diff = count - current;
+      if(diff > 0) { for(let i=0;i<diff;i++) char.followers.push('fake_'+Date.now()+'_'+i); }
+      else { char.followers = char.followers.slice(0, count < 0 ? 0 : count); }
+      await char.save();
+      socket.emit('char_profile_data', { ...char.toObject(), postCount: await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } }), lastPosts: [] });
+  });
+
+  socket.on('admin_edit_post_likes', async ({ postId, count }) => {
+      const post = await Post.findById(postId);
+      if(!post) return;
+      const current = post.likes.length;
+      const diff = count - current;
+      if(diff > 0) { for(let i=0;i<diff;i++) post.likes.push('fake_like_'+Date.now()+'_'+i); }
+      else { post.likes = post.likes.slice(0, count < 0 ? 0 : count); }
+      await post.save();
+      io.emit('post_updated', post);
+  });
+
+  // [NOUVEAU] DM entre personnages
+  socket.on('send_char_dm', async (data) => {
+      // data: { senderCharId, senderCharName, senderAvatar, senderColor, senderRole, targetCharId, targetCharName, targetOwnerId, ownerId, content, date }
+      const roomId = `char_dm_${[data.senderCharId, data.targetCharId].sort().join('_')}`;
+      const msg = new Message({
+          content: data.content, type: 'text',
+          senderName: data.senderCharName, senderColor: data.senderColor, senderAvatar: data.senderAvatar, senderRole: data.senderRole,
+          ownerId: data.ownerId, targetName: data.targetCharName, targetOwnerId: data.targetOwnerId,
+          roomId, isCharDm: true, senderCharId: data.senderCharId, targetCharId: data.targetCharId,
+          date: data.date, timestamp: new Date()
+      });
+      const saved = await msg.save();
+      const targetSockets = Object.entries(onlineUsers).filter(([,u]) => {
+          return u === data.targetOwnerUsername;
+      }).map(([id]) => id);
+      const senderSockets = Object.entries(onlineUsers).filter(([,u]) => u === data.senderOwnerUsername).map(([id]) => id);
+      [...new Set([...targetSockets, ...senderSockets])].forEach(sid => io.to(sid).emit('receive_char_dm', saved));
+      await createNotification(data.targetOwnerId, 'reply', `(${data.senderCharName}) vous a envoyé un message`, data.senderCharName);
+  });
+
+  socket.on('request_char_dm_history', async ({ senderCharId, targetCharId }) => {
+      const roomId = `char_dm_${[senderCharId, targetCharId].sort().join('_')}`;
+      const msgs = await Message.find({ roomId, isCharDm: true }).sort({ timestamp: 1 }).limit(200);
+      socket.emit('char_dm_history', { roomId, msgs });
+  });
 
   socket.on('follow_character', async ({ followerCharId, targetCharId }) => {
       const targetChar = await Character.findById(targetCharId);
