@@ -342,21 +342,78 @@ socket.on('receive_dm', (msg) => {
     if (msg.sender !== USERNAME && notificationsEnabled) notifSound.play().catch(e=>{});
 });
 
+// [NOUVEAU] Gestion entreprises lors de la création de personnage
+let newCharCompanies = [];
+
+async function addCompanyToNewChar() {
+    const name = document.getElementById('newCompanyName').value.trim();
+    const role = document.getElementById('newCompanyRole').value.trim();
+    const logoFile = document.getElementById('newCompanyLogoFile').files[0];
+    if(!name) return;
+    let logo = null;
+    if(logoFile) {
+        const btn = document.querySelector('[onclick="addCompanyToNewChar()"]');
+        if(btn) btn.textContent = '⏳ Upload...';
+        logo = await uploadToCloudinary(logoFile);
+        if(btn) btn.textContent = '+ Ajouter cette entreprise';
+    }
+    newCharCompanies.push({ name, role, logo, description: '' });
+    renderNewCharCompanies();
+    document.getElementById('newCompanyName').value = '';
+    document.getElementById('newCompanyRole').value = '';
+    document.getElementById('newCompanyLogoFile').value = '';
+}
+
+function renderNewCharCompanies() {
+    const list = document.getElementById('newCharCompaniesList');
+    list.innerHTML = newCharCompanies.map((co, i) => `
+        <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; background:var(--bg-tertiary); border-radius:var(--radius-sm); margin-bottom:6px; border:1px solid var(--border);">
+            ${co.logo ? `<img src="${co.logo}" style="width:24px;height:24px;border-radius:4px;object-fit:cover;">` : '<i class="fa-solid fa-building" style="color:var(--text-muted); font-size:0.9rem;"></i>'}
+            <span style="flex:1; font-size:0.82rem; font-weight:600;">${co.name}</span>
+            <span style="font-size:0.72rem; color:var(--text-muted);">${co.role}</span>
+            <button onclick="removeNewCharCompany(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:0.8rem;"><i class="fa-solid fa-xmark"></i></button>
+        </div>`).join('');
+    document.getElementById('newCharCompaniesData').value = JSON.stringify(newCharCompanies);
+}
+
+function removeNewCharCompany(i) {
+    newCharCompanies.splice(i, 1);
+    renderNewCharCompanies();
+}
+
 async function createCharacter() {
     if (myCharacters.length >= 20) return alert("Limite 20 persos.");
     const name = document.getElementById('newCharName').value.trim();
     const role = document.getElementById('newCharRole').value.trim();
     const partyName = document.getElementById('newCharPartyName').value.trim();
+    const capital = parseFloat(document.getElementById('newCharCapital').value) || 0;
     const fileInput = document.getElementById('newCharFile');
     const partyFileInput = document.getElementById('newCharPartyFile');
     
-    let avatar = fileInput.files[0] ? await uploadToCloudinary(fileInput.files[0]) : `https://ui-avatars.com/api/?name=${name}&background=random`;
+    let avatar = fileInput.files[0] ? await uploadToCloudinary(fileInput.files[0]) : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
     let partyLogo = partyFileInput.files[0] ? await uploadToCloudinary(partyFileInput.files[0]) : null;
-    if(!name || !role) return;
+    if(!name || !role) return alert("Nom et rôle requis.");
     
     const isOfficial = role.includes('Journaliste') || role.includes('Gouvernement') || role.includes('Presse');
-    socket.emit('create_char', { name, role, color: document.getElementById('newCharColor').value, avatar, description: document.getElementById('newCharDesc').value.trim(), ownerId: PLAYER_ID, partyName: partyName || null, partyLogo: partyLogo || null, isOfficial });
-    toggleCreateForm(); fileInput.value = ""; partyFileInput.value = ""; document.getElementById('newCharPartyName').value = "";
+    socket.emit('create_char', { 
+        name, role, 
+        color: document.getElementById('newCharColor').value, 
+        avatar, 
+        description: document.getElementById('newCharDesc').value.trim(), 
+        ownerId: PLAYER_ID, 
+        partyName: partyName || null, 
+        partyLogo: partyLogo || null, 
+        isOfficial,
+        companies: newCharCompanies,
+        capital
+    });
+    // Reset form
+    toggleCreateForm();
+    fileInput.value = ""; partyFileInput.value = "";
+    document.getElementById('newCharPartyName').value = '';
+    document.getElementById('newCharCapital').value = '';
+    newCharCompanies = [];
+    renderNewCharCompanies();
 }
 function prepareEditCharacter(id) {
     const char = myCharacters.find(c => c._id === id); if (!char) return;
@@ -495,6 +552,20 @@ function updateBreakingNewsVisibility() {
 let currentProfileChar = null;
 
 function openProfile(name) { 
+    // [FIX] Réinitialiser immédiatement pour éviter l'affichage du profil précédent
+    currentProfileChar = null;
+    const els = {
+        profileName: '...', profileRole: '', profileDesc: '', profileOwner: '',
+        profileFollowersCount: '0', profilePostCount: '0'
+    };
+    Object.entries(els).forEach(([id, v]) => { const el = document.getElementById(id); if(el) el.textContent = v; });
+    const av = document.getElementById('profileAvatar'); if(av) av.src = '';
+    const pb = document.getElementById('profilePartyBadge'); if(pb) pb.style.display = 'none';
+    const af = document.getElementById('profileActivityFeed'); if(af) af.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">Chargement...</div>';
+    const cg = document.getElementById('profileCompaniesGrid'); if(cg) cg.innerHTML = '';
+    const cs = document.getElementById('profileCompaniesSection'); if(cs) cs.style.display = 'none';
+    closeBioEdit();
+
     document.getElementById('profile-overlay').classList.remove('hidden'); 
     document.getElementById('profile-slide-panel').classList.add('open');
     socket.emit('get_char_profile', name); 
@@ -533,6 +604,9 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('profileFollowersCount').textContent = followersCount;
     document.getElementById('profilePostCount').textContent = char.postCount || 0;
 
+    // [NOUVEAU] Capital dans la bio section
+    const ownerEl = document.getElementById('profileOwner');
+
     // Admin edit followers
     const adminFollowersBtn = document.getElementById('adminEditFollowers');
     if(adminFollowersBtn) { 
@@ -545,9 +619,17 @@ socket.on('char_profile_data', (char) => {
 
     // Bio
     document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
-    document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
+    ownerEl.innerHTML = `Joué par : ${char.ownerUsername || "Inconnu"}`;
     if(char.partyName && char.partyLogo) {
-        document.getElementById('profileOwner').innerHTML += ` <span class="party-badge" style="display:inline-flex;"><img src="${char.partyLogo}" class="party-logo"> ${char.partyName}</span>`;
+        ownerEl.innerHTML += ` <span class="party-badge" style="display:inline-flex;"><img src="${char.partyLogo}" class="party-logo"> ${char.partyName}</span>`;
+    }
+    // [NOUVEAU] Afficher capital + bouton admin
+    if(char.capital !== undefined && char.capital !== null) {
+        const capHTML = char.capital > 0 ? `💰 ${Number(char.capital).toLocaleString('fr-FR')} crédits` : '';
+        if(capHTML) ownerEl.innerHTML += `<div class="profile-capital-badge">${capHTML}</div>`;
+    }
+    if(IS_ADMIN) {
+        ownerEl.innerHTML += `<button class="admin-stat-btn" style="margin-left:6px;" onclick="adminEditCapital('${char._id}', ${char.capital||0})"><i class="fa-solid fa-coins"></i> Capital</button>`;
     }
 
     // [NOUVEAU] Bouton modifier bio — visible seulement si c'est un de nos persos
@@ -1371,15 +1453,25 @@ function updateActuAdminForm() {
 }
 function loadActualites() { socket.emit('request_events'); }
 function submitEvent() {
-    const jour = document.getElementById('actuJour').value.trim();
-    const date = document.getElementById('actuDate').value.trim();
-    const heure = document.getElementById('actuHeure').value.trim();
+    // [FIX] Utilise les valeurs des menus déroulants
+    const jour = document.getElementById('actuJour').value;
+    const dateRaw = document.getElementById('actuDate').value;
+    const heure = document.getElementById('actuHeure').value;
+    const minute = document.getElementById('actuMinute').value;
     const evenement = document.getElementById('actuEvenement').value.trim();
     if(!evenement) return;
-    socket.emit('create_event', { jour, date, heure, evenement });
+    const heureFormatted = heure && minute ? `${heure}h${minute}` : (heure ? `${heure}h00` : '');
+    // Format date lisible
+    let dateFormatted = dateRaw;
+    if(dateRaw) {
+        const d = new Date(dateRaw);
+        if(!isNaN(d)) dateFormatted = d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' });
+    }
+    socket.emit('create_event', { jour, date: dateFormatted, heure: heureFormatted, evenement });
     document.getElementById('actuJour').value = '';
     document.getElementById('actuDate').value = '';
     document.getElementById('actuHeure').value = '';
+    document.getElementById('actuMinute').value = '00';
     document.getElementById('actuEvenement').value = '';
 }
 function deleteEvent(id) { if(confirm('Supprimer cet événement ?')) socket.emit('delete_event', id); }
@@ -1409,3 +1501,152 @@ socket.on('events_data', (events) => {
             </div>`;
     });
 });
+
+// ==================== BANDEAU D'ALERTE [NOUVEAU] ====================
+socket.on('alert_data', (alert) => {
+    const banner = document.getElementById('global-alert-banner');
+    if(!banner) return;
+    document.getElementById('global-alert-text').textContent = alert.message;
+    banner.className = `global-alert-banner alert-${alert.color}`;
+    banner.classList.remove('hidden');
+    // Appliquer filtre de couleur sur le body
+    document.body.setAttribute('data-alert', alert.color);
+});
+socket.on('alert_cleared', () => {
+    const banner = document.getElementById('global-alert-banner');
+    if(banner) banner.classList.add('hidden');
+    document.body.removeAttribute('data-alert');
+});
+function dismissAlert() {
+    document.getElementById('global-alert-banner').classList.add('hidden');
+}
+
+// Modale admin alerte
+let selectedAlertColor = 'red';
+function selectAlertColor(color) {
+    selectedAlertColor = color;
+    document.getElementById('alertColor').value = color;
+    document.querySelectorAll('.alert-color-btn').forEach(b => b.classList.remove('active-alert-btn'));
+    const btn = document.querySelector(`.alert-color-btn[data-color="${color}"]`);
+    if(btn) btn.classList.add('active-alert-btn');
+}
+function submitAlert(active) {
+    const message = document.getElementById('alertMessage').value.trim();
+    socket.emit('admin_set_alert', { message, color: selectedAlertColor, active });
+    document.getElementById('admin-alert-modal').classList.add('hidden');
+}
+function closeAdminAlertModal() { document.getElementById('admin-alert-modal').classList.add('hidden'); }
+
+// Afficher bouton admin dans les settings
+socket.on('login_success_hook', () => {});
+function showAdminAlertBtn() {
+    const w = document.getElementById('admin-alert-btn-wrapper');
+    if(w && IS_ADMIN) w.classList.remove('hidden');
+}
+// Hook sur IS_ADMIN après login — on surcharge openUserSettingsModal
+const _originalOpenSettings = openUserSettingsModal;
+function openUserSettingsModal() {
+    _originalOpenSettings();
+    const w = document.getElementById('admin-alert-btn-wrapper');
+    if(w) { if(IS_ADMIN) w.classList.remove('hidden'); else w.classList.add('hidden'); }
+}
+
+// ==================== CAPITAL ADMIN [NOUVEAU] ====================
+function adminEditCapital(charId, currentCapital) {
+    if(!IS_ADMIN) return;
+    const val = prompt(`Capital actuel : ${Number(currentCapital).toLocaleString('fr-FR')} crédits\nNouveau capital :`, currentCapital);
+    if(val !== null && !isNaN(parseFloat(val))) {
+        socket.emit('admin_edit_capital', { charId, capital: parseFloat(val) });
+    }
+}
+
+// ==================== MESSAGES CRYPTÉS [NOUVEAU] ====================
+// Stockage local des mots de passe déjà entrés pour chaque message
+const decryptedMessages = {};
+
+function simpleEncrypt(text, password) {
+    let result = '';
+    for(let i = 0; i < text.length; i++) {
+        result += String.fromCharCode(text.charCodeAt(i) ^ password.charCodeAt(i % password.length));
+    }
+    return btoa(unescape(encodeURIComponent(result)));
+}
+function simpleDecrypt(encoded, password) {
+    try {
+        const text = decodeURIComponent(escape(atob(encoded)));
+        let result = '';
+        for(let i = 0; i < text.length; i++) {
+            result += String.fromCharCode(text.charCodeAt(i) ^ password.charCodeAt(i % password.length));
+        }
+        return result;
+    } catch(e) { return null; }
+}
+function generateGlitch(text) {
+    const glitchChars = '▓█▒░⣿⣶⣤⣀◆◇■□▪▫';
+    return text.split('').map(() => glitchChars[Math.floor(Math.random() * glitchChars.length)]).join('');
+}
+
+function openCryptoModal() {
+    if(!currentSelectedChar) return alert("Sélectionnez un personnage d'abord.");
+    document.getElementById('cryptoContent').value = '';
+    document.getElementById('cryptoPassword').value = '';
+    document.getElementById('crypto-modal').classList.remove('hidden');
+}
+function closeCryptoModal() { document.getElementById('crypto-modal').classList.add('hidden'); }
+
+function sendCryptoMessage() {
+    const content = document.getElementById('cryptoContent').value.trim();
+    const password = document.getElementById('cryptoPassword').value.trim();
+    if(!content) return alert("Message vide.");
+    if(!password) return alert("Mot de passe requis.");
+    if(!currentSelectedChar) return alert("Perso requis !");
+    const encrypted = simpleEncrypt(content, password);
+    const glitch = generateGlitch(content.substring(0, 30));
+    // Format: [CRYPTO]<encrypted>|<glitch>[/CRYPTO]
+    const payload = `[CRYPTO]${encrypted}|${glitch}[/CRYPTO]`;
+    const baseMsg = { 
+        senderName: currentSelectedChar.name, senderColor: currentSelectedChar.color || "#fff", 
+        senderAvatar: currentSelectedChar.avatar, senderRole: currentSelectedChar.role, 
+        partyName: currentSelectedChar.partyName || null, partyLogo: currentSelectedChar.partyLogo || null, 
+        ownerId: PLAYER_ID, targetName: "", roomId: currentRoomId, 
+        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), replyTo: null 
+    };
+    socket.emit('message_rp', { ...baseMsg, content: payload, type: 'text' });
+    closeCryptoModal();
+}
+
+function openDecryptModal(msgId, encryptedData) {
+    document.getElementById('decryptMsgId').value = encryptedData;
+    document.getElementById('decryptPassword').value = '';
+    document.getElementById('decryptResult').innerHTML = '';
+    document.getElementById('decrypt-modal').classList.remove('hidden');
+}
+function closeDecryptModal() { document.getElementById('decrypt-modal').classList.add('hidden'); }
+function tryDecrypt() {
+    const password = document.getElementById('decryptPassword').value.trim();
+    const encrypted = document.getElementById('decryptMsgId').value;
+    if(!password) return;
+    const result = simpleDecrypt(encrypted, password);
+    const resultEl = document.getElementById('decryptResult');
+    if(result && result.length > 0 && result !== encrypted) {
+        resultEl.innerHTML = `<div style="background:var(--accent-muted); border:1px solid var(--accent); padding:10px; border-radius:var(--radius-sm); margin-top:8px;"><i class="fa-solid fa-unlock" style="color:var(--accent);"></i> <strong>Déchiffré :</strong><br>${escapeHtml(result)}</div>`;
+    } else {
+        resultEl.innerHTML = `<div style="color:var(--danger); margin-top:8px;"><i class="fa-solid fa-lock"></i> Mot de passe incorrect.</div>`;
+    }
+}
+
+// Override formatText pour gérer [CRYPTO]...[/CRYPTO]
+const _origFormatText = formatText;
+function formatText(text) {
+    if(!text) return "";
+    // Gérer les messages cryptés
+    text = text.replace(/\[CRYPTO\](.*?)\|(.*?)\[\/CRYPTO\]/g, (match, enc, glitch) => {
+        const safeEnc = enc.replace(/"/g, '&quot;');
+        return `<div class="crypto-message">
+            <span class="crypto-icon"><i class="fa-solid fa-lock"></i></span>
+            <span class="crypto-glitch">${glitch}…</span>
+            <button class="crypto-unlock-btn" onclick="openDecryptModal(null, '${safeEnc}')"><i class="fa-solid fa-key"></i> Déchiffrer</button>
+        </div>`;
+    });
+    return _origFormatText(text);
+}
