@@ -20,7 +20,7 @@ const UserSchema = new mongoose.Schema({
     username: { type: String, unique: true },
     secretCode: String, 
     isAdmin: { type: Boolean, default: false },
-    uiTheme: { type: String, default: 'default' } // THÈMES
+    uiTheme: { type: String, default: 'default' }
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -84,6 +84,7 @@ async function createNotification(targetId, type, content, fromName) {
 
 io.on('connection', async (socket) => {
   
+  // CONNEXION CLASSIQUE
   socket.on('login_request', async ({ username, code }) => {
       try {
           let user = await User.findOne({ username: username });
@@ -102,6 +103,44 @@ io.on('connection', async (socket) => {
           broadcastUserList();
           socket.emit('login_success', { username: user.username, userId: user.secretCode, isAdmin: user.isAdmin, uiTheme: user.uiTheme || 'default' });
       } catch (e) { console.error(e); socket.emit('login_error', "Erreur serveur."); }
+  });
+
+  // CONNEXION GOOGLE
+  socket.on('google_login_request', async (profile) => {
+      try {
+          let user = await User.findOne({ secretCode: profile.googleId });
+          
+          if (!user) {
+              let baseName = profile.name.replace(/\s+/g, '').substring(0, 15);
+              let uniqueName = baseName;
+              let counter = 1;
+              
+              while(await User.findOne({ username: uniqueName })) {
+                  uniqueName = baseName + counter;
+                  counter++;
+              }
+              
+              user = new User({ 
+                  username: uniqueName, 
+                  secretCode: profile.googleId, 
+                  isAdmin: false 
+              });
+              await user.save();
+          }
+          
+          await Character.updateMany({ ownerId: user.secretCode }, { ownerUsername: user.username });
+          onlineUsers[socket.id] = user.username;
+          broadcastUserList();
+          socket.emit('login_success', { 
+              username: user.username, 
+              userId: user.secretCode, 
+              isAdmin: user.isAdmin, 
+              uiTheme: user.uiTheme || 'default' 
+          });
+      } catch (e) { 
+          console.error(e);
+          socket.emit('login_error', "Erreur de connexion avec Google."); 
+      }
   });
 
   socket.on('change_username', async ({ userId, newUsername }) => {
