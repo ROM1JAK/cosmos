@@ -31,10 +31,19 @@ const CharacterSchema = new mongoose.Schema({
     followers: [String],
     partyName: String, partyLogo: String,
     isOfficial: { type: Boolean, default: false },
-    // [NOUVEAU] Entreprises liées au personnage
-    companies: [{ name: String, logo: String, role: String, description: String }]
+    companies: [{ name: String, logo: String, role: String, description: String }],
+    // [NOUVEAU] Capital financier du personnage
+    capital: { type: Number, default: 0 }
 });
 const Character = mongoose.model('Character', CharacterSchema);
+
+// [NOUVEAU] Bandeau d'alerte global
+const AlertSchema = new mongoose.Schema({
+    message: String, color: { type: String, default: 'red' },
+    active: { type: Boolean, default: false },
+    timestamp: { type: Date, default: Date.now }
+});
+const Alert = mongoose.model('Alert', AlertSchema);
 
 const MessageSchema = new mongoose.Schema({
     content: String, type: String, 
@@ -158,6 +167,9 @@ io.on('connection', async (socket) => {
           return displayPost;
       });
       socket.emit('feed_data', posts);
+      // [NOUVEAU] Envoyer l'alerte active si elle existe
+      const activeAlert = await Alert.findOne({ active: true }).sort({ timestamp: -1 });
+      if(activeAlert) socket.emit('alert_data', activeAlert);
       
       if(userId) {
           const myChars = await Character.find({ ownerId: userId });
@@ -258,6 +270,30 @@ io.on('connection', async (socket) => {
       else { post.likes = post.likes.slice(0, count < 0 ? 0 : count); }
       await post.save();
       io.emit('post_updated', post);
+  });
+
+  // [NOUVEAU] Admin modifie le capital d'un personnage
+  socket.on('admin_edit_capital', async ({ charId, capital }) => {
+      await Character.findByIdAndUpdate(charId, { capital: Number(capital) || 0 });
+      const char = await Character.findById(charId);
+      if(char) {
+          const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
+          const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
+          const charData = char.toObject(); charData.postCount = postCount; charData.lastPosts = lastPosts;
+          socket.emit('char_profile_data', charData);
+      }
+  });
+
+  // [NOUVEAU] Bandeau d'alerte global (Admin uniquement)
+  socket.on('admin_set_alert', async ({ message, color, active }) => {
+      await Alert.deleteMany({});
+      if(active && message) {
+          const alert = new Alert({ message, color: color || 'red', active: true });
+          await alert.save();
+          io.emit('alert_data', alert);
+      } else {
+          io.emit('alert_cleared');
+      }
   });
 
   // [NOUVEAU] DM entre personnages
