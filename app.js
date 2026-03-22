@@ -1,4 +1,15 @@
 var socket = io();
+
+// --- CONNEXION GOOGLE ---
+window.handleGoogleLogin = function(response) {
+    const payload = JSON.parse(atob(response.credential.split('.')[1]));
+    socket.emit('google_login_request', {
+        email: payload.email,
+        name: payload.name,
+        googleId: payload.sub
+    });
+};
+
 const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
 
 const CLOUDINARY_BASE_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz'; 
@@ -208,7 +219,7 @@ socket.on('username_change_error', (msg) => { document.getElementById('settings-
 
 function checkAutoLogin() {
     const savedUser = localStorage.getItem('rp_username'); const savedCode = localStorage.getItem('rp_code');
-    if (savedUser && savedCode) socket.emit('login_request', { username: savedUser, code: savedCode }); else openLoginModal();
+    if (savedUser && savedCode) socket.emit('login_request', { username: savedUser, code: savedCode });
 }
 
 socket.on('connect', () => { checkAutoLogin(); setupEmojiPicker(); });
@@ -733,7 +744,6 @@ function generateCommentsHTML(comments, postId) {
 function createPostElement(post) {
     const div = document.createElement('div'); div.className = 'post-card'; div.id = `post-${post._id}`;
     
-    // NOUVEAU : MODE JOURNALISTE
     const isJournalistMode = post.content && (post.content.length > 300 || post.isBreakingNews);
     
     if(post.isBreakingNews) div.classList.add('post-breaking-news');
@@ -746,7 +756,6 @@ function createPostElement(post) {
     const isLiked = post.likes.includes(currentFeedCharId); 
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
     
-    // GESTION MÉDIAS ET BANNIÈRE JOURNALISTE
     let mediaHTML = "";
     let bannerHTML = "";
     if(post.mediaUrl) {
@@ -761,7 +770,6 @@ function createPostElement(post) {
         }
     }
     
-    // GESTION TITRE JOURNALISTE
     let articleTitleHTML = "";
     if (isJournalistMode && post.content) {
         const words = post.content.split(/\s+/);
