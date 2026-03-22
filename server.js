@@ -32,15 +32,15 @@ const CharacterSchema = new mongoose.Schema({
     partyName: String, partyLogo: String,
     isOfficial: { type: Boolean, default: false },
     companies: [{ name: String, logo: String, role: String, description: String }],
-    // [NOUVEAU] Capital financier du personnage
+    // [NOUVEAU] Capital financier
     capital: { type: Number, default: 0 }
 });
 const Character = mongoose.model('Character', CharacterSchema);
 
-// [NOUVEAU] Bandeau d'alerte global
+// [NOUVEAU] Schéma alerte globale
 const AlertSchema = new mongoose.Schema({
     message: String, color: { type: String, default: 'red' },
-    active: { type: Boolean, default: false },
+    active: { type: Boolean, default: true },
     timestamp: { type: Date, default: Date.now }
 });
 const Alert = mongoose.model('Alert', AlertSchema);
@@ -167,9 +167,17 @@ io.on('connection', async (socket) => {
           return displayPost;
       });
       socket.emit('feed_data', posts);
-      // [NOUVEAU] Envoyer l'alerte active si elle existe
+      // [NOUVEAU] Envoyer alerte active si existante
       const activeAlert = await Alert.findOne({ active: true }).sort({ timestamp: -1 });
       if(activeAlert) socket.emit('alert_data', activeAlert);
+      
+      if(userId) {
+          const myChars = await Character.find({ ownerId: userId });
+          socket.emit('my_chars_data', myChars);
+          const notifs = await Notification.find({ targetOwnerId: userId }).sort({ timestamp: -1 }).limit(20);
+          socket.emit('notifications_data', notifs);
+      }
+  });
       
       if(userId) {
           const myChars = await Character.find({ ownerId: userId });
@@ -284,7 +292,7 @@ io.on('connection', async (socket) => {
       }
   });
 
-  // [NOUVEAU] Bandeau d'alerte global (Admin uniquement)
+  // [NOUVEAU] Bandeau d'alerte global (Admin)
   socket.on('admin_set_alert', async ({ message, color, active }) => {
       await Alert.deleteMany({});
       if(active && message) {
