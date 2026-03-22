@@ -6,6 +6,7 @@
     <title>ConvSmos</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="icone.png">
 </head>
@@ -27,7 +28,18 @@
             <h2>Connexion</h2>
             <input type="text" id="loginPseudoInput" placeholder="Pseudo" class="modal-input">
             <input type="password" id="loginCodeInput" placeholder="Code Secret" class="modal-input">
-            <button onclick="submitLogin()" class="btn-primary full-width" style="margin-top:10px;">Go</button>
+            <button onclick="submitLogin()" class="btn-primary full-width" style="margin-top:10px; margin-bottom:15px;">Go</button>
+            
+            <div style="border-top: 1px solid var(--border); padding-top: 15px; display: flex; flex-direction: column; align-items: center;">
+                <div id="g_id_onload"
+                     data-client_id="REMPLACE_CECI_PAR_TON_CLIENT_ID_GOOGLE.apps.googleusercontent.com"
+                     data-context="signin"
+                     data-ux_mode="popup"
+                     data-callback="handleGoogleLogin">
+                </div>
+                <div class="g_id_signin" data-type="standard" data-shape="rectangular" data-theme="filled_black" data-text="signin_with" data-size="large" data-logo_alignment="left"></div>
+            </div>
+
             <p id="login-error-msg" style="color: #da373c; margin-top: 10px; display:none;"></p>
         </div>
     </div>
@@ -211,13 +223,10 @@
         <div id="view-feed" class="view-section hidden">
             <div class="feed-view-header">
                 <h3 style="margin:0; font-size:1.1rem;">Flux Social</h3>
+                <div id="feed-char-avatar-wrapper" style="position:relative;"></div>
             </div>
 
             <div class="feed-container">
-                <div style="display:flex; justify-content:flex-end; margin-bottom: 8px;">
-                    <div id="feed-char-avatar-wrapper" style="position:relative;"></div>
-                </div>
-                
                 <div class="post-create-box">
                     <textarea id="postContent" placeholder="Quoi de neuf ?"></textarea>
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
