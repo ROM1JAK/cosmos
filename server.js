@@ -210,9 +210,15 @@ io.on('connection', async (socket) => {
   });
   
   socket.on('edit_char', async (data) => {
-      await Character.findByIdAndUpdate(data.charId, { 
-          name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor, description: data.newDescription, partyName: data.partyName, partyLogo: data.partyLogo, isOfficial: data.isOfficial
-      });
+      const updateData = { 
+          name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor, 
+          description: data.newDescription, partyName: data.partyName, partyLogo: data.partyLogo, 
+          isOfficial: data.isOfficial
+      };
+      // [NOUVEAU] Sauvegarder capital et entreprises si fournis
+      if(data.capital !== undefined) updateData.capital = Number(data.capital) || 0;
+      if(data.companies !== undefined) updateData.companies = data.companies;
+      await Character.findByIdAndUpdate(data.charId, updateData);
       await Message.updateMany({ senderName: data.originalName, ownerId: data.ownerId }, { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }});
       await Post.updateMany({ authorName: data.originalName, ownerId: data.ownerId }, { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor }});
       socket.emit('my_chars_data', await Character.find({ ownerId: data.ownerId }));
