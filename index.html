@@ -85,26 +85,136 @@
     <input type="file" id="chat-video-input" accept="video/*" class="hidden" onchange="handleChatFileSelect(this, 'video')">
 
     <div id="profile-overlay" class="modal-overlay hidden" onclick="closeProfileModal()"></div>
+
+    <!-- [NOUVEAU] Profil plein écran -->
     <div id="profile-slide-panel">
         <button onclick="closeProfileModal()" class="btn-close-profile"><i class="fa-solid fa-xmark"></i></button>
-        <div class="profile-header-slide">
-            <img id="profileAvatar" src="" class="profile-avatar-large">
-            <h2 id="profileName">Nom</h2>
-            <span id="profileRole" class="profile-role-tag">Rôle</span>
-            <div id="profilePartyBadge" style="margin-top:8px; display:none;"></div>
+
+        <!-- En-tête héro -->
+        <div class="profile-hero">
+            <div class="profile-hero-bg" id="profileHeroBg"></div>
+            <div class="profile-hero-content">
+                <img id="profileAvatar" src="" class="profile-avatar-large">
+                <div class="profile-hero-info">
+                    <h2 id="profileName">Nom</h2>
+                    <span id="profileRole" class="profile-role-tag">Rôle</span>
+                    <div id="profilePartyBadge" style="margin-top:8px; display:none;"></div>
+                </div>
+            </div>
         </div>
+
+        <!-- Stats -->
         <div class="profile-stats">
-            <div class="stat-item"><span id="profilePostCount" class="stat-value">0</span><span class="stat-label">Posts</span></div>
-            <div class="stat-item" id="btn-view-followers" style="cursor:pointer;"><span id="profileFollowersCount" class="stat-value">0</span><span class="stat-label">Abonnés</span></div>
+            <div class="stat-item" id="btn-view-followers" style="cursor:pointer;">
+                <span id="profileFollowersCount" class="stat-value">0</span>
+                <span class="stat-label">Abonnés</span>
+                <!-- [NOUVEAU] Admin edit followers -->
+                <span id="adminEditFollowers" class="admin-stat-edit hidden" onclick="adminEditFollowers()"><i class="fa-solid fa-pen"></i></span>
+            </div>
+            <div class="stat-item">
+                <span id="profilePostCount" class="stat-value">0</span>
+                <span class="stat-label">Posts</span>
+            </div>
         </div>
-        <div class="profile-body">
-            <div style="font-size:0.8rem; color:#666; margin-bottom:10px; font-weight:bold;">À PROPOS</div>
-            <p id="profileDesc" class="profile-desc-text"></p>
-            <div id="profileOwner" style="margin-top:10px; color:#444; font-size:0.8em;"></div>
+
+        <!-- Corps du profil scrollable -->
+        <div class="profile-page-body" id="profilePageBody">
+
+            <!-- Actions -->
+            <div class="profile-action-row">
+                <button id="btn-dm-profile" class="btn-primary"><i class="fa-solid fa-comment"></i> Message</button>
+                <button id="btn-sub-profile" class="btn-secondary"><i class="fa-solid fa-rss"></i> Suivre</button>
+                <!-- [NOUVEAU] Bouton DM Personnage -->
+                <button id="btn-char-dm-profile" class="btn-secondary hidden"><i class="fa-solid fa-user-secret"></i> Msg Personnage</button>
+                <!-- [NOUVEAU] Bouton Admin entreprise -->
+                <button id="btn-manage-companies" class="btn-admin-company hidden" onclick="openCompanyModal()"><i class="fa-solid fa-building"></i> Entreprises</button>
+            </div>
+
+            <!-- Section Bio -->
+            <div class="profile-section">
+                <div class="profile-section-title"><i class="fa-solid fa-id-card"></i> À propos</div>
+                <p id="profileDesc" class="profile-desc-text"></p>
+                <div id="profileOwner" style="margin-top:10px; font-size:0.78rem; color:var(--text-muted);"></div>
+                <!-- [NOUVEAU] Bouton modifier bio (proprio seulement) -->
+                <button id="btn-edit-bio" class="btn-edit-bio hidden" onclick="openBioEdit()"><i class="fa-solid fa-pen"></i> Modifier ma bio</button>
+                <div id="bio-edit-zone" class="hidden" style="margin-top:10px;">
+                    <textarea id="bioEditInput" rows="4" style="width:100%; background:var(--bg-primary); border:1px solid var(--border); color:white; padding:10px; border-radius:var(--radius-sm); font-family:var(--font-main); resize:vertical;"></textarea>
+                    <div style="display:flex; gap:8px; margin-top:6px;">
+                        <button class="btn-primary" onclick="saveBio()">Enregistrer</button>
+                        <button class="btn-secondary" onclick="closeBioEdit()">Annuler</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- [NOUVEAU] Section Entreprises -->
+            <div class="profile-section" id="profileCompaniesSection" style="display:none;">
+                <div class="profile-section-title"><i class="fa-solid fa-building"></i> Entreprises</div>
+                <div class="companies-grid" id="profileCompaniesGrid"></div>
+            </div>
+
+            <!-- [NOUVEAU] Section Activité (derniers posts) -->
+            <div class="profile-section" id="profileActivitySection">
+                <div class="profile-section-title"><i class="fa-solid fa-chart-line"></i> Activité récente</div>
+                <div id="profileActivityFeed"></div>
+            </div>
+
         </div>
-        <div class="profile-actions-footer">
-            <button id="btn-dm-profile" class="btn-primary full-width">Message Privé</button>
-            <button id="btn-sub-profile" class="btn-secondary full-width">Suivre</button>
+    </div>
+
+    <!-- [NOUVEAU] Modale Admin — Gérer entreprises -->
+    <div id="company-modal" class="modal-overlay hidden" onclick="closeCompanyModal()">
+        <div class="modal-box" style="max-width:440px;" onclick="event.stopPropagation()">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="color:white; margin:0;"><i class="fa-solid fa-building"></i> Gérer les Entreprises</h3>
+                <button onclick="closeCompanyModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.2rem;">✕</button>
+            </div>
+            <div id="company-existing-list" style="margin-bottom:14px;"></div>
+            <div style="background:var(--bg-primary); padding:14px; border-radius:var(--radius); border:1px solid var(--border);">
+                <p style="font-size:0.75rem; color:var(--text-muted); margin:0 0 10px; font-weight:700; text-transform:uppercase;">Ajouter une entreprise</p>
+                <input type="text" id="companyName" placeholder="Nom de l'entreprise" class="modal-input">
+                <input type="text" id="companyRole" placeholder="Poste du personnage (ex: PDG)" class="modal-input">
+                <input type="text" id="companyDesc" placeholder="Description (optionnel)" class="modal-input">
+                <label class="file-upload-label" style="margin-top:6px;"><span>Logo de l'entreprise</span><input type="file" id="companyLogoFile" accept="image/*"></label>
+                <button class="btn-primary full-width" style="margin-top:10px;" onclick="submitAddCompany()"><i class="fa-solid fa-plus"></i> Ajouter</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [NOUVEAU] Modale DM entre personnages -->
+    <div id="char-dm-modal" class="modal-overlay hidden" onclick="closeCharDmModal()">
+        <div class="modal-box" style="max-width:500px; padding:0; overflow:hidden; max-height:80vh; display:flex; flex-direction:column;" onclick="event.stopPropagation()">
+            <div style="padding:14px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; background:var(--bg-secondary);">
+                <img id="charDmTargetAvatar" src="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">
+                <div>
+                    <div id="charDmTargetName" style="font-weight:700; color:white; font-size:0.9rem;"></div>
+                    <div style="font-size:0.7rem; color:var(--accent-soft);">Message entre personnages</div>
+                </div>
+                <button onclick="closeCharDmModal()" style="margin-left:auto;background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
+            </div>
+            <!-- Sélection du personnage émetteur -->
+            <div style="padding:8px 12px; background:var(--bg-primary); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px;">
+                <span style="font-size:0.75rem; color:var(--text-muted);">Envoyer en tant que :</span>
+                <select id="charDmSenderSelect" style="background:var(--bg-tertiary); border:1px solid var(--border); color:white; padding:4px 8px; border-radius:var(--radius-sm); font-family:var(--font-main); font-size:0.82rem;"></select>
+            </div>
+            <div id="char-dm-messages" style="flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:8px;"></div>
+            <div style="padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px;">
+                <input id="charDmInput" type="text" class="modal-input" placeholder="Message..." style="flex:1; margin:0;" onkeyup="if(event.key==='Enter') sendCharDm()">
+                <button class="btn-primary" onclick="sendCharDm()"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [NOUVEAU] Modale Admin — Modifier stats post -->
+    <div id="admin-stats-modal" class="modal-overlay hidden" onclick="closeAdminStatsModal()">
+        <div class="modal-box" style="max-width:320px;" onclick="event.stopPropagation()">
+            <h3 style="color:white; margin:0 0 16px;">⚙️ Modifier les stats</h3>
+            <input type="hidden" id="adminStatsPostId">
+            <label style="font-size:0.8rem; color:var(--text-muted); display:block; margin-bottom:4px;">Nombre de Likes</label>
+            <input type="number" id="adminStatsLikes" class="modal-input" min="0" placeholder="0">
+            <div style="display:flex; gap:8px; margin-top:12px;">
+                <button class="btn-primary" onclick="submitAdminStats()">Appliquer</button>
+                <button class="btn-secondary" onclick="closeAdminStatsModal()">Annuler</button>
+            </div>
         </div>
     </div>
     
