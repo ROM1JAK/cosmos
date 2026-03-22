@@ -178,14 +178,6 @@ io.on('connection', async (socket) => {
           socket.emit('notifications_data', notifs);
       }
   });
-      
-      if(userId) {
-          const myChars = await Character.find({ ownerId: userId });
-          socket.emit('my_chars_data', myChars);
-          const notifs = await Notification.find({ targetOwnerId: userId }).sort({ timestamp: -1 }).limit(20);
-          socket.emit('notifications_data', notifs);
-      }
-  });
 
   socket.on('get_char_profile', async (charName) => {
       const char = await Character.findOne({ name: charName }).sort({_id: -1});
