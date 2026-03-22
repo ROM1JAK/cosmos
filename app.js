@@ -490,22 +490,34 @@ function updateBreakingNewsVisibility() {
     if(char && char.isOfficial) { label.style.display = 'flex'; } else { label.style.display = 'none'; document.getElementById('postBreakingNews').checked = false; }
 }
 
-// --- PROFILE ---
+// ==================== PROFILE PLEIN ÉCRAN ====================
+// [NOUVEAU] State profil courant
+let currentProfileChar = null;
+
 function openProfile(name) { 
-    document.getElementById('profile-overlay').classList.remove('hidden'); document.getElementById('profile-slide-panel').classList.add('open');
+    document.getElementById('profile-overlay').classList.remove('hidden'); 
+    document.getElementById('profile-slide-panel').classList.add('open');
     socket.emit('get_char_profile', name); 
 }
 function closeProfileModal() { 
-    document.getElementById('profile-slide-panel').classList.remove('open'); document.getElementById('profile-overlay').classList.add('hidden');
+    document.getElementById('profile-slide-panel').classList.remove('open'); 
+    document.getElementById('profile-overlay').classList.add('hidden');
+    currentProfileChar = null;
 }
 
 socket.on('char_profile_data', (char) => {
-    document.getElementById('profileName').textContent = char.name; document.getElementById('profileRole').textContent = char.role;
-    document.getElementById('profileAvatar').src = char.avatar; document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
-    document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
-    if(char.partyName && char.partyLogo) document.getElementById('profileOwner').innerHTML += `<div class="party-badge" style="margin-top:6px; display:inline-flex;"><img src="${char.partyLogo}" class="party-logo"> ${char.partyName}</div>`;
-    
-    // Parti dans le header du profil
+    currentProfileChar = char;
+
+    // En-tête héro
+    document.getElementById('profileName').textContent = char.name;
+    document.getElementById('profileRole').textContent = char.role;
+    document.getElementById('profileAvatar').src = char.avatar;
+
+    // Fond héro avec couleur du perso
+    const heroBg = document.getElementById('profileHeroBg');
+    if(heroBg) heroBg.style.background = `linear-gradient(135deg, ${char.color || 'var(--accent)'}33 0%, var(--bg-secondary) 100%)`;
+
+    // Parti dans header
     const partyBadgeEl = document.getElementById('profilePartyBadge');
     if(char.partyName) {
         partyBadgeEl.style.display = 'block';
@@ -514,16 +526,54 @@ socket.on('char_profile_data', (char) => {
             : `<span class="profile-party-tag">🏛️ ${char.partyName}</span>`;
     } else {
         partyBadgeEl.style.display = 'none';
-        partyBadgeEl.innerHTML = '';
     }
-    
+
+    // Stats
+    const followersCount = char.followers ? char.followers.length : 0;
+    document.getElementById('profileFollowersCount').textContent = followersCount;
     document.getElementById('profilePostCount').textContent = char.postCount || 0;
-    const count = char.followers ? char.followers.length : 0; document.getElementById('profileFollowersCount').textContent = `${count}`;
+
+    // Admin edit followers
+    const adminFollowersBtn = document.getElementById('adminEditFollowers');
+    if(adminFollowersBtn) { 
+        if(IS_ADMIN) adminFollowersBtn.classList.remove('hidden'); 
+        else adminFollowersBtn.classList.add('hidden'); 
+    }
+
+    // Voir abonnés
     document.getElementById('btn-view-followers').onclick = () => socket.emit('get_followers_list', char._id);
-    document.getElementById('btn-dm-profile').onclick = function() { closeProfileModal(); if (char.ownerUsername) openDm(char.ownerUsername); };
-    
+
+    // Bio
+    document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
+    document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
+    if(char.partyName && char.partyLogo) {
+        document.getElementById('profileOwner').innerHTML += ` <span class="party-badge" style="display:inline-flex;"><img src="${char.partyLogo}" class="party-logo"> ${char.partyName}</span>`;
+    }
+
+    // [NOUVEAU] Bouton modifier bio — visible seulement si c'est un de nos persos
+    const btnEditBio = document.getElementById('btn-edit-bio');
+    const isOwnChar = myCharacters.some(c => c._id === char._id);
+    if(btnEditBio) {
+        if(isOwnChar) { btnEditBio.classList.remove('hidden'); }
+        else { btnEditBio.classList.add('hidden'); closeBioEdit(); }
+    }
+
+    // Bouton DM compte
+    const btnDm = document.getElementById('btn-dm-profile');
+    btnDm.onclick = function() { closeProfileModal(); if(char.ownerUsername) openDm(char.ownerUsername); };
+
+    // [NOUVEAU] Bouton DM Personnage — visible si on a des persos et que c'est pas nous
+    const btnCharDm = document.getElementById('btn-char-dm-profile');
+    if(myCharacters.length > 0 && !isOwnChar && PLAYER_ID) {
+        btnCharDm.classList.remove('hidden');
+        btnCharDm.onclick = () => openCharDmModal(char);
+    } else {
+        btnCharDm.classList.add('hidden');
+    }
+
+    // Bouton suivre
     const btnSub = document.getElementById('btn-sub-profile');
-    if(currentFeedCharId === char._id) { btnSub.style.display = 'none'; } 
+    if(isOwnChar || currentFeedCharId === char._id) { btnSub.style.display = 'none'; }
     else {
         btnSub.style.display = 'block';
         const isSubbed = char.followers && currentFeedCharId && char.followers.includes(currentFeedCharId);
@@ -533,15 +583,229 @@ socket.on('char_profile_data', (char) => {
             socket.emit('follow_character', { followerCharId: currentFeedCharId, targetCharId: char._id });
         };
     }
+
+    // [NOUVEAU] Bouton admin entreprises
+    const btnCompanies = document.getElementById('btn-manage-companies');
+    if(IS_ADMIN && !isOwnChar) { btnCompanies.classList.remove('hidden'); }
+    else { btnCompanies.classList.add('hidden'); }
+
+    // [NOUVEAU] Section Entreprises
+    const companiesSection = document.getElementById('profileCompaniesSection');
+    const companiesGrid = document.getElementById('profileCompaniesGrid');
+    if(char.companies && char.companies.length > 0) {
+        companiesSection.style.display = 'block';
+        companiesGrid.innerHTML = '';
+        char.companies.forEach((co, idx) => {
+            const delBtn = IS_ADMIN ? `<button class="company-card-del" onclick="adminRemoveCompany('${char._id}', ${idx})" title="Retirer"><i class="fa-solid fa-xmark"></i></button>` : '';
+            companiesGrid.innerHTML += `
+                <div class="company-card">
+                    ${delBtn}
+                    <div class="company-card-logo">${co.logo ? `<img src="${co.logo}" alt="${co.name}">` : `<i class="fa-solid fa-building"></i>`}</div>
+                    <div class="company-card-name">${co.name}</div>
+                    <div class="company-card-role">${co.role || ''}</div>
+                    ${co.description ? `<div class="company-card-desc">${co.description}</div>` : ''}
+                </div>`;
+        });
+    } else {
+        companiesSection.style.display = IS_ADMIN ? 'block' : 'none';
+        if(IS_ADMIN) companiesGrid.innerHTML = '<div style="color:var(--text-muted); font-size:0.82rem; font-style:italic;">Aucune entreprise. Cliquez sur "Entreprises" pour en ajouter.</div>';
+    }
+
+    // [NOUVEAU] Section Activité (derniers posts)
+    const activityFeed = document.getElementById('profileActivityFeed');
+    activityFeed.innerHTML = '';
+    if(char.lastPosts && char.lastPosts.length > 0) {
+        char.lastPosts.forEach(post => {
+            const mini = document.createElement('div');
+            mini.className = 'profile-mini-post';
+            mini.innerHTML = `
+                <div class="profile-mini-post-content">${formatText(post.content || '')}</div>
+                <div class="profile-mini-post-meta">
+                    <span><i class="fa-solid fa-heart" style="color:var(--danger);"></i> ${post.likes ? post.likes.length : 0}</span>
+                    <span style="color:var(--text-muted);">${post.date || ''}</span>
+                    ${IS_ADMIN ? `<button class="admin-stat-btn" onclick="openAdminStatsModal('${post._id}', ${post.likes ? post.likes.length : 0})"><i class="fa-solid fa-pen"></i></button>` : ''}
+                </div>`;
+            activityFeed.appendChild(mini);
+        });
+    } else {
+        activityFeed.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem; font-style:italic; padding:10px 0;">Aucun post récent.</div>';
+    }
 });
 
 socket.on('char_profile_updated', (char) => { 
     if(document.getElementById('profile-slide-panel').classList.contains('open') && document.getElementById('profileName').textContent === char.name) {
         const isSubbed = char.followers && currentFeedCharId && char.followers.includes(currentFeedCharId);
-        updateSubButton(document.getElementById('btn-sub-profile'), isSubbed); document.getElementById('profileFollowersCount').textContent = `${char.followers.length}`;
+        updateSubButton(document.getElementById('btn-sub-profile'), isSubbed); 
+        document.getElementById('profileFollowersCount').textContent = `${char.followers.length}`;
     }
 });
 function updateSubButton(btn, subbed) { btn.innerHTML = subbed ? '<i class="fa-solid fa-check"></i> Abonné' : '<i class="fa-solid fa-rss"></i> S\'abonner'; btn.style.color = subbed ? '#23a559' : 'white'; }
+
+// [NOUVEAU] Modifier bio
+function openBioEdit() {
+    document.getElementById('bio-edit-zone').classList.remove('hidden');
+    document.getElementById('btn-edit-bio').classList.add('hidden');
+    document.getElementById('bioEditInput').value = currentProfileChar ? (currentProfileChar.description || '') : '';
+}
+function closeBioEdit() {
+    document.getElementById('bio-edit-zone').classList.add('hidden');
+    const btn = document.getElementById('btn-edit-bio');
+    const isOwnChar = currentProfileChar && myCharacters.some(c => c._id === currentProfileChar._id);
+    if(btn && isOwnChar) btn.classList.remove('hidden');
+}
+function saveBio() {
+    if(!currentProfileChar) return;
+    const bio = document.getElementById('bioEditInput').value.trim();
+    socket.emit('update_char_bio', { charId: currentProfileChar._id, bio, ownerId: PLAYER_ID });
+    document.getElementById('profileDesc').textContent = bio;
+    closeBioEdit();
+}
+
+// [NOUVEAU] Admin — modale entreprise
+function openCompanyModal() {
+    if(!currentProfileChar) return;
+    const list = document.getElementById('company-existing-list');
+    list.innerHTML = '';
+    if(currentProfileChar.companies && currentProfileChar.companies.length > 0) {
+        currentProfileChar.companies.forEach((co, idx) => {
+            list.innerHTML += `<div style="display:flex; align-items:center; gap:8px; padding:8px; background:var(--bg-primary); border-radius:var(--radius-sm); margin-bottom:6px;">
+                ${co.logo ? `<img src="${co.logo}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : '<i class="fa-solid fa-building" style="color:var(--text-muted);"></i>'}
+                <span style="flex:1; font-weight:600;">${co.name}</span>
+                <span style="font-size:0.75rem; color:var(--text-muted);">${co.role}</span>
+                <button onclick="adminRemoveCompany('${currentProfileChar._id}', ${idx}); closeCompanyModal();" style="background:none;border:none;color:var(--danger);cursor:pointer;"><i class="fa-solid fa-trash"></i></button>
+            </div>`;
+        });
+    } else {
+        list.innerHTML = '<div style="color:var(--text-muted); font-size:0.82rem; margin-bottom:8px;">Aucune entreprise associée.</div>';
+    }
+    document.getElementById('company-modal').classList.remove('hidden');
+}
+function closeCompanyModal() { document.getElementById('company-modal').classList.add('hidden'); }
+
+async function submitAddCompany() {
+    if(!currentProfileChar || !IS_ADMIN) return;
+    const name = document.getElementById('companyName').value.trim();
+    const role = document.getElementById('companyRole').value.trim();
+    const desc = document.getElementById('companyDesc').value.trim();
+    const logoFile = document.getElementById('companyLogoFile').files[0];
+    if(!name) return alert("Nom de l'entreprise requis.");
+    let logo = null;
+    if(logoFile) logo = await uploadToCloudinary(logoFile);
+    socket.emit('admin_add_company', { charId: currentProfileChar._id, company: { name, logo, role, description: desc } });
+    document.getElementById('companyName').value = '';
+    document.getElementById('companyRole').value = '';
+    document.getElementById('companyDesc').value = '';
+    document.getElementById('companyLogoFile').value = '';
+    closeCompanyModal();
+}
+function adminRemoveCompany(charId, idx) {
+    if(!IS_ADMIN) return;
+    if(confirm('Retirer cette entreprise ?')) socket.emit('admin_remove_company', { charId, companyIndex: idx });
+}
+
+// [NOUVEAU] Admin — modifier stats abonnés
+function adminEditFollowers() {
+    if(!currentProfileChar || !IS_ADMIN) return;
+    const count = prompt(`Nombre d'abonnés actuel : ${currentProfileChar.followers ? currentProfileChar.followers.length : 0}\nNouveau nombre :`, currentProfileChar.followers ? currentProfileChar.followers.length : 0);
+    if(count !== null && !isNaN(parseInt(count))) {
+        socket.emit('admin_edit_followers', { charId: currentProfileChar._id, count: parseInt(count) });
+    }
+}
+
+// [NOUVEAU] Admin — modale stats post (likes)
+function openAdminStatsModal(postId, currentLikes) {
+    document.getElementById('adminStatsPostId').value = postId;
+    document.getElementById('adminStatsLikes').value = currentLikes;
+    document.getElementById('admin-stats-modal').classList.remove('hidden');
+}
+function closeAdminStatsModal() { document.getElementById('admin-stats-modal').classList.add('hidden'); }
+function submitAdminStats() {
+    const postId = document.getElementById('adminStatsPostId').value;
+    const likes = parseInt(document.getElementById('adminStatsLikes').value) || 0;
+    socket.emit('admin_edit_post_likes', { postId, count: likes });
+    closeAdminStatsModal();
+}
+
+// ==================== DM ENTRE PERSONNAGES ====================
+let charDmTarget = null; // { _id, name, avatar, ownerId, ownerUsername }
+
+function openCharDmModal(targetChar) {
+    charDmTarget = targetChar;
+    document.getElementById('charDmTargetAvatar').src = targetChar.avatar || '';
+    document.getElementById('charDmTargetName').textContent = targetChar.name;
+    // Remplir sélecteur de perso émetteur
+    const sel = document.getElementById('charDmSenderSelect');
+    sel.innerHTML = myCharacters.map(c => `<option value="${c._id}">${c.name}</option>`).join('');
+    // Charger l'historique pour le premier perso
+    loadCharDmHistory();
+    document.getElementById('char-dm-modal').classList.remove('hidden');
+    // Recharger quand on change de perso émetteur
+    sel.onchange = loadCharDmHistory;
+}
+function closeCharDmModal() { document.getElementById('char-dm-modal').classList.add('hidden'); charDmTarget = null; }
+
+function loadCharDmHistory() {
+    if(!charDmTarget) return;
+    const sel = document.getElementById('charDmSenderSelect');
+    const senderCharId = sel.value;
+    socket.emit('request_char_dm_history', { senderCharId, targetCharId: charDmTarget._id });
+}
+
+function sendCharDm() {
+    if(!charDmTarget || !PLAYER_ID) return;
+    const content = document.getElementById('charDmInput').value.trim();
+    if(!content) return;
+    const sel = document.getElementById('charDmSenderSelect');
+    const senderChar = myCharacters.find(c => c._id === sel.value);
+    if(!senderChar) return;
+    socket.emit('send_char_dm', {
+        senderCharId: senderChar._id, senderCharName: senderChar.name,
+        senderAvatar: senderChar.avatar, senderColor: senderChar.color, senderRole: senderChar.role,
+        senderOwnerUsername: USERNAME,
+        targetCharId: charDmTarget._id, targetCharName: charDmTarget.name,
+        targetOwnerId: charDmTarget.ownerId, targetOwnerUsername: charDmTarget.ownerUsername,
+        ownerId: PLAYER_ID, content,
+        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+    });
+    document.getElementById('charDmInput').value = '';
+}
+
+socket.on('char_dm_history', ({ msgs }) => {
+    const c = document.getElementById('char-dm-messages');
+    if(!c) return;
+    c.innerHTML = '';
+    const sel = document.getElementById('charDmSenderSelect');
+    const myCharId = sel ? sel.value : null;
+    msgs.forEach(m => appendCharDmMsg(m, myCharId));
+    c.scrollTop = c.scrollHeight;
+});
+
+socket.on('receive_char_dm', (msg) => {
+    const modal = document.getElementById('char-dm-modal');
+    if(!modal.classList.contains('hidden') && charDmTarget) {
+        const sel = document.getElementById('charDmSenderSelect');
+        const myCharId = sel ? sel.value : null;
+        const sameConv = (msg.senderCharId === charDmTarget._id || msg.targetCharId === charDmTarget._id);
+        if(sameConv) { appendCharDmMsg(msg, myCharId); const c = document.getElementById('char-dm-messages'); c.scrollTop = c.scrollHeight; }
+    }
+    if(notificationsEnabled && msg.ownerId !== PLAYER_ID) notifSound.play().catch(()=>{});
+});
+
+function appendCharDmMsg(msg, myCharId) {
+    const c = document.getElementById('char-dm-messages');
+    if(!c) return;
+    const isSelf = msg.senderCharId === myCharId || msg.ownerId === PLAYER_ID;
+    const div = document.createElement('div');
+    div.className = `char-dm-msg ${isSelf ? 'char-dm-self' : ''}`;
+    div.innerHTML = `
+        <img src="${msg.senderAvatar || ''}" class="char-dm-avatar" title="${msg.senderName}">
+        <div class="char-dm-bubble">
+            <span class="char-dm-sender" style="color:${msg.senderColor||'var(--accent)'};">${msg.senderName}</span>
+            <span class="char-dm-text">${formatText(msg.content)}</span>
+            <span class="char-dm-time">${msg.date}</span>
+        </div>`;
+    c.appendChild(div);
+}
 
 socket.on('followers_list_data', (followers) => {
     const listDiv = document.getElementById('followers-list-container'); listDiv.innerHTML = "";
@@ -912,6 +1176,7 @@ function createPostElement(post) {
             <div class="post-actions">
                 <button class="action-item ${isLiked?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
                 <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
+                ${IS_ADMIN ? `<button class="action-item" onclick="event.stopPropagation(); openAdminStatsModal('${post._id}', ${post.likes.length})" title="Admin: modifier likes" style="color:var(--warning);"><i class="fa-solid fa-pen"></i></button>` : ''}
             </div>
         ${bodyWrapperEnd}
         <div class="comments-list hidden">${generateCommentsHTML(post.comments, post._id)}</div>`;
@@ -1057,8 +1322,17 @@ function createArticleElement(post) {
             </div>
             <div class="article-separator"></div>
             ${articleBodyHTML}
+            <!-- [NOUVEAU] Signature rédacteur en pied d'article -->
+            <div class="article-footer-signature" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
+                <img src="${post.authorAvatar}" class="article-sig-avatar">
+                <div>
+                    <div class="article-sig-name">${post.authorName}</div>
+                    <div class="article-sig-role">${post.authorRole}${partyHTML}</div>
+                </div>
+            </div>
             <div class="article-actions">
                 <button class="action-item ${post.likes.includes(currentFeedCharId)?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
+                ${IS_ADMIN ? `<button class="action-item" onclick="event.stopPropagation(); openAdminStatsModal('${post._id}', ${post.likes.length})" title="Admin: modifier likes" style="color:var(--warning);"><i class="fa-solid fa-pen"></i></button>` : ''}
             </div>
         </div>`;
     return div;
