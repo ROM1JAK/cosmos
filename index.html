@@ -269,61 +269,7 @@
                     <div class="sidebar-section">
                         <h3>PERSONNAGES</h3>
                         <div id="myCharList"></div>
-                        <div class="create-form-toggle" onclick="toggleCreateForm()">+ Nouveau</div>
-                        <!-- [AMÉLIORÉ] Formulaire création personnage -->
-                        <div id="create-char-form" class="create-form hidden">
-                            <div class="char-form-section">
-                                <div class="char-form-section-title">Identité</div>
-                                <input type="text" id="newCharName" placeholder="Nom du personnage">
-                                <input type="text" id="newCharRole" placeholder="Rôle / Profession">
-                                <label class="file-upload-label"><span><i class="fa-solid fa-image"></i> Avatar</span><input type="file" id="newCharFile" accept="image/*"></label>
-                                <input type="hidden" id="newCharBase64">
-                                <textarea id="newCharDesc" placeholder="Bio..." rows="2"></textarea>
-                                <div style="display:flex;align-items:center;gap:8px;">
-                                    <label style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">Couleur :</label>
-                                    <input type="color" id="newCharColor" value="#5c7cfa" style="flex:1;height:32px;border:none;border-radius:4px;cursor:pointer;">
-                                </div>
-                            </div>
-                            <div class="char-form-section">
-                                <div class="char-form-section-title">Parti Politique</div>
-                                <input type="text" id="newCharPartyName" placeholder="Nom du parti (optionnel)">
-                                <label class="file-upload-label"><span><i class="fa-solid fa-flag"></i> Logo du Parti</span><input type="file" id="newCharPartyFile" accept="image/*"></label>
-                                <input type="hidden" id="newCharPartyBase64">
-                            </div>
-                            <!-- [NOUVEAU] Entreprises -->
-                            <div class="char-form-section">
-                                <div class="char-form-section-title">Entreprises <span style="font-weight:400;font-size:0.7rem;">(optionnel)</span></div>
-                                <div id="newCharCompaniesList"></div>
-                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                                    <input type="text" id="newCompanyName" placeholder="Nom entreprise" style="background:var(--bg-tertiary);border:1px solid var(--border);color:white;padding:7px 10px;border-radius:var(--radius-sm);font-family:var(--font-main);font-size:0.82rem;">
-                                    <input type="text" id="newCompanyRole" placeholder="Poste" style="background:var(--bg-tertiary);border:1px solid var(--border);color:white;padding:7px 10px;border-radius:var(--radius-sm);font-family:var(--font-main);font-size:0.82rem;">
-                                </div>
-                                <label class="file-upload-label" style="margin-top:5px;"><span><i class="fa-solid fa-building"></i> Logo entreprise</span><input type="file" id="newCompanyLogoFile" accept="image/*"></label>
-                                <button type="button" onclick="addCompanyToNewChar()" class="btn-secondary" style="width:100%;font-size:0.78rem;padding:6px;margin-top:4px;">+ Ajouter cette entreprise</button>
-                            </div>
-                            <!-- [NOUVEAU] Capital -->
-                            <div class="char-form-section">
-                                <div class="char-form-section-title">Capital Financier</div>
-                                <div style="display:flex;align-items:center;gap:8px;">
-                                    <span style="font-size:1.1rem;">💰</span>
-                                    <input type="number" id="newCharCapital" placeholder="0" min="0" style="flex:1;background:var(--bg-tertiary);border:1px solid var(--border);color:white;padding:8px 10px;border-radius:var(--radius-sm);font-family:var(--font-main);font-size:0.88rem;">
-                                    <span style="font-size:0.75rem;color:var(--text-muted);">crédits</span>
-                                </div>
-                            </div>
-                            <button onclick="createCharacter()" class="btn-primary"><i class="fa-solid fa-plus"></i> Créer le personnage</button>
-                        </div>
-                        <div id="edit-char-form" class="create-form hidden">
-                            <h4 style="margin:0 0 5px 0; color:#eab308;">Modifier</h4>
-                            <input type="hidden" id="editCharId"><input type="hidden" id="editCharOriginalName">
-                            <input type="text" id="editCharName" placeholder="Nom"><input type="text" id="editCharRole" placeholder="Rôle">
-                            <label class="file-upload-label"><span>Changer Image</span><input type="file" id="editCharFile" accept="image/*"></label>
-                            <input type="hidden" id="editCharBase64"><textarea id="editCharDesc" rows="2"></textarea>
-                            <input type="color" id="editCharColor" style="width:100%; height:30px; border:none;">
-                            <input type="text" id="editCharPartyName" placeholder="Parti Politique (optionnel)">
-                            <label class="file-upload-label"><span>Logo du Parti</span><input type="file" id="editCharPartyFile" accept="image/*"></label>
-                            <input type="hidden" id="editCharPartyBase64">
-                            <div style="display:flex; gap:5px;"><button onclick="submitEditCharacter()" class="btn-primary">OK</button><button onclick="cancelEditCharacter()" class="btn-secondary">Annuler</button></div>
-                        </div>
+                        <div class="create-form-toggle" onclick="toggleCreateForm()">+ Nouveau Personnage</div>
                     </div>
                     <div class="sidebar-section"><h3>MESSAGES PRIVÉS</h3><div id="dmList"></div></div>
                 </div>
@@ -554,6 +500,122 @@
         </div>
     </div>
     
+    <!-- ==================== MODALE CRÉATION / MODIFICATION PERSONNAGE ==================== -->
+    <div id="char-modal" class="modal-overlay hidden" onclick="if(event.target===this) closeCharModal()">
+        <div class="char-modal-box" onclick="event.stopPropagation()">
+            <div class="char-modal-header">
+                <span id="char-modal-title" class="char-modal-title">Nouveau Personnage</span>
+                <button onclick="closeCharModal()" class="char-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="char-modal-body">
+
+                <!-- CRÉATION -->
+                <div id="char-modal-create">
+                    <div class="char-form-tabs">
+                        <button class="char-tab active" onclick="switchCharTab('create','identite')">Identité</button>
+                        <button class="char-tab" onclick="switchCharTab('create','parti')">Parti</button>
+                        <button class="char-tab" onclick="switchCharTab('create','entreprises')">Entreprises</button>
+                        <button class="char-tab" onclick="switchCharTab('create','capital')">Capital</button>
+                    </div>
+                    <div id="create-tab-identite" class="char-tab-content active-tab">
+                        <div class="char-form-row">
+                            <div style="flex:1"><label class="cfl">Nom *</label><input type="text" id="newCharName" class="char-input" placeholder="Ex: John Doe"></div>
+                            <div style="flex:1"><label class="cfl">Rôle *</label><input type="text" id="newCharRole" class="char-input" placeholder="Ex: Journaliste"></div>
+                        </div>
+                        <label class="cfl">Avatar</label>
+                        <label class="file-upload-label"><span><i class="fa-solid fa-image"></i> Choisir une image</span><input type="file" id="newCharFile" accept="image/*"></label>
+                        <input type="hidden" id="newCharBase64">
+                        <label class="cfl" style="margin-top:10px;">Bio</label>
+                        <textarea id="newCharDesc" class="char-input" placeholder="Description..." rows="3" style="resize:vertical;"></textarea>
+                        <label class="cfl" style="margin-top:10px;">Couleur identitaire</label>
+                        <div style="display:flex;align-items:center;gap:10px;"><input type="color" id="newCharColor" value="#5c7cfa" style="width:48px;height:36px;border:none;border-radius:var(--radius-sm);cursor:pointer;padding:2px;"><span style="font-size:0.78rem;color:var(--text-muted);">Couleur du nom dans le chat</span></div>
+                    </div>
+                    <div id="create-tab-parti" class="char-tab-content">
+                        <label class="cfl">Nom du parti</label>
+                        <input type="text" id="newCharPartyName" class="char-input" placeholder="Ex: Parti de la République">
+                        <input type="hidden" id="newCharPartyBase64">
+                        <label class="cfl" style="margin-top:10px;">Logo du parti</label>
+                        <label class="file-upload-label"><span><i class="fa-solid fa-flag"></i> Logo du Parti</span><input type="file" id="newCharPartyFile" accept="image/*"></label>
+                    </div>
+                    <div id="create-tab-entreprises" class="char-tab-content">
+                        <div id="newCharCompaniesList"></div>
+                        <div class="char-company-adder">
+                            <div class="char-form-row">
+                                <input type="text" id="newCompanyName" class="char-input" placeholder="Nom de l'entreprise">
+                                <input type="text" id="newCompanyRole" class="char-input" placeholder="Poste (ex: PDG)">
+                            </div>
+                            <label class="file-upload-label" style="margin-top:6px;"><span><i class="fa-solid fa-building"></i> Logo entreprise</span><input type="file" id="newCompanyLogoFile" accept="image/*"></label>
+                            <button type="button" onclick="addCompanyToNewChar()" class="btn-secondary" style="width:100%;margin-top:6px;"><i class="fa-solid fa-plus"></i> Ajouter cette entreprise</button>
+                        </div>
+                    </div>
+                    <div id="create-tab-capital" class="char-tab-content">
+                        <label class="cfl">💰 Capital financier de départ</label>
+                        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+                            <input type="number" id="newCharCapital" class="char-input" placeholder="0" min="0" style="flex:1;">
+                            <span style="color:var(--text-muted);font-size:0.88rem;white-space:nowrap;">crédits</span>
+                        </div>
+                    </div>
+                    <div class="char-modal-footer">
+                        <button onclick="closeCharModal()" class="btn-secondary">Annuler</button>
+                        <button onclick="createCharacter()" class="btn-primary"><i class="fa-solid fa-plus"></i> Créer le personnage</button>
+                    </div>
+                </div>
+
+                <!-- MODIFICATION -->
+                <div id="char-modal-edit" class="hidden">
+                    <input type="hidden" id="editCharId"><input type="hidden" id="editCharOriginalName">
+                    <input type="hidden" id="editCharBase64"><input type="hidden" id="editCharPartyBase64">
+                    <div class="char-form-tabs">
+                        <button class="char-tab active" onclick="switchCharTab('edit','identite')">Identité</button>
+                        <button class="char-tab" onclick="switchCharTab('edit','parti')">Parti</button>
+                        <button class="char-tab" onclick="switchCharTab('edit','entreprises')">Entreprises</button>
+                        <button class="char-tab" onclick="switchCharTab('edit','capital')">Capital</button>
+                    </div>
+                    <div id="edit-tab-identite" class="char-tab-content active-tab">
+                        <div class="char-form-row">
+                            <div style="flex:1"><label class="cfl">Nom *</label><input type="text" id="editCharName" class="char-input" placeholder="Nom"></div>
+                            <div style="flex:1"><label class="cfl">Rôle *</label><input type="text" id="editCharRole" class="char-input" placeholder="Rôle"></div>
+                        </div>
+                        <label class="cfl">Changer l'avatar</label>
+                        <label class="file-upload-label"><span><i class="fa-solid fa-image"></i> Nouvelle image</span><input type="file" id="editCharFile" accept="image/*"></label>
+                        <label class="cfl" style="margin-top:10px;">Bio</label>
+                        <textarea id="editCharDesc" class="char-input" rows="3" style="resize:vertical;" placeholder="Description..."></textarea>
+                        <label class="cfl" style="margin-top:10px;">Couleur</label>
+                        <input type="color" id="editCharColor" style="width:48px;height:36px;border:none;border-radius:var(--radius-sm);cursor:pointer;padding:2px;">
+                    </div>
+                    <div id="edit-tab-parti" class="char-tab-content">
+                        <label class="cfl">Nom du parti</label>
+                        <input type="text" id="editCharPartyName" class="char-input" placeholder="Parti politique">
+                        <label class="cfl" style="margin-top:10px;">Logo du parti</label>
+                        <label class="file-upload-label"><span><i class="fa-solid fa-flag"></i> Changer le logo</span><input type="file" id="editCharPartyFile" accept="image/*"></label>
+                    </div>
+                    <div id="edit-tab-entreprises" class="char-tab-content">
+                        <div id="editCharCompaniesList"></div>
+                        <div class="char-company-adder">
+                            <div class="char-form-row">
+                                <input type="text" id="editCompanyName" class="char-input" placeholder="Nom de l'entreprise">
+                                <input type="text" id="editCompanyRole" class="char-input" placeholder="Poste (ex: PDG)">
+                            </div>
+                            <label class="file-upload-label" style="margin-top:6px;"><span><i class="fa-solid fa-building"></i> Logo</span><input type="file" id="editCompanyLogoFile" accept="image/*"></label>
+                            <button type="button" onclick="addCompanyToEditChar()" class="btn-secondary" style="width:100%;margin-top:6px;"><i class="fa-solid fa-plus"></i> Ajouter</button>
+                        </div>
+                    </div>
+                    <div id="edit-tab-capital" class="char-tab-content">
+                        <label class="cfl">💰 Capital financier</label>
+                        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+                            <input type="number" id="editCharCapital" class="char-input" placeholder="0" min="0" style="flex:1;">
+                            <span style="color:var(--text-muted);font-size:0.88rem;white-space:nowrap;">crédits</span>
+                        </div>
+                    </div>
+                    <div class="char-modal-footer">
+                        <button onclick="cancelEditCharacter()" class="btn-secondary">Annuler</button>
+                        <button onclick="submitEditCharacter()" class="btn-primary"><i class="fa-solid fa-check"></i> Enregistrer</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script src="app.js"></script> 
 </body>
