@@ -104,6 +104,7 @@ const CitySchema = new mongoose.Schema({
     name:       { type: String, required: true, unique: true },
     archipel:   { type: String, default: 'Archipel Pacifique' },
     president:  { type: String, default: 'Vacant' },
+    capitale:   { type: String, default: null }, // ville capitale de la cité
     population: { type: Number, default: 500000 },
     baseEDC:    { type: Number, default: 1000000000000 }, // en milliards de défaut
     trend:      { type: String, default: 'stable' },
@@ -112,6 +113,23 @@ const CitySchema = new mongoose.Schema({
     updatedAt:  { type: Date, default: Date.now }
 });
 const City = mongoose.model('City', CitySchema);
+
+// ========== [BOURSE] SCHÉMA ==========
+const StockSchema = new mongoose.Schema({
+    companyName:  String,
+    companyLogo:  String,
+    charId:       String,
+    charName:     String,
+    charColor:    String,
+    stockColor:   { type: String, default: '#6c63ff' },
+    currentValue: { type: Number, default: 1000 },
+    trend:        { type: String, default: 'stable' },
+    history:      [{ value: Number, date: { type: Date, default: Date.now } }],
+    description:  String,
+    updatedAt:    { type: Date, default: Date.now }
+});
+const Stock = mongoose.model('Stock', StockSchema);
+// ========== [FIN BOURSE SCHÉMA] ==========
 
 const CITIES_SEED = [
     { name: 'Aguerta',    archipel: 'Archipel Pacifique' },
@@ -668,7 +686,7 @@ io.on('connection', async (socket) => {
       socket.emit('cities_data', cities);
   });
 
-  socket.on('admin_update_city', async ({ cityId, president, population, baseEDC, trend, flag, customPct }) => {
+  socket.on('admin_update_city', async ({ cityId, president, population, baseEDC, trend, flag, customPct, capitale }) => {
       // Vérifier que l'expéditeur est admin
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
@@ -689,6 +707,7 @@ io.on('connection', async (socket) => {
       if(president !== undefined && president !== null) city.president = president;
       if(population !== undefined && population !== null) city.population = Number(population);
       if(flag       !== undefined && flag !== null)       city.flag = flag;
+      if(capitale   !== undefined)                        city.capitale = capitale || null;
 
       if(baseEDC !== undefined && baseEDC !== null) {
           city.baseEDC = Number(baseEDC);
@@ -717,11 +736,102 @@ io.on('connection', async (socket) => {
 
       city.updatedAt = new Date();
       await city.save();
+      socket.emit('city_save_success');
 
       const cities = await City.find().sort({ archipel: 1, name: 1 });
       io.emit('cities_data', cities);
   });
   // ========== [FIN CITÉS SOCKET] ==========
+
+  // ========== [BOURSE] SOCKET EVENTS ==========
+  socket.on('request_stocks', async () => {
+      const stocks = await Stock.find().sort({ companyName: 1 });
+      socket.emit('stocks_data', stocks);
+  });
+
+  socket.on('request_all_chars_companies', async () => {
+      const chars = await Character.find({ 'companies.0': { $exists: true } }).select('_id name color companies');
+      const result = chars.map(c => ({
+          charId: String(c._id),
+          charName: c.name,
+          charColor: c.color,
+          companies: (c.companies || []).map(co => ({ name: co.name, logo: co.logo || '' }))
+      }));
+      socket.emit('all_chars_companies', result);
+  });
+
+  socket.on('admin_save_stock', async ({ stockId, companyName, companyLogo, charId, charName, charColor, stockColor, currentValue, description }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      let stock = stockId ? await Stock.findById(stockId) : null;
+      if(!stock) stock = await Stock.findOne({ companyName, charId });
+      if(!stock) {
+          stock = new Stock({ companyName, companyLogo, charId, charName, charColor, stockColor: stockColor || '#6c63ff', currentValue: Number(currentValue) || 0, description });
+          stock.history.push({ value: Number(currentValue) || 0 });
+      } else {
+          if(companyName)  stock.companyName  = companyName;
+          if(companyLogo !== undefined) stock.companyLogo = companyLogo;
+          if(charId)       stock.charId       = charId;
+          if(charName)     stock.charName     = charName;
+          if(charColor)    stock.charColor    = charColor;
+          stock.stockColor   = stockColor || stock.stockColor;
+          stock.currentValue = Number(currentValue) || 0;
+          if(description !== undefined) stock.description = description;
+          stock.history.push({ value: Number(currentValue) || 0 });
+          if(stock.history.length > 30) stock.history.shift();
+      }
+      stock.updatedAt = new Date();
+      await stock.save();
+      const stocks = await Stock.find().sort({ companyName: 1 });
+      io.emit('stocks_updated', stocks);
+  });
+
+  socket.on('admin_apply_stock_trend', async ({ stockId, trend }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      const TREND_MULT = { croissance_forte: 1.015, croissance: 1.007, stable: 1.000, baisse: 0.993, chute: 0.985 };
+      const stock = await Stock.findById(stockId);
+      if(!stock) return;
+      stock.trend = trend;
+      const mult = TREND_MULT[trend] || 1;
+      const newVal = Math.round(stock.currentValue * mult * 100) / 100;
+      stock.currentValue = newVal;
+      stock.history.push({ value: newVal });
+      if(stock.history.length > 30) stock.history.shift();
+      stock.updatedAt = new Date();
+      await stock.save();
+      const stocks = await Stock.find().sort({ companyName: 1 });
+      io.emit('stocks_updated', stocks);
+  });
+
+  socket.on('admin_apply_stock_custom', async ({ stockId, pct }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      const stock = await Stock.findById(stockId);
+      if(!stock) return;
+      const mult = 1 + (Number(pct) / 100);
+      const newVal = Math.max(0, Math.round(stock.currentValue * mult * 100) / 100);
+      stock.currentValue = newVal;
+      stock.history.push({ value: newVal });
+      if(stock.history.length > 30) stock.history.shift();
+      stock.updatedAt = new Date();
+      await stock.save();
+      const stocks = await Stock.find().sort({ companyName: 1 });
+      io.emit('stocks_updated', stocks);
+  });
+
+  socket.on('admin_delete_stock', async ({ stockId }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      await Stock.findByIdAndDelete(stockId);
+      const stocks = await Stock.find().sort({ companyName: 1 });
+      io.emit('stocks_updated', stocks);
+  });
+  // ========== [FIN BOURSE SOCKET] ==========
 });
 
 const port = process.env.PORT || 3000;
