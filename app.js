@@ -93,6 +93,7 @@ function switchView(view) {
         if(actuBtn) actuBtn.classList.remove('nav-notify');
     }
     if(view === 'cites') { loadCities(); } // [CITÉS]
+    if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); }
     if(view === 'char-mp') {
         // Effacer le badge de notif
         const badge = document.getElementById('char-mp-badge');
@@ -325,8 +326,8 @@ socket.on('login_success', (data) => {
     document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`;
     document.getElementById('btn-account-main').innerHTML = '<i class="fa-solid fa-user"></i> Mon Profil';
     closeLoginModal(); socket.emit('request_initial_data', PLAYER_ID); socket.emit('request_dm_contacts', USERNAME);
-    const lastTab = localStorage.getItem('last_tab'); if (lastTab) switchView(lastTab);
     const savedRoom = localStorage.getItem('saved_room_id'); joinRoom(savedRoom || 'global');
+    const lastTab = localStorage.getItem('last_tab'); if (lastTab) switchView(lastTab);
 });
 socket.on('login_error', (msg) => { const el = document.getElementById('login-error-msg'); el.textContent = msg; el.style.display = 'block'; });
 socket.on('username_change_success', (newName) => { USERNAME = newName; localStorage.setItem('rp_username', newName); document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`; document.getElementById('settings-msg').textContent = "OK !"; });
@@ -2183,6 +2184,10 @@ function renderCityDetailContent(city) {
     trendEl.textContent = trendLabel(city.trend);
     trendEl.className = `city-stat-value ${trendClass(city.trend)}`;
 
+    // Capitale
+    const capitaleEl = document.getElementById('cityDetailCapitale');
+    if(capitaleEl) capitaleEl.textContent = city.capitale || 'Non définie';
+
     // Évolution 7j
     const evol = calcEDCEvolution(city.historyEDC);
     const evolEl = document.getElementById('cityDetailEvol');
@@ -2202,11 +2207,15 @@ function renderCityDetailContent(city) {
         adminPanel.classList.remove('hidden');
         document.getElementById('adminCityId').value = city._id;
         document.getElementById('adminCityPresident').value = city.president || '';
+        document.getElementById('adminCityCapitale').value = city.capitale || '';
         document.getElementById('adminCityPop').value = city.population || '';
         document.getElementById('adminCityEDC').value = city.baseEDC || '';
         // Préview drapeau admin
         const prevFlag = document.getElementById('adminFlagPreview');
         if(prevFlag) { prevFlag.src = city.flag || ''; prevFlag.style.display = city.flag ? 'block' : 'none'; }
+        // Reset save message
+        const saveMsg = document.getElementById('cityAdminSaveMsg');
+        if(saveMsg) saveMsg.classList.add('hidden');
     } else {
         adminPanel.classList.add('hidden');
     }
@@ -2226,17 +2235,32 @@ function renderCityMiniChart(historyEDC) {
     const maxVal = Math.max(...data.map(d => d.value));
     const minVal = Math.min(...data.map(d => d.value));
     const range = maxVal - minVal || 1;
+    chart.style.overflow = 'visible';
     chart.innerHTML = data.map((d, i) => {
         const pct = Math.max(10, ((d.value - minVal) / range) * 100);
         const isLast = i === data.length - 1;
-        return `<div class="chart-bar-wrap" title="${formatEDC(d.value)}">
+        const dateStr = d.date ? new Date(d.date).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'}) : `J-${data.length - 1 - i}`;
+        return `<div class="chart-bar-wrap" data-value="${formatEDC(d.value)}" data-full="${formatEDCFull(d.value)}" data-date="${dateStr}">
             <div class="chart-bar ${isLast ? 'chart-bar-last' : ''}" style="height:${pct}%"></div>
-            <div class="chart-bar-label">${i + 1}</div>
+            <div class="chart-bar-label">${dateStr}</div>
+            <div class="chart-bar-tooltip">${formatEDC(d.value)}</div>
         </div>`;
     }).join('');
 }
 
 // --- Classements ---
+function resetRankEvolutions() {
+    prevEdcRanks = {};
+    prevPopRanks = {};
+    if(citiesData.length) renderCitiesRankings(citiesData);
+    const btn = document.getElementById('btn-reset-rank-evol');
+    if(btn) {
+        btn.textContent = '\u2705 Réinitialisé';
+        btn.style.color = '#23a559';
+        setTimeout(() => { btn.textContent = '\u21ba Réinit. évolutions'; btn.style.color = ''; }, 2000);
+    }
+}
+
 function renderCitiesRankings(cities) {
     const byEdc = [...cities].filter(c => c.baseEDC != null).sort((a, b) => b.baseEDC - a.baseEDC);
     const byPop = [...cities].filter(c => c.population != null).sort((a, b) => b.population - a.population);
@@ -2264,11 +2288,12 @@ function renderCitiesRankings(cities) {
 
     function buildRow(city, rank, prevRanks, valueHTML) {
         const flagHTML = city.flag ? `<img src="${city.flag}" class="rank-flag" alt="">` : '<span class="rank-flag-ph"></span>';
-        return `<div class="rank-row">
+        const arrow = rankArrow(prevRanks, city._id, rank);
+        return `<div class="rank-row" style="animation-delay:${rank * 0.04}s">
             <span class="rank-num ${rankNumClass(rank)}">${rank}</span>
             ${flagHTML}
             <span class="rank-name">${city.name}</span>
-            ${rankArrow(prevRanks, city._id, rank)}
+            ${arrow}
             <span class="rank-value">${valueHTML}</span>
         </div>`;
     }
@@ -2292,15 +2317,29 @@ function renderCitiesRankings(cities) {
 function adminSaveCityInfo() {
     const id        = document.getElementById('adminCityId').value;
     const president = document.getElementById('adminCityPresident').value.trim() || null;
+    const capitale  = document.getElementById('adminCityCapitale').value.trim() || null;
     const pop       = document.getElementById('adminCityPop').value;
     const edc       = document.getElementById('adminCityEDC').value;
     socket.emit('admin_update_city', {
         cityId: id,
         president,
+        capitale,
         population: pop ? Number(pop) : null,
         baseEDC:    edc ? Number(edc) : null
     });
 }
+
+socket.on('city_save_success', () => {
+    const msg = document.getElementById('cityAdminSaveMsg');
+    if(msg) {
+        msg.classList.remove('hidden');
+        msg.style.animation = 'none';
+        void msg.offsetWidth;
+        msg.style.animation = 'fadeInUp 0.3s ease';
+        clearTimeout(msg._hideTimer);
+        msg._hideTimer = setTimeout(() => msg.classList.add('hidden'), 3000);
+    }
+});
 
 function adminApplyTrend(trend) {
     const id = document.getElementById('adminCityId').value;
@@ -2333,3 +2372,306 @@ async function adminUploadFlag() {
     input.value = '';
 }
 // ==================== [FIN CITÉS] ====================
+
+// ==================== [BOURSE] ====================
+let stocksData = [];
+let currentStockEdit = null;
+
+function loadBourse() { socket.emit('request_stocks'); }
+
+function updateBourseAdminUI() {
+    const adminHeader = document.getElementById('bourse-admin-header');
+    const adminControls = document.getElementById('bourse-admin-controls');
+    if(adminHeader) { if(IS_ADMIN) adminHeader.classList.remove('hidden'); else adminHeader.classList.add('hidden'); }
+    if(adminControls) { if(IS_ADMIN) adminControls.classList.remove('hidden'); else adminControls.classList.add('hidden'); }
+}
+
+function formatStockValue(v) {
+    if(v == null) return '—';
+    if(v >= 1e9) return (v/1e9).toLocaleString('fr-FR', {maximumFractionDigits:2}) + ' Md';
+    if(v >= 1e6) return (v/1e6).toLocaleString('fr-FR', {maximumFractionDigits:2}) + ' M';
+    if(v >= 1e3) return (v/1e3).toLocaleString('fr-FR', {maximumFractionDigits:1}) + ' k';
+    return v.toLocaleString('fr-FR', {maximumFractionDigits:2});
+}
+
+socket.on('stocks_data', (stocks) => {
+    stocksData = stocks;
+    renderStockTicker(stocks);
+    renderStockGrid(stocks);
+    renderBourseSummary(stocks);
+    updateBourseCustomSelect(stocks);
+    updateBourseAdminUI();
+});
+socket.on('stocks_updated', (stocks) => {
+    stocksData = stocks;
+    renderStockTicker(stocks);
+    renderStockGrid(stocks);
+    renderBourseSummary(stocks);
+    updateBourseCustomSelect(stocks);
+});
+
+function renderStockTicker(stocks) {
+    const ticker = document.getElementById('bourse-ticker');
+    if(!ticker) return;
+    if(!stocks.length) { ticker.innerHTML = '<span style="color:var(--text-muted);font-size:0.75rem;padding:0 16px;">Aucune action cotée.</span>'; return; }
+    const items = stocks.map(s => {
+        const hist = s.history || [];
+        const prev = hist.length >= 2 ? hist[hist.length - 2].value : s.currentValue;
+        const pct = prev ? ((s.currentValue - prev) / prev * 100) : 0;
+        const color = pct > 0 ? '#23a559' : pct < 0 ? '#da373c' : '#888';
+        const arrow = pct > 0 ? '▲' : pct < 0 ? '▼' : '—';
+        return `<span class="ticker-item">
+            ${s.companyLogo ? `<img src="${s.companyLogo}" class="ticker-logo" alt="">` : ''}
+            <span class="ticker-name">${escapeHtml(s.companyName)}</span>
+            <span class="ticker-value">${formatStockValue(s.currentValue)}</span>
+            <span class="ticker-change" style="color:${color}">${arrow} ${Math.abs(pct).toFixed(2)}%</span>
+        </span>`;
+    }).join('<span class="ticker-sep">·</span>');
+    ticker.innerHTML = items + '<span class="ticker-sep" style="margin:0 20px">·</span>' + items;
+}
+
+function renderBourseSummary(stocks) {
+    const row = document.getElementById('bourse-summary-row');
+    if(!row) return;
+    if(!stocks.length) { row.innerHTML = ''; return; }
+    const totalCap = stocks.reduce((s, st) => s + (st.currentValue || 0), 0);
+    const winners = stocks.filter(s => {
+        const hist = s.history || [];
+        const prev = hist.length >= 2 ? hist[hist.length - 2].value : s.currentValue;
+        return prev && s.currentValue > prev;
+    }).length;
+    const losers = stocks.filter(s => {
+        const hist = s.history || [];
+        const prev = hist.length >= 2 ? hist[hist.length - 2].value : s.currentValue;
+        return prev && s.currentValue < prev;
+    }).length;
+    const bestStock = [...stocks].sort((a, b) => {
+        const pH = (st) => { const h = st.history||[]; const p = h.length>=2?h[h.length-2].value:st.currentValue; return p?((st.currentValue-p)/p*100):0; };
+        return pH(b) - pH(a);
+    })[0];
+    row.innerHTML = `
+        <div class="bourse-summary-card">
+            <div class="bourse-summary-label"><i class="fa-solid fa-landmark"></i> Capitalisation totale</div>
+            <div class="bourse-summary-value">${formatStockValue(totalCap)}</div>
+            <div class="bourse-summary-sub">${stocks.length} action${stocks.length>1?'s':''} cotée${stocks.length>1?'s':''}</div>
+        </div>
+        <div class="bourse-summary-card" style="border-color:rgba(35,165,89,0.3)">
+            <div class="bourse-summary-label" style="color:#23a559"><i class="fa-solid fa-arrow-trend-up"></i> Hausse</div>
+            <div class="bourse-summary-value" style="color:#23a559">${winners}</div>
+            <div class="bourse-summary-sub">actions en progression</div>
+        </div>
+        <div class="bourse-summary-card" style="border-color:rgba(218,55,60,0.3)">
+            <div class="bourse-summary-label" style="color:#da373c"><i class="fa-solid fa-arrow-trend-down"></i> Baisse</div>
+            <div class="bourse-summary-value" style="color:#da373c">${losers}</div>
+            <div class="bourse-summary-sub">actions en recul</div>
+        </div>
+        ${bestStock ? (() => {
+            const hist = bestStock.history||[];
+            const prev = hist.length>=2?hist[hist.length-2].value:bestStock.currentValue;
+            const pct = prev?((bestStock.currentValue-prev)/prev*100):0;
+            return `<div class="bourse-summary-card" style="border-color:rgba(108,99,255,0.3)">
+                <div class="bourse-summary-label" style="color:var(--accent)"><i class="fa-solid fa-trophy"></i> Meilleure perf.</div>
+                <div class="bourse-summary-value" style="font-size:0.9rem;">${escapeHtml(bestStock.companyName)}</div>
+                <div class="bourse-summary-sub" style="color:#23a559">▲ +${pct.toFixed(2)}%</div>
+            </div>`;
+        })() : ''}
+    `;
+}
+
+function renderStockGrid(stocks) {
+    const grid = document.getElementById('bourse-stocks-grid');
+    if(!grid) return;
+    if(!stocks.length) {
+        grid.innerHTML = '<div class="bourse-empty"><i class="fa-solid fa-chart-line"></i><p>Aucune action cotée.</p><span>Un admin peut coter les entreprises des personnages.</span></div>';
+        return;
+    }
+    grid.innerHTML = '';
+    stocks.forEach((s, idx) => {
+        const hist = s.history || [];
+        const prev = hist.length >= 2 ? hist[hist.length - 2].value : s.currentValue;
+        const pct = prev ? ((s.currentValue - prev) / prev * 100) : 0;
+        const isUp = pct > 0, isDown = pct < 0;
+        const card = document.createElement('div');
+        card.className = `stock-card ${isUp ? 'stock-up' : isDown ? 'stock-down' : 'stock-neutral'}`;
+        card.id = `stock-${s._id}`;
+        card.style.animationDelay = `${idx * 0.05}s`;
+
+        const adminBtns = IS_ADMIN ? `
+            <div class="stock-admin-row">
+                <button class="stock-trend-btn stock-trend-up2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','croissance_forte')" title="+1.5%"><i class="fa-solid fa-angles-up"></i></button>
+                <button class="stock-trend-btn stock-trend-up1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','croissance')" title="+0.7%"><i class="fa-solid fa-angle-up"></i></button>
+                <button class="stock-trend-btn stock-trend-stable" onclick="event.stopPropagation(); adminStockTrend('${s._id}','stable')" title="Stable"><i class="fa-solid fa-minus"></i></button>
+                <button class="stock-trend-btn stock-trend-down1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','baisse')" title="-0.7%"><i class="fa-solid fa-angle-down"></i></button>
+                <button class="stock-trend-btn stock-trend-down2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','chute')" title="-1.5%"><i class="fa-solid fa-angles-down"></i></button>
+                <div style="margin-left:auto;display:flex;gap:4px;">
+                    <button class="stock-admin-edit" onclick="event.stopPropagation(); openStockEditModal('${s._id}')" title="Modifier"><i class="fa-solid fa-pen"></i></button>
+                    <button class="stock-admin-del" onclick="event.stopPropagation(); if(confirm('Supprimer cette action ?')) adminDeleteStock('${s._id}')" title="Supprimer"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            </div>` : '';
+
+        card.innerHTML = `
+            <div class="stock-header">
+                <div class="stock-logo-wrap" style="border-color:${s.stockColor||'var(--accent)'}">
+                    ${s.companyLogo ? `<img src="${s.companyLogo}" class="stock-logo" alt="">` : `<i class="fa-solid fa-building"></i>`}
+                </div>
+                <div class="stock-info">
+                    <div class="stock-name">${escapeHtml(s.companyName)}</div>
+                    <div class="stock-char" style="color:${s.charColor||'var(--text-muted)'}"><i class="fa-solid fa-user"></i> ${escapeHtml(s.charName||'')}</div>
+                </div>
+                <div class="stock-badge ${isUp ? 'badge-up' : isDown ? 'badge-down' : 'badge-neutral'}">
+                    ${isUp ? '▲' : isDown ? '▼' : '—'} ${Math.abs(pct).toFixed(2)}%
+                </div>
+            </div>
+            <div class="stock-value-row">
+                <span class="stock-current-value" style="color:${isUp?'#23a559':isDown?'#da373c':'white'}">${formatStockValue(s.currentValue)}</span>
+                <span class="stock-prev-value">Préc: ${formatStockValue(prev)}</span>
+            </div>
+            <div class="stock-chart-container" id="schart-${s._id}"></div>
+            ${s.description ? `<div class="stock-desc">${escapeHtml(s.description)}</div>` : ''}
+            <div class="stock-trend-badge ${trendClass(s.trend)}">${trendLabel(s.trend)}</div>
+            ${adminBtns}
+        `;
+        grid.appendChild(card);
+        renderStockMiniChart(hist.slice(-7), `schart-${s._id}`, s.stockColor || '#6c63ff', pct >= 0);
+    });
+}
+
+function renderStockMiniChart(history, containerId, color, isUp) {
+    const container = document.getElementById(containerId);
+    if(!container) return;
+    if(!history || history.length < 2) {
+        container.innerHTML = '<div style="color:var(--text-dim);font-size:0.7rem;text-align:center;padding:8px 0;">Données insuffisantes</div>';
+        return;
+    }
+    const vals = history.map(h => h.value);
+    const maxV = Math.max(...vals);
+    const minV = Math.min(...vals);
+    const range = maxV - minV || 1;
+    const W = 240, H = 52;
+    const pts = vals.map((v, i) => {
+        const x = (i / (vals.length - 1)) * (W - 4) + 2;
+        const y = H - 3 - ((v - minV) / range) * (H - 10);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const lineColor = isUp ? '#23a559' : '#da373c';
+    const uid = containerId.replace(/[^a-z0-9]/gi, '');
+    container.innerHTML = `
+        <svg viewBox="0 0 ${W} ${H}" class="stock-svg-chart" xmlns="http://www.w3.org/2000/svg" style="overflow:visible;">
+            <defs>
+                <linearGradient id="sg-${uid}" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.25"/>
+                    <stop offset="100%" stop-color="${lineColor}" stop-opacity="0"/>
+                </linearGradient>
+            </defs>
+            <path d="M${pts.join(' L')} L${(W-2)},${H} L2,${H} Z" fill="url(#sg-${uid})"/>
+            <polyline points="${pts.join(' ')}" fill="none" stroke="${lineColor}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+            ${vals.map((v, i) => {
+                const x = (i / (vals.length - 1)) * (W - 4) + 2;
+                const y = H - 3 - ((v - minV) / range) * (H - 10);
+                const dateStr = (history[i] && history[i].date) ? new Date(history[i].date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) : `J${i+1}`;
+                return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${lineColor}" stroke="var(--bg-secondary)" stroke-width="1.5" class="stock-chart-dot">
+                    <title>${dateStr} — ${formatStockValue(v)}</title>
+                </circle>`;
+            }).join('')}
+        </svg>`;
+}
+
+function updateBourseCustomSelect(stocks) {
+    const sel = document.getElementById('bourseCustomStockId');
+    if(!sel) return;
+    const currentVal = sel.value;
+    sel.innerHTML = '<option value="">— Choisir une action —</option>';
+    stocks.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s._id;
+        opt.textContent = `${s.companyName} (${s.charName||''})`;
+        sel.appendChild(opt);
+    });
+    if(currentVal) sel.value = currentVal;
+}
+
+// Admin — Modal ajout/modif stock
+function openStockAddModal() {
+    currentStockEdit = null;
+    document.getElementById('bourseStockId').value = '';
+    document.getElementById('bourseStockValue').value = '';
+    document.getElementById('bourseStockColor').value = '#6c63ff';
+    document.getElementById('bourseStockDesc').value = '';
+    const sel = document.getElementById('bourseStockCharSelect');
+    if(sel) sel.value = '';
+    document.getElementById('bourse-stock-modal-title').textContent = '📈 Coter une action';
+    document.getElementById('bourse-stock-modal').classList.remove('hidden');
+    socket.emit('request_all_chars_companies');
+}
+
+function openStockEditModal(stockId) {
+    const stock = stocksData.find(s => String(s._id) === stockId);
+    if(!stock) return;
+    currentStockEdit = stock;
+    document.getElementById('bourseStockId').value = stockId;
+    document.getElementById('bourseStockValue').value = stock.currentValue || '';
+    document.getElementById('bourseStockColor').value = stock.stockColor || '#6c63ff';
+    document.getElementById('bourseStockDesc').value = stock.description || '';
+    document.getElementById('bourse-stock-modal-title').textContent = '✏️ Modifier l\'action';
+    document.getElementById('bourse-stock-modal').classList.remove('hidden');
+    socket.emit('request_all_chars_companies');
+}
+
+function closeStockModal() { document.getElementById('bourse-stock-modal').classList.add('hidden'); }
+
+socket.on('all_chars_companies', (data) => {
+    const select = document.getElementById('bourseStockCharSelect');
+    if(!select) return;
+    const prevVal = select.value;
+    select.innerHTML = '<option value="">— Choisir une entreprise —</option>';
+    data.forEach(c => {
+        if(c.companies && c.companies.length > 0) {
+            const og = document.createElement('optgroup');
+            og.label = `${c.charName}`;
+            c.companies.forEach(co => {
+                const opt = document.createElement('option');
+                opt.value = JSON.stringify({ charId: c.charId, charName: c.charName, charColor: c.charColor, companyName: co.name, companyLogo: co.logo || '' });
+                opt.textContent = co.name;
+                og.appendChild(opt);
+            });
+            select.appendChild(og);
+        }
+    });
+    if(prevVal) select.value = prevVal;
+});
+
+function submitStockAdmin() {
+    const idVal = document.getElementById('bourseStockId').value;
+    const selectVal = document.getElementById('bourseStockCharSelect').value;
+    const value = parseFloat(document.getElementById('bourseStockValue').value);
+    const color = document.getElementById('bourseStockColor').value;
+    const desc = document.getElementById('bourseStockDesc').value.trim();
+    if(!value || isNaN(value)) return alert('Valeur boursière requise.');
+    let companyData = {};
+    if(selectVal) {
+        try { companyData = JSON.parse(selectVal); } catch(e) {}
+    } else if(currentStockEdit) {
+        companyData = { charId: currentStockEdit.charId, charName: currentStockEdit.charName, charColor: currentStockEdit.charColor, companyName: currentStockEdit.companyName, companyLogo: currentStockEdit.companyLogo };
+    }
+    if(!companyData.companyName) return alert('Sélectionnez une entreprise.');
+    socket.emit('admin_save_stock', { stockId: idVal || null, ...companyData, stockColor: color, currentValue: value, description: desc });
+    closeStockModal();
+}
+
+function adminStockTrend(stockId, trend) {
+    socket.emit('admin_apply_stock_trend', { stockId, trend });
+}
+
+function adminApplyStockCustomPct() {
+    const pct = parseFloat(document.getElementById('bourseCustomPct').value);
+    const stockId = document.getElementById('bourseCustomStockId').value;
+    if(!stockId) return alert('Sélectionnez une action.');
+    if(isNaN(pct) || pct < -100 || pct > 100) return alert('Pourcentage invalide (entre -100 et +100).');
+    socket.emit('admin_apply_stock_custom', { stockId, pct });
+    document.getElementById('bourseCustomPct').value = '';
+}
+
+function adminDeleteStock(stockId) {
+    socket.emit('admin_delete_stock', { stockId });
+}
+// ==================== [FIN BOURSE] ====================
