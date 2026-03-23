@@ -718,6 +718,17 @@ socket.on('char_profile_data', (char) => {
         document.getElementById('profileOwner').innerHTML += ` <span class="party-badge" style="display:inline-flex;"><img src="${char.partyLogo}" class="party-logo"> ${char.partyName}</span>`;
     }
 
+    // [CITÉS] Badge "Président de X" si ce perso est président d'une cité
+    const presidedCity = citiesData.find(c => c.president && c.president.toLowerCase() === char.name.toLowerCase());
+    const presidentBadgeEl = document.getElementById('profilePresidentBadge');
+    if(presidedCity && presidentBadgeEl) {
+        presidentBadgeEl.innerHTML = `<span class="president-badge"><i class="fa-solid fa-landmark"></i> Président de ${presidedCity.name}</span>`;
+        presidentBadgeEl.style.display = 'block';
+    } else if(presidentBadgeEl) {
+        presidentBadgeEl.style.display = 'none';
+        presidentBadgeEl.innerHTML = '';
+    }
+
     // [NOUVEAU] Bouton modifier bio — visible seulement si c'est un de nos persos
     const btnEditBio = document.getElementById('btn-edit-bio');
     const isOwnChar = myCharacters.some(c => c._id === char._id);
@@ -1951,82 +1962,69 @@ function removeEditCharCompany(i) { editCharCompanies.splice(i, 1); renderEditCh
 
 // ==================== [CITÉS] SYSTÈME GÉOPOLITIQUE ====================
 
-let citiesData = []; // cache local de toutes les cités
+let citiesData = [];      // cache local
 let currentCityId = null; // cité ouverte dans le panneau
 
-// --- Formatage EDC ---
+// --- Formatage ---
+// EDC en milliers de milliards : 1 000 000 000 000 = 1 000 Mds → afficher "1 000 Mds"
 function formatEDC(value) {
-    // Arrondir à la centaine de mille la plus proche
-    const rounded = Math.round(value / 100000) * 100000;
-    // Formater avec espaces : 47 100 000
-    return rounded.toLocaleString('fr-FR').replace(/,/g, ' ');
+    if(!value && value !== 0) return '—';
+    // Arrondir à la centaine de milliards (100 000 000 000) la plus proche
+    const rounded = Math.round(value / 100000000000) * 100000000000;
+    const billions = rounded / 1000000000; // en milliards
+    if(billions >= 1000) {
+        const thousands = billions / 1000;
+        return `${thousands.toLocaleString('fr-FR', {maximumFractionDigits: 1})} Bn Mds`;
+    }
+    return `${billions.toLocaleString('fr-FR', {maximumFractionDigits: 1})} Mds`;
 }
 
 function formatPop(value) {
-    return Math.round(value).toLocaleString('fr-FR').replace(/,/g, ' ');
+    if(!value && value !== 0) return '—';
+    return Math.round(value).toLocaleString('fr-FR');
 }
 
-// Calculer l'évolution % sur les 7 dernières valeurs
 function calcEDCEvolution(historyEDC) {
     if(!historyEDC || historyEDC.length < 2) return null;
     const recent = historyEDC.slice(-7);
     const oldest = recent[0].value;
     const newest = recent[recent.length - 1].value;
     if(!oldest) return null;
-    const pct = ((newest - oldest) / oldest) * 100;
-    return pct;
+    return ((newest - oldest) / oldest) * 100;
 }
 
-// Libellé de tendance
 function trendLabel(trend) {
-    const map = {
-        croissance_forte: '📈 Croissance Forte',
-        croissance:       '↗ Croissance',
-        stable:           '→ Stable',
-        baisse:           '↘ Baisse',
-        chute:            '📉 Chute Libre'
-    };
-    return map[trend] || trend || '—';
+    return { croissance_forte:'📈 Croissance Forte', croissance:'↗ Croissance', stable:'→ Stable', baisse:'↘ Baisse', chute:'📉 Chute Libre' }[trend] || '→ Stable';
 }
 function trendClass(trend) {
+    if(!trend || trend === 'stable') return 'trend-neutral';
     if(trend === 'croissance_forte' || trend === 'croissance') return 'trend-positive';
-    if(trend === 'baisse' || trend === 'chute') return 'trend-negative';
-    return 'trend-neutral';
+    return 'trend-negative';
 }
 
-// --- Charger les cités depuis le serveur ---
-function loadCities() {
-    socket.emit('request_cities');
-}
+// --- Charger ---
+function loadCities() { socket.emit('request_cities'); }
 
 socket.on('cities_data', (cities) => {
     citiesData = cities;
     renderCitiesGrid(cities);
-    // Mettre à jour le panneau si une cité est ouverte
     if(currentCityId) {
         const updated = cities.find(c => c._id === currentCityId);
-        if(updated) openCityDetail(updated);
+        if(updated) renderCityDetailContent(updated);
     }
 });
 
-// --- Rendu de la grille par archipel ---
+// --- Grille ---
 function renderCitiesGrid(cities) {
     const container = document.getElementById('cites-grid-container');
     if(!container) return;
     container.innerHTML = '';
-
-    // Grouper par archipel
-    const groups = {};
-    cities.forEach(c => {
-        if(!groups[c.archipel]) groups[c.archipel] = [];
-        groups[c.archipel].push(c);
-    });
-
     const ARCHIPORDER = ['Archipel Pacifique', 'Ancienne Archipel', 'Archipel Sableuse'];
-    ARCHIPORDER.forEach(archip => {
-        const group = groups[archip];
-        if(!group || !group.length) return;
+    const groups = {};
+    cities.forEach(c => { if(!groups[c.archipel]) groups[c.archipel] = []; groups[c.archipel].push(c); });
 
+    ARCHIPORDER.forEach(archip => {
+        const group = groups[archip]; if(!group || !group.length) return;
         const section = document.createElement('div');
         section.className = 'cites-section';
         section.innerHTML = `<div class="cites-section-title">${archip}</div>`;
@@ -2036,51 +2034,53 @@ function renderCitiesGrid(cities) {
         group.forEach(city => {
             const evol = calcEDCEvolution(city.historyEDC);
             const evolHTML = evol !== null
-                ? `<span class="city-card-evol ${evol >= 0 ? 'evol-pos' : 'evol-neg'}">${evol >= 0 ? '+' : ''}${evol.toFixed(1)}%</span>`
+                ? `<span class="city-card-evol ${evol >= 0 ? 'evol-pos' : 'evol-neg'}">${evol >= 0 ? '▲ +' : '▼ '}${evol.toFixed(1)}%</span>`
                 : '';
+            const flagHTML = city.flag ? `<img src="${city.flag}" class="city-card-flag" alt="drapeau">` : '';
             const card = document.createElement('div');
             card.className = `city-card ${trendClass(city.trend)}`;
             card.onclick = () => openCityDetail(city);
             card.innerHTML = `
+                ${flagHTML}
                 <div class="city-card-name">${city.name}</div>
-                <div class="city-card-edc">
+                <div class="city-card-edc-row">
                     <span class="city-card-edc-label">EDC</span>
                     <span class="city-card-edc-value">${formatEDC(city.baseEDC)}</span>
                     ${evolHTML}
                 </div>
-                <div class="city-card-pop"><i class="fa-solid fa-users" style="font-size:0.65rem;opacity:0.6;"></i> ${formatPop(city.population)}</div>
-                <div class="city-card-trend ${trendClass(city.trend)}">${trendLabel(city.trend)}</div>
-            `;
+                <div class="city-card-pop"><i class="fa-solid fa-users"></i> ${formatPop(city.population)}</div>
+                <div class="city-card-trend ${trendClass(city.trend)}">${trendLabel(city.trend)}</div>`;
             grid.appendChild(card);
         });
-
         section.appendChild(grid);
         container.appendChild(section);
     });
 }
 
-// --- Ouvrir le panneau de détail ---
+// --- Panneau détail ---
 function openCityDetail(city) {
     currentCityId = city._id;
-    const overlay = document.getElementById('city-detail-overlay');
-    const panel = document.getElementById('city-detail-panel');
-    overlay.classList.remove('hidden');
-    overlay.onclick = closeCityDetail;
-    panel.classList.add('open');
+    document.getElementById('city-detail-overlay').classList.remove('hidden');
+    document.getElementById('city-detail-overlay').onclick = closeCityDetail;
+    document.getElementById('city-detail-panel').classList.add('open');
+    renderCityDetailContent(city);
+}
 
+function renderCityDetailContent(city) {
     // Hero
     document.getElementById('cityDetailName').textContent = city.name;
     document.getElementById('cityDetailArchipel').textContent = city.archipel;
-    // Couleur hero selon tendance
     const heroEl = document.getElementById('cityDetailHero');
     heroEl.className = `city-hero city-hero-${trendClass(city.trend)}`;
+
+    // Drapeau
+    const flagEl = document.getElementById('cityDetailFlag');
+    if(flagEl) { flagEl.src = city.flag || ''; flagEl.style.display = city.flag ? 'block' : 'none'; }
 
     // Stats
     document.getElementById('cityDetailPop').textContent = formatPop(city.population);
     document.getElementById('cityDetailEDC').textContent = formatEDC(city.baseEDC);
     document.getElementById('cityDetailPresident').textContent = city.president || 'Vacant';
-
-    // Tendance
     const trendEl = document.getElementById('cityDetailTrend');
     trendEl.textContent = trendLabel(city.trend);
     trendEl.className = `city-stat-value ${trendClass(city.trend)}`;
@@ -2092,14 +2092,13 @@ function openCityDetail(city) {
         evolEl.textContent = `${evol >= 0 ? '▲ +' : '▼ '}${evol.toFixed(2)}% sur 7 valeurs`;
         evolEl.className = `city-edc-evol ${evol >= 0 ? 'evol-pos' : 'evol-neg'}`;
     } else {
-        evolEl.textContent = 'Données insuffisantes';
-        evolEl.className = 'city-edc-evol trend-neutral';
+        evolEl.textContent = 'Données insuffisantes'; evolEl.className = 'city-edc-evol trend-neutral';
     }
 
-    // Mini graphe bar chart
+    // Bar chart
     renderCityMiniChart(city.historyEDC);
 
-    // Panneau admin
+    // Admin panel
     const adminPanel = document.getElementById('cityAdminPanel');
     if(IS_ADMIN) {
         adminPanel.classList.remove('hidden');
@@ -2107,6 +2106,9 @@ function openCityDetail(city) {
         document.getElementById('adminCityPresident').value = city.president || '';
         document.getElementById('adminCityPop').value = city.population || '';
         document.getElementById('adminCityEDC').value = city.baseEDC || '';
+        // Préview drapeau admin
+        const prevFlag = document.getElementById('adminFlagPreview');
+        if(prevFlag) { prevFlag.src = city.flag || ''; prevFlag.style.display = city.flag ? 'block' : 'none'; }
     } else {
         adminPanel.classList.add('hidden');
     }
@@ -2118,7 +2120,6 @@ function closeCityDetail() {
     currentCityId = null;
 }
 
-// Mini bar chart de l'historique EDC
 function renderCityMiniChart(historyEDC) {
     const chart = document.getElementById('cityEDCChart');
     if(!chart) return;
@@ -2137,19 +2138,39 @@ function renderCityMiniChart(historyEDC) {
     }).join('');
 }
 
-// --- Admin : enregistrer infos ---
+// --- Admin actions ---
 function adminSaveCityInfo() {
     const id        = document.getElementById('adminCityId').value;
-    const president = document.getElementById('adminCityPresident').value.trim();
-    const pop       = parseFloat(document.getElementById('adminCityPop').value) || undefined;
-    const edc       = parseFloat(document.getElementById('adminCityEDC').value) || undefined;
-    socket.emit('admin_update_city', { cityId: id, president, population: pop, baseEDC: edc });
+    const president = document.getElementById('adminCityPresident').value.trim() || null;
+    const pop       = document.getElementById('adminCityPop').value;
+    const edc       = document.getElementById('adminCityEDC').value;
+    socket.emit('admin_update_city', {
+        cityId: id,
+        president,
+        population: pop ? Number(pop) : null,
+        baseEDC:    edc ? Number(edc) : null
+    });
 }
 
-// --- Admin : appliquer une tendance ---
 function adminApplyTrend(trend) {
     const id = document.getElementById('adminCityId').value;
     if(!id) return;
     socket.emit('admin_update_city', { cityId: id, trend });
+}
+
+// Upload drapeau (Cloudinary)
+async function adminUploadFlag() {
+    const input = document.getElementById('adminFlagFile');
+    if(!input || !input.files || !input.files[0]) return alert('Choisissez une image.');
+    const btn = document.getElementById('adminFlagUploadBtn');
+    if(btn) btn.textContent = '⏳ Upload...';
+    const url = await uploadToCloudinary(input.files[0]);
+    if(btn) btn.textContent = '📤 Uploader';
+    if(!url) return alert('Échec upload');
+    const id = document.getElementById('adminCityId').value;
+    const prevFlag = document.getElementById('adminFlagPreview');
+    if(prevFlag) { prevFlag.src = url; prevFlag.style.display = 'block'; }
+    socket.emit('admin_update_city', { cityId: id, flag: url });
+    input.value = '';
 }
 // ==================== [FIN CITÉS] ====================
