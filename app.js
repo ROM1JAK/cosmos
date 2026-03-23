@@ -2048,6 +2048,8 @@ function removeEditCharCompany(i) { editCharCompanies.splice(i, 1); renderEditCh
 
 let citiesData = [];      // cache local
 let currentCityId = null; // cité ouverte dans le panneau
+let prevEdcRanks = {};    // cityId → rang EDC (pour les flèches)
+let prevPopRanks = {};    // cityId → rang Population
 
 // --- Formatage abrégé (cartes + stats) ---
 // EDC : en MMd (milliers de milliards = 10^12) ou Md (milliards = 10^9)
@@ -2101,6 +2103,7 @@ function loadCities() { socket.emit('request_cities'); }
 socket.on('cities_data', (cities) => {
     citiesData = cities;
     renderCitiesGrid(cities);
+    renderCitiesRankings(cities);
     if(currentCityId) {
         const updated = cities.find(c => c._id === currentCityId);
         if(updated) renderCityDetailContent(updated);
@@ -2231,6 +2234,58 @@ function renderCityMiniChart(historyEDC) {
             <div class="chart-bar-label">${i + 1}</div>
         </div>`;
     }).join('');
+}
+
+// --- Classements ---
+function renderCitiesRankings(cities) {
+    const byEdc = [...cities].filter(c => c.baseEDC != null).sort((a, b) => b.baseEDC - a.baseEDC);
+    const byPop = [...cities].filter(c => c.population != null).sort((a, b) => b.population - a.population);
+
+    // Nouveaux rangs
+    const newEdcRanks = {};
+    byEdc.forEach((city, i) => { newEdcRanks[city._id] = i + 1; });
+    const newPopRanks = {};
+    byPop.forEach((city, i) => { newPopRanks[city._id] = i + 1; });
+
+    function rankArrow(prevRanks, cityId, currentRank) {
+        const prev = prevRanks[cityId];
+        if(prev == null || prev === currentRank) return '';
+        const diff = prev - currentRank;
+        if(diff > 0) return `<span class="rank-arrow rank-up">▲ +${diff}</span>`;
+        return `<span class="rank-arrow rank-down">▼ ${Math.abs(diff)}</span>`;
+    }
+
+    function rankNumClass(rank) {
+        if(rank === 1) return 'rank-n1';
+        if(rank === 2) return 'rank-n2';
+        if(rank === 3) return 'rank-n3';
+        return 'rank-n';
+    }
+
+    function buildRow(city, rank, prevRanks, valueHTML) {
+        const flagHTML = city.flag ? `<img src="${city.flag}" class="rank-flag" alt="">` : '<span class="rank-flag-ph"></span>';
+        return `<div class="rank-row">
+            <span class="rank-num ${rankNumClass(rank)}">${rank}</span>
+            ${flagHTML}
+            <span class="rank-name">${city.name}</span>
+            ${rankArrow(prevRanks, city._id, rank)}
+            <span class="rank-value">${valueHTML}</span>
+        </div>`;
+    }
+
+    const edcEl = document.getElementById('ranking-edc');
+    if(edcEl) edcEl.innerHTML = byEdc.length
+        ? byEdc.map((city, i) => buildRow(city, i + 1, prevEdcRanks, formatEDC(city.baseEDC))).join('')
+        : '<div class="rank-empty">Aucune donnée.</div>';
+
+    const popEl = document.getElementById('ranking-pop');
+    if(popEl) popEl.innerHTML = byPop.length
+        ? byPop.map((city, i) => buildRow(city, i + 1, prevPopRanks, formatPop(city.population))).join('')
+        : '<div class="rank-empty">Aucune donnée.</div>';
+
+    // Mémoriser les rangs actuels pour la prochaine mise à jour
+    prevEdcRanks = newEdcRanks;
+    prevPopRanks = newPopRanks;
 }
 
 // --- Admin actions ---
