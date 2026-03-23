@@ -90,8 +90,7 @@ function switchView(view) {
         if(badge) { badge.classList.add('hidden'); badge.textContent = ''; }
         const btn = document.getElementById('btn-view-char-mp');
         if(btn) btn.classList.remove('nav-char-mp-unread');
-        renderCharMpSenderSelect();
-        renderCharMpContacts();
+        initCharMpView();
     }
 }
 
@@ -905,39 +904,234 @@ function submitAdminStats() {
     closeAdminStatsModal();
 }
 
-// ==================== MP PERSONNAGES (Discord-style) ====================
-let charDmTarget = null;
-let charMpConversations = {}; // { charId: { char, msgs[] } }
-let charMpCurrentTarget = null;
-let charSearchResults = []; // résultats de recherche
-let allCharsCache = []; // cache de tous les persos connus
+// ==================== MP PERSONNAGES (Refonte claire) ====================
+/*
+  Clé de conv : "monCharId|autreCharId"
+  Chaque conversation est liée à UN de MES persos ↔ UN perso cible.
+  La sidebar groupe les convos par MON perso pour une clarté totale.
+*/
 
-// ---- Sélecteur "Je joue" dans la vue MP ----
-function renderCharMpSenderSelect() {
-    const sel = document.getElementById('newConvSender');
-    const convoSel = document.getElementById('charMpSenderSelect');
-    if(sel) sel.innerHTML = myCharacters.map(c => `<option value="${c._id}">${c.name}</option>`).join('') || '<option value="">— aucun —</option>';
-    if(convoSel) convoSel.innerHTML = myCharacters.map(c => `<option value="${c._id}">${c.name}</option>`).join('') || '<option value="">— aucun —</option>';
+let charDmTarget = null;
+let charMpConversations = {}; // { "myCharId|otherCharId": { myChar, otherChar, msgs[], unread, lastContent } }
+let charMpCurrentKey    = null;
+
+function mpKey(a, b)  { return `${a}|${b}`; }
+function mpParse(key) { const [a, b] = key.split('|'); return { myCharId: a, otherCharId: b }; }
+
+// ── Charger toutes les convos existantes depuis le serveur ──
+function loadMyCharConvos() {
+    const ids = myCharacters.map(c => c._id);
+    if(!ids.length) return;
+    socket.emit('request_my_char_convos', { myCharIds: ids });
 }
 
-// ---- Recherche de personnages ----
+socket.on('my_char_convos', (convos) => {
+    convos.forEach(c => {
+        const myChar = myCharacters.find(ch => String(ch._id) === String(c.myCharId));
+        if(!myChar) return;
+        const key = mpKey(c.myCharId, c.otherCharId);
+        if(!charMpConversations[key]) {
+            charMpConversations[key] = {
+                myChar,
+                otherChar: { _id: c.otherCharId, name: c.otherName, avatar: c.otherAvatar||'', color: c.otherColor||'', role: c.otherRole||'', ownerId: c.otherOwnerId||'' },
+                msgs: [], unread: false, lastContent: c.lastContent || ''
+            };
+        }
+    });
+    renderCharMpSidebar();
+});
+
+// ── Sidebar : grouper par MON perso ──
+function renderCharMpSidebar() {
+    const list = document.getElementById('char-mp-convo-list');
+    if(!list) return;
+    list.innerHTML = '';
+    const groups = {};
+    Object.entries(charMpConversations).forEach(([key, conv]) => {
+        const id = conv.myChar._id;
+        if(!groups[id]) groups[id] = { myChar: conv.myChar, convos: [] };
+        groups[id].convos.push({ key, ...conv });
+    });
+    if(!Object.keys(groups).length) {
+        list.innerHTML = `<div class="char-mp-empty-list"><i class="fa-solid fa-inbox"></i><span>Aucun message</span></div>`;
+        return;
+    }
+    myCharacters.forEach(myChar => {
+        const group = groups[myChar._id];
+        if(!group) return;
+        const groupEl = document.createElement('div');
+        groupEl.className = 'char-mp-group';
+        const header = document.createElement('div');
+        header.className = 'char-mp-group-header';
+        header.innerHTML = `
+            <img src="${myChar.avatar||''}" class="char-mp-group-avatar" onerror="this.style.opacity=0">
+            <div class="char-mp-group-info">
+                <span class="char-mp-group-name" style="color:${myChar.color||'white'};">${myChar.name}</span>
+                <span class="char-mp-group-role">${myChar.role||''}</span>
+            </div>`;
+        groupEl.appendChild(header);
+        const convList = document.createElement('div');
+        convList.className = 'char-mp-group-convos';
+        group.convos.forEach(conv => {
+            const isActive = charMpCurrentKey === conv.key;
+            const item = document.createElement('div');
+            item.className = `char-mp-conv-item${isActive ? ' active' : ''}${conv.unread ? ' unread' : ''}`;
+            item.onclick = () => openCharMpConvo(conv.key);
+            item.innerHTML = `
+                <img src="${conv.otherChar.avatar||''}" class="char-mp-conv-avatar" onerror="this.style.opacity=0">
+                <div class="char-mp-conv-info">
+                    <div class="char-mp-conv-name" style="color:${conv.otherChar.color||'var(--text-normal)'};">${conv.otherChar.name}</div>
+                    <div class="char-mp-conv-last">${conv.lastContent ? (conv.lastContent.length>32 ? conv.lastContent.slice(0,32)+'…' : conv.lastContent) : ''}</div>
+                </div>
+                ${conv.unread ? '<span class="char-mp-unread-dot"></span>' : ''}`;
+            convList.appendChild(item);
+        });
+        groupEl.appendChild(convList);
+        list.appendChild(groupEl);
+    });
+}
+
+// ── Ouvrir une conversation ──
+function openCharMpConvo(key) {
+    charMpCurrentKey = key;
+    const conv = charMpConversations[key];
+    if(!conv) return;
+    conv.unread = false;
+    document.getElementById('char-mp-empty').classList.add('hidden');
+    const el = document.getElementById('char-mp-convo');
+    el.classList.remove('hidden'); el.style.display = 'flex';
+    document.getElementById('mpMySenderAvatar').src  = conv.myChar.avatar||'';
+    document.getElementById('mpMySenderName').textContent = conv.myChar.name;
+    document.getElementById('mpMySenderRole').textContent = conv.myChar.role||'';
+    document.getElementById('mpTargetAvatar').src    = conv.otherChar.avatar||'';
+    document.getElementById('mpTargetName').textContent   = conv.otherChar.name;
+    document.getElementById('mpTargetRole').textContent   = conv.otherChar.role||'';
+    document.getElementById('mpMySenderAvatar').style.borderColor  = conv.myChar.color||'var(--border)';
+    document.getElementById('mpTargetAvatar').style.borderColor    = conv.otherChar.color||'var(--border)';
+    const inputAv = document.getElementById('mpInputSenderAvatar');
+    if(inputAv) { inputAv.src = conv.myChar.avatar||''; inputAv.title = conv.myChar.name; }
+    renderCharMpSidebar();
+    const { myCharId, otherCharId } = mpParse(key);
+    socket.emit('request_char_dm_history', { senderCharId: myCharId, targetCharId: otherCharId });
+}
+
+function openProfileFromMp() {
+    if(!charMpCurrentKey) return;
+    const conv = charMpConversations[charMpCurrentKey];
+    if(conv) openProfile(conv.otherChar.name);
+}
+
+// ── Envoyer ──
+function sendCharMpMessage() {
+    if(!charMpCurrentKey || !PLAYER_ID) return;
+    const content = document.getElementById('charMpInput').value.trim();
+    if(!content) return;
+    const conv = charMpConversations[charMpCurrentKey];
+    if(!conv) return;
+    socket.emit('send_char_dm', {
+        senderCharId: conv.myChar._id, senderCharName: conv.myChar.name,
+        senderAvatar: conv.myChar.avatar, senderColor: conv.myChar.color, senderRole: conv.myChar.role,
+        senderOwnerUsername: USERNAME,
+        targetCharId: conv.otherChar._id, targetCharName: conv.otherChar.name,
+        targetOwnerId: conv.otherChar.ownerId, targetOwnerUsername: conv.otherChar.ownerUsername||'',
+        ownerId: PLAYER_ID, content,
+        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+    });
+    document.getElementById('charMpInput').value = '';
+}
+
+// ── Afficher un message ──
+function appendCharMpMsg(msg) {
+    const c = document.getElementById('char-mp-messages');
+    if(!c || !charMpCurrentKey) return;
+    const { myCharId } = mpParse(charMpCurrentKey);
+    const isSelf = String(msg.senderCharId) === String(myCharId);
+    const div = document.createElement('div');
+    div.className = `cmp-msg ${isSelf ? 'cmp-msg-self' : 'cmp-msg-other'}`;
+    div.innerHTML = `
+        <img src="${msg.senderAvatar||''}" class="cmp-msg-avatar" title="${escapeHtml(msg.senderName||'')}">
+        <div class="cmp-msg-bubble" style="--sender-color:${msg.senderColor||'var(--accent)'};">
+            <span class="cmp-msg-name">${escapeHtml(msg.senderName||'')}</span>
+            <span class="cmp-msg-text">${formatText(msg.content)}</span>
+            <span class="cmp-msg-time">${msg.date||''}</span>
+        </div>`;
+    c.appendChild(div);
+    c.scrollTop = c.scrollHeight;
+}
+
+// ── Historique ──
+socket.on('char_dm_history', ({ senderCharId, targetCharId, msgs }) => {
+    if(currentView === 'char-mp' && charMpCurrentKey) {
+        const { myCharId, otherCharId } = mpParse(charMpCurrentKey);
+        const match = (String(senderCharId)===String(myCharId) && String(targetCharId)===String(otherCharId))
+                   || (String(senderCharId)===String(otherCharId) && String(targetCharId)===String(myCharId));
+        if(match) { const c=document.getElementById('char-mp-messages'); if(c){c.innerHTML=''; msgs.forEach(m=>appendCharMpMsg(m));} }
+    }
+    const modal = document.getElementById('char-dm-modal');
+    if(modal && !modal.classList.contains('hidden')) {
+        const c = document.getElementById('char-dm-messages');
+        if(c) { c.innerHTML=''; msgs.forEach(m=>appendCharDmMsg(m)); c.scrollTop=c.scrollHeight; }
+    }
+});
+
+// ── Réception nouveau MP ──
+socket.on('receive_char_dm', (msg) => {
+    const isForMe = msg.targetOwnerId===PLAYER_ID || msg.ownerId===PLAYER_ID;
+    if(!isForMe) return;
+    const myCharIds = myCharacters.map(c=>String(c._id));
+    const isISender  = myCharIds.includes(String(msg.senderCharId));
+    const myCharId   = isISender ? String(msg.senderCharId) : String(msg.targetCharId);
+    const othCharId  = isISender ? String(msg.targetCharId) : String(msg.senderCharId);
+    const key = mpKey(myCharId, othCharId);
+    if(!charMpConversations[key]) {
+        const myChar = myCharacters.find(c=>String(c._id)===myCharId);
+        if(!myChar) return;
+        charMpConversations[key] = {
+            myChar,
+            otherChar: { _id: othCharId, name: isISender?msg.targetName:msg.senderName, avatar: isISender?'':(msg.senderAvatar||''), color: isISender?'':(msg.senderColor||''), role: isISender?'':(msg.senderRole||''), ownerId: isISender?msg.targetOwnerId:msg.ownerId },
+            msgs:[], unread:false
+        };
+    }
+    charMpConversations[key].lastContent = msg.content;
+    charMpConversations[key].msgs.push(msg);
+    if(currentView==='char-mp' && charMpCurrentKey===key) { appendCharMpMsg(msg); }
+    else if(msg.ownerId!==PLAYER_ID) {
+        charMpConversations[key].unread = true;
+        const badge=document.getElementById('char-mp-badge'), btn=document.getElementById('btn-view-char-mp');
+        if(badge){badge.classList.remove('hidden');badge.textContent='!';}
+        if(btn) btn.classList.add('nav-char-mp-unread');
+        renderCharMpSidebar();
+    }
+    const modal=document.getElementById('char-dm-modal');
+    if(charDmTarget && charDmTarget._id===othCharId && modal && !modal.classList.contains('hidden')) {
+        appendCharDmMsg(msg); const c=document.getElementById('char-dm-messages'); if(c)c.scrollTop=c.scrollHeight;
+    }
+    if(notificationsEnabled && msg.ownerId!==PLAYER_ID) notifSound.play().catch(()=>{});
+});
+
+// ── Modale nouvelle conversation ──
+function openNewConvModal() {
+    const sel = document.getElementById('newConvMySender');
+    if(sel) sel.innerHTML = myCharacters.map(c=>`<option value="${c._id}">${c.name}</option>`).join('') || '<option value="">— aucun —</option>';
+    const inp = document.getElementById('newConvSearch'); if(inp) inp.value='';
+    hideCharMpResults();
+    document.getElementById('new-conv-modal').classList.remove('hidden');
+}
+function closeNewConvModal() { document.getElementById('new-conv-modal').classList.add('hidden'); }
+
 function filterCharMpSearch(query) {
-    if(!query || query.trim().length < 1) { hideCharMpResults(); return; }
+    if(!query||query.trim().length<1){ hideCharMpResults(); return; }
     socket.emit('search_chars', { query: query.trim() });
 }
-function hideCharMpResults() {
-    const r = document.getElementById('newConvResults');
-    if(r) r.classList.add('hidden');
-}
+function hideCharMpResults() { const r=document.getElementById('newConvResults'); if(r) r.classList.add('hidden'); }
+
 socket.on('chars_search_results', (results) => {
-    const box = document.getElementById('newConvResults');
-    if(!box) return;
-    // Filtrer pour ne pas se montrer soi-même
-    const filtered = results.filter(c => !myCharacters.some(mc => mc._id === c._id));
-    if(!filtered.length) { box.innerHTML = '<div class="char-mp-search-item" style="color:var(--text-muted);">Aucun résultat</div>'; box.classList.remove('hidden'); return; }
-    box.innerHTML = filtered.map(c => `
-        <div class="char-mp-search-item" onclick="startNewCharMpConvo('${c._id}','${c.name.replace(/'/g,"\\'")}','${c.avatar||''}','${c.color||''}','${c.role||''}','${c.ownerId||''}','${c.ownerUsername||''}')">
-            <img src="${c.avatar||''}" class="char-mp-search-avatar" onerror="this.src=''">
+    const box = document.getElementById('newConvResults'); if(!box) return;
+    const filtered = results.filter(c => !myCharacters.some(mc=>mc._id===c._id));
+    if(!filtered.length) { box.innerHTML='<div class="char-mp-search-item" style="color:var(--text-muted);font-style:italic;padding:10px;">Aucun résultat</div>'; box.classList.remove('hidden'); return; }
+    box.innerHTML = filtered.map(c=>`
+        <div class="char-mp-search-item" onclick="startNewCharMpConvoFromModal('${c._id}','${(c.name||'').replace(/'/g,"\\'")}','${c.avatar||''}','${c.color||''}','${c.role||''}','${c.ownerId||''}','${c.ownerUsername||''}')">
+            <img src="${c.avatar||''}" class="char-mp-search-avatar" onerror="this.style.opacity=0">
             <div>
                 <div style="font-weight:700;font-size:0.85rem;color:${c.color||'white'};">${c.name}</div>
                 <div style="font-size:0.7rem;color:var(--text-muted);">${c.role||''} · ${c.ownerUsername||''}</div>
@@ -945,232 +1139,79 @@ socket.on('chars_search_results', (results) => {
         </div>`).join('');
     box.classList.remove('hidden');
 });
-function startNewCharMpConvo(id, name, avatar, color, role, ownerId, ownerUsername) {
-    hideCharMpResults();
-    const input = document.getElementById('newConvSearch');
-    if(input) input.value = '';
-    const targetChar = { _id: id, name, avatar, color, role, ownerId, ownerUsername };
-    if(!charMpConversations[id]) charMpConversations[id] = { char: targetChar, msgs: [] };
-    openCharMpConvo(id);
+
+function startNewCharMpConvoFromModal(othId, othName, othAvatar, othColor, othRole, othOwnerId, othOwnerUsername) {
+    const sel = document.getElementById('newConvMySender');
+    const myCharId = sel ? sel.value : (myCharacters[0]?myCharacters[0]._id:null);
+    if(!myCharId) return alert('Sélectionne d\'abord ton personnage.');
+    closeNewConvModal();
+    const myChar = myCharacters.find(c=>c._id===myCharId);
+    if(!myChar) return;
+    const otherChar = { _id:othId, name:othName, avatar:othAvatar, color:othColor, role:othRole, ownerId:othOwnerId, ownerUsername:othOwnerUsername };
+    const key = mpKey(myCharId, othId);
+    if(!charMpConversations[key]) charMpConversations[key] = { myChar, otherChar, msgs:[], unread:false, lastContent:'' };
+    switchView('char-mp');
+    openCharMpConvo(key);
 }
 
-// ---- Liste des conversations ----
-function renderCharMpContacts() {
-    const list = document.getElementById('char-mp-contacts');
-    if(!list) return;
-    const convos = Object.values(charMpConversations);
-    if(!convos.length) {
-        list.innerHTML = '<div style="padding:14px;color:var(--text-muted);font-size:0.78rem;text-align:center;font-style:italic;">Aucune conversation.<br>Utilisez la recherche ci-dessus.</div>';
-        return;
-    }
-    list.innerHTML = convos.map(({ char, unread }) => `
-        <div class="char-mp-contact-item ${charMpCurrentTarget === char._id ? 'active' : ''} ${unread ? 'unread-conv' : ''}" onclick="openCharMpConvo('${char._id}')">
-            <div class="char-mp-contact-avatar-wrap">
-                <img src="${char.avatar||''}" class="char-mp-contact-avatar" onerror="this.style.display='none'">
-            </div>
-            <div class="char-mp-contact-info">
-                <span class="char-mp-contact-name" style="color:${char.color||'white'};">${char.name}</span>
-                <span class="char-mp-contact-sub">${char.role||''}</span>
-            </div>
-            ${unread ? '<span class="char-mp-unread-dot"></span>' : ''}
-        </div>`).join('');
-}
-
-// ---- Ouvrir une conversation ----
-function openCharMpConvo(targetCharId) {
-    charMpCurrentTarget = targetCharId;
-    const convo = charMpConversations[targetCharId];
-    if(!convo) return;
-    convo.unread = false;
-
-    document.getElementById('char-mp-empty').classList.add('hidden');
-    const convoEl = document.getElementById('char-mp-convo');
-    convoEl.classList.remove('hidden');
-    convoEl.style.display = 'flex';
-
-    document.getElementById('charMpTargetAvatar').src = convo.char.avatar || '';
-    document.getElementById('charMpTargetName').textContent = convo.char.name;
-    document.getElementById('charMpTargetRole').textContent = convo.char.role || '';
-    const headerAvatar = document.getElementById('charMpTargetAvatar');
-    if(headerAvatar) headerAvatar.style.borderColor = convo.char.color || 'var(--border)';
-
-    renderCharMpSenderSelect();
-    loadCharMpHistory(targetCharId);
-    renderCharMpContacts();
-}
-
-function loadCharMpHistory(targetCharId) {
-    if(!targetCharId) return;
-    const sel = document.getElementById('charMpSenderSelect');
-    const senderCharId = sel ? sel.value : (myCharacters[0] ? myCharacters[0]._id : null);
-    if(!senderCharId) return;
-    socket.emit('request_char_dm_history', { senderCharId, targetCharId });
-}
-
-function sendCharMpMessage() {
-    if(!charMpCurrentTarget || !PLAYER_ID) return;
-    const content = document.getElementById('charMpInput').value.trim();
-    if(!content) return;
-    const sel = document.getElementById('charMpSenderSelect');
-    const senderChar = myCharacters.find(c => c._id === sel.value);
-    if(!senderChar) return alert("Sélectionne ton personnage !");
-    const convo = charMpConversations[charMpCurrentTarget];
-    if(!convo) return;
-    socket.emit('send_char_dm', {
-        senderCharId: senderChar._id, senderCharName: senderChar.name,
-        senderAvatar: senderChar.avatar, senderColor: senderChar.color, senderRole: senderChar.role,
-        senderOwnerUsername: USERNAME,
-        targetCharId: charMpCurrentTarget, targetCharName: convo.char.name,
-        targetOwnerId: convo.char.ownerId, targetOwnerUsername: convo.char.ownerUsername,
-        ownerId: PLAYER_ID, content,
-        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
-    });
-    document.getElementById('charMpInput').value = '';
-}
-
-function appendCharMpMsg(msg) {
-    const c = document.getElementById('char-mp-messages');
-    if(!c) return;
-    const sel = document.getElementById('charMpSenderSelect');
-    const myCharId = sel ? sel.value : null;
-    const isSelf = msg.ownerId === PLAYER_ID;
-    const div = document.createElement('div');
-    div.className = `char-dm-msg ${isSelf ? 'char-dm-self' : ''}`;
-    div.innerHTML = `
-        <img src="${msg.senderAvatar||''}" class="char-dm-avatar" title="${msg.senderName}">
-        <div class="char-dm-bubble">
-            <span class="char-dm-sender" style="color:${msg.senderColor||'var(--accent)'};">${msg.senderName}</span>
-            <span class="char-dm-text">${formatText(msg.content)}</span>
-            <span class="char-dm-time">${msg.date}</span>
-        </div>`;
-    c.appendChild(div);
-    c.scrollTop = c.scrollHeight;
-}
-
-// Historique reçu du serveur
-socket.on('char_dm_history', ({ msgs }) => {
-    // Vue MP plein écran
-    if(currentView === 'char-mp') {
-        const c = document.getElementById('char-mp-messages');
-        if(c) { c.innerHTML = ''; msgs.forEach(m => appendCharMpMsg(m)); }
-    }
-    // Modale classique (depuis profil)
-    const modal = document.getElementById('char-dm-modal');
-    if(!modal.classList.contains('hidden')) {
-        const c = document.getElementById('char-dm-messages');
-        if(c) { c.innerHTML = ''; const sel = document.getElementById('charDmSenderSelect'); const myCharId = sel ? sel.value : null; msgs.forEach(m => appendCharDmMsg(m, myCharId)); c.scrollTop = c.scrollHeight; }
-    }
-});
-
-// Réception d'un nouveau MP
-socket.on('receive_char_dm', (msg) => {
-    const isForMe = msg.targetOwnerId === PLAYER_ID || msg.ownerId === PLAYER_ID;
-    if(!isForMe) { if(notificationsEnabled) notifSound.play().catch(()=>{}); return; }
-
-    // Identifier le personnage interlocuteur (pas le mien)
-    const myCharIds = myCharacters.map(c => c._id);
-    const otherCharId = myCharIds.includes(msg.senderCharId) ? msg.targetCharId : msg.senderCharId;
-    const otherIsMe = msg.ownerId === PLAYER_ID;
-    const otherName = otherIsMe ? msg.targetName : msg.senderName;
-    const otherAvatar = otherIsMe ? '' : (msg.senderAvatar || '');
-    const otherColor = otherIsMe ? 'var(--text-normal)' : (msg.senderColor || '');
-    const otherRole = otherIsMe ? '' : (msg.senderRole || '');
-    const otherOwnerId = otherIsMe ? msg.targetOwnerId : msg.ownerId;
-    const otherOwnerUsername = otherIsMe ? (msg.targetOwnerUsername||'') : (msg.senderOwnerUsername||'');
-
-    // Créer la conv si inconnue
-    if(!charMpConversations[otherCharId]) {
-        charMpConversations[otherCharId] = {
-            char: { _id: otherCharId, name: otherName, avatar: otherAvatar, color: otherColor, role: otherRole, ownerId: otherOwnerId, ownerUsername: otherOwnerUsername },
-            msgs: [], unread: false
-        };
-    }
-    charMpConversations[otherCharId].msgs.push(msg);
-
-    if(currentView === 'char-mp' && charMpCurrentTarget === otherCharId) {
-        // Vue ouverte sur cette conv → afficher direct
-        appendCharMpMsg(msg);
-    } else {
-        // Marquer non lue + allumer badge nav
-        if(msg.ownerId !== PLAYER_ID) {
-            charMpConversations[otherCharId].unread = true;
-            const badge = document.getElementById('char-mp-badge');
-            const btn = document.getElementById('btn-view-char-mp');
-            if(badge) { badge.classList.remove('hidden'); badge.textContent = '!'; }
-            if(btn) btn.classList.add('nav-char-mp-unread');
-        }
-        renderCharMpContacts();
-    }
-
-    // Modale classique si ouverte sur ce perso
-    const modal = document.getElementById('char-dm-modal');
-    if(charDmTarget && charDmTarget._id === otherCharId && !modal.classList.contains('hidden')) {
-        const sel = document.getElementById('charDmSenderSelect');
-        const myCharId = sel ? sel.value : null;
-        appendCharDmMsg(msg, myCharId);
-        const c = document.getElementById('char-dm-messages');
-        if(c) c.scrollTop = c.scrollHeight;
-    }
-
-    if(notificationsEnabled && msg.ownerId !== PLAYER_ID) notifSound.play().catch(()=>{});
-});
-
-// openCharDmModal (depuis profil) : enregistre aussi dans charMpConversations
+// ── openCharDmModal depuis le profil ──
 function openCharDmModal(targetChar) {
     charDmTarget = targetChar;
-    if(!charMpConversations[targetChar._id]) {
-        charMpConversations[targetChar._id] = { char: targetChar, msgs: [], unread: false };
-    }
-    document.getElementById('charDmTargetAvatar').src = targetChar.avatar || '';
-    document.getElementById('charDmTargetName').textContent = targetChar.name;
     const sel = document.getElementById('charDmSenderSelect');
-    sel.innerHTML = myCharacters.map(c => `<option value="${c._id}">${c.name}</option>`).join('');
+    if(sel) sel.innerHTML = myCharacters.map(c=>`<option value="${c._id}">${c.name}</option>`).join('');
+    document.getElementById('charDmTargetAvatar').src = targetChar.avatar||'';
+    document.getElementById('charDmTargetName').textContent = targetChar.name;
     loadCharDmHistory();
     document.getElementById('char-dm-modal').classList.remove('hidden');
-    sel.onchange = loadCharDmHistory;
+    if(sel) sel.onchange = loadCharDmHistory;
 }
-function closeCharDmModal() { document.getElementById('char-dm-modal').classList.add('hidden'); charDmTarget = null; }
+function closeCharDmModal() { document.getElementById('char-dm-modal').classList.add('hidden'); charDmTarget=null; }
 
 function loadCharDmHistory() {
     if(!charDmTarget) return;
     const sel = document.getElementById('charDmSenderSelect');
-    socket.emit('request_char_dm_history', { senderCharId: sel.value, targetCharId: charDmTarget._id });
+    const myCharId = sel ? sel.value : (myCharacters[0]?myCharacters[0]._id:null);
+    if(!myCharId) return;
+    const key = mpKey(myCharId, charDmTarget._id);
+    if(!charMpConversations[key]) {
+        const myChar = myCharacters.find(c=>c._id===myCharId);
+        if(myChar) charMpConversations[key]={ myChar, otherChar:charDmTarget, msgs:[], unread:false };
+    }
+    socket.emit('request_char_dm_history', { senderCharId:myCharId, targetCharId:charDmTarget._id });
 }
 
 function sendCharDm() {
     if(!charDmTarget || !PLAYER_ID) return;
-    const content = document.getElementById('charDmInput').value.trim();
-    if(!content) return;
+    const content = document.getElementById('charDmInput').value.trim(); if(!content) return;
     const sel = document.getElementById('charDmSenderSelect');
-    const senderChar = myCharacters.find(c => c._id === sel.value);
-    if(!senderChar) return;
+    const senderChar = sel ? myCharacters.find(c=>c._id===sel.value) : null; if(!senderChar) return;
     socket.emit('send_char_dm', {
-        senderCharId: senderChar._id, senderCharName: senderChar.name,
-        senderAvatar: senderChar.avatar, senderColor: senderChar.color, senderRole: senderChar.role,
-        senderOwnerUsername: USERNAME,
-        targetCharId: charDmTarget._id, targetCharName: charDmTarget.name,
-        targetOwnerId: charDmTarget.ownerId, targetOwnerUsername: charDmTarget.ownerUsername,
-        ownerId: PLAYER_ID, content,
-        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+        senderCharId:senderChar._id, senderCharName:senderChar.name, senderAvatar:senderChar.avatar, senderColor:senderChar.color, senderRole:senderChar.role, senderOwnerUsername:USERNAME,
+        targetCharId:charDmTarget._id, targetCharName:charDmTarget.name, targetOwnerId:charDmTarget.ownerId, targetOwnerUsername:charDmTarget.ownerUsername||'',
+        ownerId:PLAYER_ID, content, date:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
     });
-    document.getElementById('charDmInput').value = '';
+    document.getElementById('charDmInput').value='';
 }
 
-function appendCharDmMsg(msg, myCharId) {
-    const c = document.getElementById('char-dm-messages');
-    if(!c) return;
-    const isSelf = msg.ownerId === PLAYER_ID;
+function appendCharDmMsg(msg) {
+    const c = document.getElementById('char-dm-messages'); if(!c) return;
+    const sel = document.getElementById('charDmSenderSelect');
+    const myCharId = sel ? sel.value : null;
+    const isSelf = String(msg.senderCharId)===String(myCharId);
     const div = document.createElement('div');
-    div.className = `char-dm-msg ${isSelf ? 'char-dm-self' : ''}`;
+    div.className = `cmp-msg ${isSelf?'cmp-msg-self':'cmp-msg-other'}`;
     div.innerHTML = `
-        <img src="${msg.senderAvatar||''}" class="char-dm-avatar" title="${msg.senderName}">
-        <div class="char-dm-bubble">
-            <span class="char-dm-sender" style="color:${msg.senderColor||'var(--accent)'};">${msg.senderName}</span>
-            <span class="char-dm-text">${formatText(msg.content)}</span>
-            <span class="char-dm-time">${msg.date}</span>
+        <img src="${msg.senderAvatar||''}" class="cmp-msg-avatar" title="${escapeHtml(msg.senderName||'')}">
+        <div class="cmp-msg-bubble" style="--sender-color:${msg.senderColor||'var(--accent)'};">
+            <span class="cmp-msg-name">${escapeHtml(msg.senderName||'')}</span>
+            <span class="cmp-msg-text">${formatText(msg.content)}</span>
+            <span class="cmp-msg-time">${msg.date||''}</span>
         </div>`;
     c.appendChild(div);
 }
+
+function initCharMpView() { loadMyCharConvos(); renderCharMpSidebar(); }
+
 
 socket.on('followers_list_data', (followers) => {
     const listDiv = document.getElementById('followers-list-container'); listDiv.innerHTML = "";
