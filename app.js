@@ -44,6 +44,9 @@ let ombraHistory = [];
 // PRESSE
 let currentPresseCharId = null;
 
+// ACTUALITÉS
+let actuRequestPending = false;
+
 const COMMON_EMOJIS = ["😀", "😂", "😉", "😍", "😎", "🥳", "😭", "😡", "🤔", "👍", "👎", "❤️", "💔", "🔥", "✨", "🎉", "💩", "👻", "💀", "👽", "🤖", "👋", "🙌", "🙏", "💪", "👀", "🍕", "🍻", "🚀", "💯"];
 
 async function uploadToCloudinary(file, resourceType) {
@@ -82,7 +85,13 @@ function switchView(view) {
         loadFeed();
     }
     if(view === 'presse') { loadPresse(); }
-    if(view === 'actualites') { loadActualites(); updateActuAdminForm(); }
+    if(view === 'actualites') {
+        loadActualites(); updateActuAdminForm();
+        const actuBadge = document.getElementById('actu-badge');
+        if(actuBadge) actuBadge.classList.add('hidden');
+        const actuBtn = document.getElementById('btn-view-actualites');
+        if(actuBtn) actuBtn.classList.remove('nav-notify');
+    }
     if(view === 'cites') { loadCities(); } // [CITÉS]
     if(view === 'char-mp') {
         // Effacer le badge de notif
@@ -1785,7 +1794,7 @@ function updateActuAdminForm() {
     const form = document.getElementById('actu-admin-form');
     if(form) { if(IS_ADMIN) form.classList.remove('hidden'); else form.classList.add('hidden'); }
 }
-function loadActualites() { socket.emit('request_events'); }
+function loadActualites() { actuRequestPending = true; socket.emit('request_events'); }
 function submitEvent() {
     const jour = document.getElementById('actuJour').value;
     const dateRaw = document.getElementById('actuDate').value;
@@ -1810,12 +1819,32 @@ function submitEvent() {
 function deleteEvent(id) { if(confirm('Supprimer cet événement ?')) socket.emit('delete_event', id); }
 
 socket.on('events_data', (events) => {
+    // Show notification badge if this is a real-time push (not our own request)
+    if (!actuRequestPending && currentView !== 'actualites') {
+        const badge = document.getElementById('actu-badge');
+        if(badge) badge.classList.remove('hidden');
+        const btn = document.getElementById('btn-view-actualites');
+        if(btn) btn.classList.add('nav-notify');
+    }
+    actuRequestPending = false;
+
     const c = document.getElementById('events-list'); if(!c) return;
     c.innerHTML = '';
     if(events.length === 0) {
         c.innerHTML = '<div class="actu-empty"><i class="fa-solid fa-calendar-xmark"></i><p>Aucun événement planifié.</p></div>';
         return;
     }
+    // Sort events oldest → newest (parse DD/MM/YYYY)
+    const parseEventDate = (d) => {
+        if(!d) return 0;
+        const p = d.split('/');
+        if(p.length === 3) return new Date(p[2]+'-'+p[1]+'-'+p[0]).getTime();
+        return new Date(d).getTime() || 0;
+    };
+    events.sort((a, b) => {
+        const diff = parseEventDate(a.date) - parseEventDate(b.date);
+        return diff !== 0 ? diff : (a.heure || '').localeCompare(b.heure || '');
+    });
     let lastDate = null;
     events.forEach(ev => {
         if(ev.date !== lastDate) {
