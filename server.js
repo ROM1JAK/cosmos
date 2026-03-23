@@ -82,6 +82,7 @@ const Post = mongoose.model('Post', PostSchema);
 
 const OmbraMessageSchema = new mongoose.Schema({
     alias: String, content: String, date: String,
+    ownerId: String,  // pour suppr par proprio
     timestamp: { type: Date, default: Date.now }
 });
 const OmbraMessage = mongoose.model('OmbraMessage', OmbraMessageSchema);
@@ -532,11 +533,31 @@ io.on('connection', async (socket) => {
       socket.emit('ombra_history', history.reverse());
   });
   socket.on('ombra_leave', () => { socket.leave('ombra'); });
-  socket.on('ombra_message', async ({ alias, content, date }) => {
+  socket.on('ombra_message', async ({ alias, content, date, ownerId }) => {
       if(!alias || !content) return;
-      const msg = new OmbraMessage({ alias, content, date });
+      const msg = new OmbraMessage({ alias, content, date, ownerId: ownerId || null });
       await msg.save();
-      io.to('ombra').emit('ombra_message', { alias, content, date });
+      io.to('ombra').emit('ombra_message', { _id: msg._id.toString(), alias, content, date, ownerId: msg.ownerId });
+  });
+  socket.on('ombra_delete_message', async ({ msgId, requesterId }) => {
+      const msg = await OmbraMessage.findById(msgId);
+      if(!msg) return;
+      const user = await User.findOne({ secretCode: requesterId });
+      if(!user) return;
+      if(msg.ownerId === requesterId || user.isAdmin) {
+          await OmbraMessage.findByIdAndDelete(msgId);
+          io.to('ombra').emit('ombra_message_deleted', msgId);
+      }
+  });
+
+  // Liste de tous les personnages des utilisateurs en ligne
+  socket.on('request_all_chars_online', async () => {
+      const chars = await Character.find();
+      const onlineNames = new Set(Object.values(onlineUsers));
+      const result = chars
+          .filter(c => onlineNames.has(c.ownerUsername))
+          .map(c => ({ _id: c._id, name: c.name, avatar: c.avatar, color: c.color, role: c.role, ownerUsername: c.ownerUsername }));
+      socket.emit('all_chars_online', result);
   });
 });
 
