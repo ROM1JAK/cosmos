@@ -379,7 +379,45 @@ io.on('connection', async (socket) => {
   socket.on('request_char_dm_history', async ({ senderCharId, targetCharId }) => {
       const roomId = `char_dm_${[senderCharId, targetCharId].sort().join('_')}`;
       const msgs = await Message.find({ roomId, isCharDm: true }).sort({ timestamp: 1 }).limit(200);
-      socket.emit('char_dm_history', { roomId, msgs });
+      socket.emit('char_dm_history', { roomId, senderCharId, targetCharId, msgs });
+  });
+
+  // Récupérer tous les interlocuteurs d'un perso donné
+  socket.on('request_my_char_convos', async ({ myCharIds }) => {
+      if(!myCharIds || !myCharIds.length) return socket.emit('my_char_convos', []);
+      // Chercher tous les messages impliquant n'importe lequel de mes persos
+      const msgs = await Message.find({
+          isCharDm: true,
+          $or: [
+              { senderCharId: { $in: myCharIds } },
+              { targetCharId: { $in: myCharIds } }
+          ]
+      }).sort({ timestamp: 1 });
+
+      // Regrouper par paire (monCharId, autreCharId) → dernière info utile
+      const convMap = {}; // clé: "myCharId|otherCharId"
+      for(const m of msgs) {
+          const myId   = myCharIds.includes(String(m.senderCharId)) ? String(m.senderCharId) : String(m.targetCharId);
+          const othId  = myCharIds.includes(String(m.senderCharId)) ? String(m.targetCharId) : String(m.senderCharId);
+          const key    = `${myId}|${othId}`;
+          if(!convMap[key]) {
+              convMap[key] = {
+                  myCharId:      myId,
+                  otherCharId:   othId,
+                  otherName:     myCharIds.includes(String(m.senderCharId)) ? m.targetName   : m.senderName,
+                  otherAvatar:   myCharIds.includes(String(m.senderCharId)) ? ''             : (m.senderAvatar || ''),
+                  otherColor:    myCharIds.includes(String(m.senderCharId)) ? ''             : (m.senderColor  || ''),
+                  otherRole:     myCharIds.includes(String(m.senderCharId)) ? ''             : (m.senderRole   || ''),
+                  otherOwnerId:  m.targetOwnerId,
+                  lastDate:      m.timestamp,
+                  lastContent:   m.content
+              };
+          } else {
+              convMap[key].lastDate    = m.timestamp;
+              convMap[key].lastContent = m.content;
+          }
+      }
+      socket.emit('my_char_convos', Object.values(convMap));
   });
 
   socket.on('follow_character', async ({ followerCharId, targetCharId }) => {
