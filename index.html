@@ -31,6 +31,7 @@
             <span id="actu-badge" class="nav-unread-dot hidden"></span>
         </button>
         <button class="nav-btn" id="btn-view-cites" onclick="switchView('cites')"><i class="fa-solid fa-city"></i><span class="nav-label"> Cités</span></button>
+        <button class="nav-btn" id="btn-view-bourse" onclick="switchView('bourse')"><i class="fa-solid fa-chart-line"></i><span class="nav-label"> Bourse</span></button>
         <button class="nav-btn" id="btn-notifs" onclick="openNotifications()" style="position:relative;">
             <i class="fa-solid fa-bell"></i>
             <span id="notif-badge" class="hidden"></span>
@@ -562,6 +563,11 @@
                 </div>
 
                 <div class="city-section">
+                    <div class="city-section-title"><i class="fa-solid fa-landmark"></i> Capitale</div>
+                    <div class="city-president" id="cityDetailCapitale" style="color:var(--accent-soft)">—</div>
+                </div>
+
+                <div class="city-section">
                     <div class="city-section-title"><i class="fa-solid fa-user-tie"></i> Dirigeant</div>
                     <div class="city-president" id="cityDetailPresident">—</div>
                 </div>
@@ -578,6 +584,7 @@
 
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
                         <div><label class="cfl">Président</label><input type="text" id="adminCityPresident" class="char-input" placeholder="Nom du perso..."></div>
+                        <div><label class="cfl">Capitale</label><input type="text" id="adminCityCapitale" class="char-input" placeholder="Ex: Quartier Central..."></div>
                         <div><label class="cfl">Population</label><input type="number" id="adminCityPop" class="char-input" placeholder="500000"></div>
                     </div>
                     <div style="margin-bottom:10px;">
@@ -595,7 +602,8 @@
                         </div>
                     </div>
 
-                    <button class="btn-secondary full-width" style="margin-bottom:12px;" onclick="adminSaveCityInfo()"><i class="fa-solid fa-floppy-disk"></i> Enregistrer infos</button>
+                    <button class="btn-secondary full-width" style="margin-bottom:8px;" onclick="adminSaveCityInfo()"><i class="fa-solid fa-floppy-disk"></i> Enregistrer infos</button>
+                    <div id="cityAdminSaveMsg" class="city-save-success hidden">✅ Bien enregistré !</div>
 
                     <div class="city-trend-btns">
                         <button class="city-trend-btn trend-up2"    onclick="adminApplyTrend('croissance_forte')"><i class="fa-solid fa-angles-up"></i> +1,5 %</button>
@@ -626,7 +634,10 @@
 
                 <!-- Classements en direct -->
                 <div class="cites-rankings-wrap">
-                    <div class="cites-section-title" style="margin-bottom:16px;"><i class="fa-solid fa-trophy"></i> Classements en direct</div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                        <div class="cites-section-title" style="margin-bottom:0;"><i class="fa-solid fa-trophy"></i> Classements en direct</div>
+                        <button id="btn-reset-rank-evol" class="btn-secondary" onclick="resetRankEvolutions()" style="font-size:0.72rem; padding:5px 10px;"><i class="fa-solid fa-rotate-left"></i> Réinit. évolutions</button>
+                    </div>
                     <div class="cites-rankings">
                         <div class="cites-rankings-col">
                             <div class="cites-ranking-header"><i class="fa-solid fa-chart-bar"></i> EDC</div>
@@ -640,11 +651,84 @@
                 </div>
             </div>
         </div>
-        <!-- ===== [FIN CITÉS] ===== -->
+        <!-- ===== [BOURSE] VUE ===== -->
+        <div id="view-bourse" class="view-section hidden" style="flex-direction:column;">
+
+            <!-- Ticker -->
+            <div class="bourse-ticker-bar">
+                <div class="bourse-ticker-label"><i class="fa-solid fa-chart-line"></i> BOURSE</div>
+                <div class="bourse-ticker-scroll-wrap">
+                    <div id="bourse-ticker" class="bourse-ticker-content"></div>
+                </div>
+            </div>
+
+            <!-- Container principale -->
+            <div class="bourse-container">
+
+                <!-- Header -->
+                <div class="bourse-header">
+                    <div>
+                        <h2 class="bourse-title"><i class="fa-solid fa-landmark"></i> Bourse de ConvSmos</h2>
+                        <div class="bourse-subtitle">Marché financier fictif &middot; Mis à jour en direct</div>
+                    </div>
+                    <div id="bourse-admin-header" class="hidden">
+                        <button class="btn-primary" onclick="openStockAddModal()"><i class="fa-solid fa-plus"></i> Coter une action</button>
+                    </div>
+                </div>
+
+                <!-- Summary cards -->
+                <div id="bourse-summary-row" class="bourse-summary-row"></div>
+
+                <!-- Stocks grid -->
+                <div id="bourse-stocks-grid" class="bourse-stocks-grid"></div>
+
+                <!-- Admin — variation précise -->
+                <div id="bourse-admin-controls" class="bourse-admin-controls hidden">
+                    <div class="city-section-title" style="color:#f59e0b;margin-bottom:12px;"><i class="fa-solid fa-sliders"></i> Variation précise (Admin)</div>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <select id="bourseCustomStockId" class="char-input" style="flex:2; min-width:200px;">
+                            <option value="">— Choisir une action —</option>
+                        </select>
+                        <input type="number" id="bourseCustomPct" class="char-input" placeholder="Ex: -3.5" min="-100" max="100" step="0.1" style="width:100px; text-align:center;">
+                        <span style="color:var(--text-muted); font-size:0.82rem;">%</span>
+                        <button class="btn-primary" onclick="adminApplyStockCustomPct()"><i class="fa-solid fa-percent"></i> Appliquer</button>
+                    </div>
+                    <div style="font-size:0.65rem; color:var(--text-muted); margin-top:6px;">Entre −1 000% et +1 000%, décimales acceptées</div>
+                </div>
+
+            </div>
+        </div>
+        <!-- ===== [FIN BOURSE] ===== -->
 
     </div>
 
-    <!-- [NOUVEAU] Modale Admin — Bandeau d'alerte -->
+    <!-- [BOURSE] Modale Admin — Coter/éditer une action -->
+    <div id="bourse-stock-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeStockModal()">
+        <div class="modal-box" style="max-width:420px;" onclick="event.stopPropagation()">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 id="bourse-stock-modal-title" style="margin:0; color:white;"><i class="fa-solid fa-building"></i> Action Boursière</h3>
+                <button onclick="closeStockModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
+            </div>
+            <input type="hidden" id="bourseStockId">
+            <label class="cfl">Entreprise (personnage)</label>
+            <select id="bourseStockCharSelect" class="modal-input">
+                <option value="">— Chargement… —</option>
+            </select>
+            <label class="cfl" style="margin-top:10px;">Valeur actuelle (crédits)</label>
+            <input type="number" id="bourseStockValue" class="modal-input" placeholder="Ex: 1000000000" min="0">
+            <label class="cfl" style="margin-top:6px;">Couleur de la courbe</label>
+            <div style="display:flex; gap:8px; align-items:center; margin-top:4px;">
+                <input type="color" id="bourseStockColor" value="#6c63ff" style="width:44px; height:38px; padding:2px; border:1px solid var(--border); border-radius:var(--radius-sm); background:none; cursor:pointer; flex-shrink:0;">
+                <p style="font-size:0.75rem; color:var(--text-muted); margin:0;">Couleur de la ligne sur le graphique</p>
+            </div>
+            <label class="cfl" style="margin-top:10px;">Description (optionnel)</label>
+            <input type="text" id="bourseStockDesc" class="modal-input" placeholder="Ex: Aéronautique, armement…">
+            <div style="display:flex; gap:8px; margin-top:14px;">
+                <button class="btn-primary" onclick="submitStockAdmin()" style="flex:1;"><i class="fa-solid fa-floppy-disk"></i> Enregistrer</button>
+                <button class="btn-secondary" onclick="closeStockModal()">Annuler</button>
+            </div>
+        </div>
+    </div>
     <div id="admin-alert-modal" class="modal-overlay hidden" onclick="closeAdminAlertModal()">
         <div class="modal-box" style="max-width:400px;" onclick="event.stopPropagation()">
             <h3 style="color:white;margin:0 0 16px;"><i class="fa-solid fa-triangle-exclamation"></i> Bandeau d'Alerte Global</h3>
