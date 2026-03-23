@@ -11,7 +11,829 @@
 </head>
 <body data-theme="default">
 
+    <!-- [NOUVEAU] Bandeau d'alerte global Admin --><!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ConvSmos</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/png" href="icone.png">
+</head>
+<body data-theme="default">
+
     <!-- [NOUVEAU] Bandeau d'alerte global Admin -->
+<div id="global-alert-banner" class="global-alert-banner hidden">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    <span id="global-alert-text"></span>
+    <button onclick="dismissAlert()" class="alert-dismiss-btn">✕</button>
+</div>
+
+<nav id="top-nav">
+        <button class="nav-btn active" id="btn-view-chat" onclick="switchView('chat')"><i class="fa-solid fa-comments"></i> Chat</button>
+        <button class="nav-btn" id="btn-view-feed" onclick="switchView('feed')"><i class="fa-solid fa-bullhorn"></i> Feed</button>
+        <button class="nav-btn nav-char-mp" id="btn-view-char-mp" onclick="switchView('char-mp')" style="position:relative;">
+            <i class="fa-solid fa-user-group"></i> MP Perso
+            <span id="char-mp-badge" class="nav-unread-dot hidden"></span>
+        </button>
+        <button class="nav-btn" id="btn-view-presse" onclick="switchView('presse')"><i class="fa-solid fa-newspaper"></i> Presse</button>
+        <button class="nav-btn" id="btn-view-actualites" onclick="switchView('actualites')"><i class="fa-solid fa-calendar-days"></i> Actualités</button>
+        <button class="nav-btn" id="btn-view-cites" onclick="switchView('cites')"><i class="fa-solid fa-city"></i> Cités</button>
+        <button class="nav-btn" id="btn-notifs" onclick="openNotifications()" style="position:relative;">
+            <i class="fa-solid fa-bell"></i>
+            <span id="notif-badge" class="hidden"></span>
+        </button>
+    </nav>
+
+    <div id="mobile-overlay" onclick="toggleSidebar()"></div>
+
+    <div id="login-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h2>Connexion</h2>
+            <input type="text" id="loginPseudoInput" placeholder="Pseudo" class="modal-input">
+            <input type="password" id="loginCodeInput" placeholder="Code Secret" class="modal-input">
+            <button onclick="submitLogin()" class="btn-primary full-width" style="margin-top:10px;">Go</button>
+            <p id="login-error-msg" style="color: #da373c; margin-top: 10px; display:none;"></p>
+        </div>
+    </div>
+
+    <div id="user-settings-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                <h2>Profil</h2> <button onclick="closeUserSettingsModal()" class="btn-secondary">X</button>
+            </div>
+            
+            <div style="margin-bottom:15px; text-align:left;">
+                <p style="font-size:0.8rem; color:var(--text-muted); margin:0 0 8px; font-weight:bold; text-transform:uppercase;">Identité Visuelle</p>
+                <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+                    <button class="theme-swatch" style="--swatch:#6c63ff" onclick="changeTheme('default')">Cosmos</button>
+                    <button class="theme-swatch" style="--swatch:#00d4aa" onclick="changeTheme('matrix')">Matrice</button>
+                    <button class="theme-swatch" style="--swatch:#ff4757" onclick="changeTheme('blood')">Sang</button>
+                    <button class="theme-swatch" style="--swatch:#f9ca24" onclick="changeTheme('cyber')">Cyber</button>
+                    <button class="theme-swatch" style="--swatch:#3d1a5c" onclick="changeTheme('ombra')" title="...">Ombra</button>
+                </div>
+            </div>
+            
+            <input type="text" id="settingsUsernameInput" class="modal-input" placeholder="Pseudo">
+            <button onclick="submitUsernameChange()" class="btn-primary full-width" style="margin-bottom:10px;">Changer Pseudo</button>
+            <div class="password-wrapper" style="margin-bottom:10px;">
+                <input type="password" id="settingsCodeInput" class="modal-input" readonly>
+                <button onclick="toggleSecretVisibility()" class="btn-eye"><i class="fa-solid fa-eye"></i></button>
+            </div>
+            <button onclick="toggleNotifications()" id="btn-notif-toggle" class="btn-secondary full-width">Notifs</button>
+            <!-- [NOUVEAU] Bouton alerte admin (affiché seulement si admin) -->
+            <div id="admin-alert-btn-wrapper" class="hidden" style="margin-top:8px;">
+                <button onclick="closeUserSettingsModal(); document.getElementById('admin-alert-modal').classList.remove('hidden');" class="btn-warning full-width" style="border:none; cursor:pointer; padding:9px; border-radius:var(--radius-sm); font-weight:700; font-family:var(--font-main);">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Bandeau d'Alerte
+                </button>
+            </div>
+            <p id="settings-msg" style="height:1.2em; color:#23a559; margin:5px 0;"></p>
+            <button onclick="logoutUser()" class="btn-logout">Déconnexion</button>
+        </div>
+    </div>
+    
+    <div id="notifications-modal" class="modal-overlay hidden" onclick="closeNotifications()">
+        <div class="modal-box" style="max-width: 400px; padding:0; overflow:hidden; max-height:80vh; display:flex; flex-direction:column;" onclick="event.stopPropagation()">
+            <div style="padding:15px; border-bottom:1px solid #222; display:flex; justify-content:space-between;">
+                <h3 style="color:white; margin:0;">Notifications</h3>
+                <button onclick="closeNotifications()" style="background:none; border:none; color:#aaa; cursor:pointer;">X</button>
+            </div>
+            <div id="notif-list" style="overflow-y:auto; padding:10px; flex:1;"></div>
+        </div>
+    </div>
+    
+    <div id="followers-modal" class="modal-overlay hidden" style="z-index:300;" onclick="document.getElementById('followers-modal').classList.add('hidden')">
+        <div class="modal-box" style="max-width:350px;" onclick="event.stopPropagation()">
+            <h3 style="margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:10px;">Abonnés</h3>
+            <div id="followers-list-container" style="max-height:300px; overflow-y:auto;"></div>
+            <button onclick="document.getElementById('followers-modal').classList.add('hidden')" class="btn-secondary full-width" style="margin-top:10px;">Fermer</button>
+        </div>
+    </div>
+
+    <input type="file" id="chat-img-input" accept="image/*" class="hidden" onchange="handleChatFileSelect(this, 'image')">
+    <input type="file" id="chat-video-input" accept="video/*" class="hidden" onchange="handleChatFileSelect(this, 'video')">
+
+    <div id="profile-overlay" class="modal-overlay hidden" onclick="closeProfileModal()"></div>
+
+    <!-- [NOUVEAU] Profil plein écran -->
+    <div id="profile-slide-panel">
+        <button onclick="closeProfileModal()" class="btn-close-profile"><i class="fa-solid fa-xmark"></i></button>
+
+        <!-- En-tête héro -->
+        <div class="profile-hero">
+            <div class="profile-hero-bg" id="profileHeroBg"></div>
+            <div class="profile-hero-content">
+                <img id="profileAvatar" src="" class="profile-avatar-large">
+                <div class="profile-hero-info">
+                    <h2 id="profileName">Nom</h2>
+                    <span id="profileRole" class="profile-role-tag">Rôle</span>
+                    <div id="profilePartyBadge" style="margin-top:8px; display:none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="profile-stats">
+            <div class="stat-item" id="btn-view-followers" style="cursor:pointer;">
+                <span id="profileFollowersCount" class="stat-value">0</span>
+                <span class="stat-label">Abonnés</span>
+                <!-- [NOUVEAU] Admin edit followers -->
+                <span id="adminEditFollowers" class="admin-stat-edit hidden" onclick="adminEditFollowers()"><i class="fa-solid fa-pen"></i></span>
+            </div>
+            <div class="stat-item">
+                <span id="profilePostCount" class="stat-value">0</span>
+                <span class="stat-label">Posts</span>
+            </div>
+        </div>
+
+        <!-- Corps du profil scrollable -->
+        <div class="profile-page-body" id="profilePageBody">
+
+            <!-- Actions -->
+            <div class="profile-action-row">
+                <button id="btn-dm-profile" class="btn-primary"><i class="fa-solid fa-comment"></i> Message</button>
+                <button id="btn-sub-profile" class="btn-secondary"><i class="fa-solid fa-rss"></i> Suivre</button>
+                <!-- [NOUVEAU] Bouton DM Personnage -->
+                <button id="btn-char-dm-profile" class="btn-secondary hidden"><i class="fa-solid fa-user-secret"></i> Msg Personnage</button>
+                <!-- [NOUVEAU] Bouton Admin entreprise -->
+                <button id="btn-manage-companies" class="btn-admin-company hidden" onclick="openCompanyModal()"><i class="fa-solid fa-building"></i> Entreprises</button>
+            </div>
+
+            <!-- Section Bio -->
+            <div class="profile-section">
+                <div class="profile-section-title"><i class="fa-solid fa-id-card"></i> À propos</div>
+                <p id="profileDesc" class="profile-desc-text"></p>
+                <div id="profileOwner" style="margin-top:10px; font-size:0.78rem; color:var(--text-muted);"></div>
+                <!-- [CITÉS] Badge président -->
+                <div id="profilePresidentBadge" style="display:none; margin-top:8px;"></div>
+                <!-- [NOUVEAU] Bouton modifier bio (proprio seulement) -->
+                <button id="btn-edit-bio" class="btn-edit-bio hidden" onclick="openBioEdit()"><i class="fa-solid fa-pen"></i> Modifier ma bio</button>
+                <div id="bio-edit-zone" class="hidden" style="margin-top:10px;">
+                    <textarea id="bioEditInput" rows="4" style="width:100%; background:var(--bg-primary); border:1px solid var(--border); color:white; padding:10px; border-radius:var(--radius-sm); font-family:var(--font-main); resize:vertical;"></textarea>
+                    <div style="display:flex; gap:8px; margin-top:6px;">
+                        <button class="btn-primary" onclick="saveBio()">Enregistrer</button>
+                        <button class="btn-secondary" onclick="closeBioEdit()">Annuler</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- [NOUVEAU] Section Entreprises -->
+            <div class="profile-section" id="profileCompaniesSection" style="display:none;">
+                <div class="profile-section-title"><i class="fa-solid fa-building"></i> Entreprises</div>
+                <div class="companies-grid" id="profileCompaniesGrid"></div>
+            </div>
+
+            <!-- [NOUVEAU] Section Activité (derniers posts) -->
+            <div class="profile-section" id="profileActivitySection">
+                <div class="profile-section-title"><i class="fa-solid fa-chart-line"></i> Activité récente</div>
+                <div id="profileActivityFeed"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- [NOUVEAU] Modale Admin — Gérer entreprises -->
+    <div id="company-modal" class="modal-overlay hidden" onclick="closeCompanyModal()">
+        <div class="modal-box" style="max-width:440px;" onclick="event.stopPropagation()">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="color:white; margin:0;"><i class="fa-solid fa-building"></i> Gérer les Entreprises</h3>
+                <button onclick="closeCompanyModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.2rem;">✕</button>
+            </div>
+            <div id="company-existing-list" style="margin-bottom:14px;"></div>
+            <div style="background:var(--bg-primary); padding:14px; border-radius:var(--radius); border:1px solid var(--border);">
+                <p style="font-size:0.75rem; color:var(--text-muted); margin:0 0 10px; font-weight:700; text-transform:uppercase;">Ajouter une entreprise</p>
+                <input type="text" id="companyName" placeholder="Nom de l'entreprise" class="modal-input">
+                <input type="text" id="companyRole" placeholder="Poste du personnage (ex: PDG)" class="modal-input">
+                <input type="text" id="companyDesc" placeholder="Description (optionnel)" class="modal-input">
+                <label class="file-upload-label" style="margin-top:6px;"><span>Logo de l'entreprise</span><input type="file" id="companyLogoFile" accept="image/*"></label>
+                <button class="btn-primary full-width" style="margin-top:10px;" onclick="submitAddCompany()"><i class="fa-solid fa-plus"></i> Ajouter</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [NOUVEAU] Modale DM entre personnages -->
+    <div id="char-dm-modal" class="modal-overlay hidden" onclick="closeCharDmModal()">
+        <div class="modal-box" style="max-width:500px; padding:0; overflow:hidden; max-height:80vh; display:flex; flex-direction:column;" onclick="event.stopPropagation()">
+            <div style="padding:14px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; background:var(--bg-secondary);">
+                <img id="charDmTargetAvatar" src="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">
+                <div>
+                    <div id="charDmTargetName" style="font-weight:700; color:white; font-size:0.9rem;"></div>
+                    <div style="font-size:0.7rem; color:var(--accent-soft);">Message entre personnages</div>
+                </div>
+                <button onclick="closeCharDmModal()" style="margin-left:auto;background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
+            </div>
+            <!-- Sélection du personnage émetteur -->
+            <div style="padding:8px 12px; background:var(--bg-primary); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px;">
+                <span style="font-size:0.75rem; color:var(--text-muted);">Envoyer en tant que :</span>
+                <select id="charDmSenderSelect" style="background:var(--bg-tertiary); border:1px solid var(--border); color:white; padding:4px 8px; border-radius:var(--radius-sm); font-family:var(--font-main); font-size:0.82rem;"></select>
+            </div>
+            <div id="char-dm-messages" style="flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:8px;"></div>
+            <div style="padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px;">
+                <input id="charDmInput" type="text" class="modal-input" placeholder="Message..." style="flex:1; margin:0;" onkeyup="if(event.key==='Enter') sendCharDm()">
+                <button class="btn-primary" onclick="sendCharDm()"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [NOUVEAU] Modale Admin — Modifier stats post -->
+    <div id="admin-stats-modal" class="modal-overlay hidden" onclick="closeAdminStatsModal()">
+        <div class="modal-box" style="max-width:320px;" onclick="event.stopPropagation()">
+            <h3 style="color:white; margin:0 0 16px;">⚙️ Modifier les stats</h3>
+            <input type="hidden" id="adminStatsPostId">
+            <label style="font-size:0.8rem; color:var(--text-muted); display:block; margin-bottom:4px;">Nombre de Likes</label>
+            <input type="number" id="adminStatsLikes" class="modal-input" min="0" placeholder="0">
+            <div style="display:flex; gap:8px; margin-top:12px;">
+                <button class="btn-primary" onclick="submitAdminStats()">Appliquer</button>
+                <button class="btn-secondary" onclick="closeAdminStatsModal()">Annuler</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="post-detail-modal" class="modal-overlay hidden" onclick="closePostDetail()">
+        <div class="modal-box" style="max-width: 600px; padding:0; overflow:hidden; max-height:90vh; display:flex; flex-direction:column;" onclick="event.stopPropagation()">
+            <div style="padding:15px; border-bottom:1px solid #222; display:flex; justify-content:space-between;">
+                <h3 style="color:white; margin:0;">Discussion</h3> <button onclick="closePostDetail()" style="background:none; border:none; color:#aaa; cursor:pointer;">X</button>
+            </div>
+            <div style="overflow-y:auto; padding:15px; flex:1;">
+                <div id="post-detail-content"></div>
+                <div id="post-detail-comments-list" style="margin-top:20px;"></div>
+            </div>
+            <div style="padding:15px; background: var(--bg-chat); border-top:1px solid #222;">
+                <div id="comment-staging" class="chat-staging hidden"></div>
+                <div class="comment-form" style="display:flex; gap:5px;">
+                    <input type="text" id="post-detail-comment-input" class="modal-input" placeholder="Commentaire..." style="margin:0;">
+                    <button class="btn-icon" onclick="toggleRecording('comment')"><i class="fa-solid fa-microphone"></i></button>
+                    <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-paperclip"></i><input type="file" id="comment-file-input" class="hidden" accept="image/*,video/*" onchange="stageCommentMedia(this)"></label>
+                    <button id="btn-detail-comment" class="btn-primary">Envoyer</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button id="menu-toggle-btn" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+
+    <div id="main-view-wrapper">
+        <div id="view-chat" class="view-section active">
+            <div id="app-container">
+                <div id="sidebar">
+                    <div class="sidebar-header">
+                        <h2 class="app-title">ConvSmos</h2>
+                        <div id="player-id-display">...</div>
+                        <button id="btn-account-main" class="btn-login" onclick="openAccountUI()">Connexion</button>
+                    </div>
+                    <div class="sidebar-section">
+                        <h3>SALONS</h3><div id="roomList"></div><button class="btn-add-room" onclick="createRoomPrompt()">+ Créer Salon</button>
+                    </div>
+                    <div class="sidebar-section">
+                        <h3>PERSONNAGES</h3>
+                        <div id="myCharList"></div>
+                        <div class="create-form-toggle" onclick="toggleCreateForm()">+ Nouveau Personnage</div>
+                    </div>
+                    <div class="sidebar-section"><h3>MESSAGES PRIVÉS</h3><div id="dmList"></div></div>
+                </div>
+
+                <div id="chat-area">
+                    <div class="chat-header">
+                        <span class="header-hash">#</span><h3 id="currentRoomName">Salon Global</h3>
+                        <div id="dm-header-actions" class="hidden" style="margin-left:auto; display:flex; gap:10px;">
+                            <button onclick="deleteCurrentDmHistory()" style="background:none; border:none; cursor:pointer; color:#da373c;"><i class="fa-solid fa-trash"></i></button>
+                            <button onclick="closeCurrentDm()" style="background:none; border:none; cursor:pointer; color:#aaa;"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+
+                    <div id="messages"></div>
+                    <div id="typing-indicator" class="hidden"><span class="typing-dots">...</span> <span id="typing-text"></span></div>
+                    
+                    <div id="input-wrapper">
+                        <div id="char-selector-wrapper" class="hidden">
+                            <div id="char-bar-actions"><button id="btn-toggle-chars" onclick="toggleCharBar()"><i id="toggle-icon" class="fa-solid fa-chevron-up"></i></button></div>
+                            <div id="char-bar-horizontal" class="char-bar-content hidden-bar"></div>
+                        </div>
+                        <div id="context-bar" class="hidden">
+                            <div class="context-info"><span id="context-icon"></span> <span id="context-text"></span></div><button class="btn-close-reply" onclick="cancelContext()">X</button>
+                        </div>
+                        <div id="mention-suggestions" class="hidden"></div>
+                        <div id="chat-staging" class="chat-staging hidden"></div>
+                        <div id="emoji-picker" class="hidden"></div>
+
+                        <div id="input-zone">
+                            <button class="btn-icon" onclick="document.getElementById('chat-img-input').click()"><i class="fa-solid fa-circle-plus"></i></button>
+                            <input id="txtInput" type="text" autocomplete="off" placeholder="Envoyer un message...">
+                            <!-- [NOUVEAU] Message crypté -->
+                            <button class="btn-icon" onclick="openCryptoModal()" title="Message crypté"><i class="fa-solid fa-lock"></i></button>
+                            <button class="btn-icon" id="btn-emoji" onclick="toggleEmojiPicker()"><i class="fa-solid fa-face-smile"></i></button>
+                            <button class="btn-icon" id="btn-record-chat" onclick="toggleRecording('chat')"><i class="fa-solid fa-microphone"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="users-sidebar">
+                    <div class="users-header"><h3>EN LIGNE — <span id="online-count">0</span></h3></div>
+                    <div id="online-users-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-feed" class="view-section hidden">
+            <div class="feed-view-header">
+                <h3 style="margin:0; font-size:1.1rem;">Flux Social</h3>
+                <div id="feed-char-avatar-wrapper" style="position:relative;"></div>
+            </div>
+
+            <div class="feed-container">
+                
+                <div class="post-create-box">
+                    <textarea id="postContent" placeholder="Quoi de neuf ?"></textarea>
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                        <div style="display:flex; gap:10px;">
+                             <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-image"></i><input type="file" id="postMediaFile" accept="image/*,video/*" class="hidden" onchange="previewPostFile()"></label>
+                             <button class="btn-icon" id="btn-record-feed" onclick="toggleRecording('feed')"><i class="fa-solid fa-microphone"></i></button>
+                             <button class="btn-icon" onclick="togglePollUI()"><i class="fa-solid fa-chart-column"></i></button>
+                             <span id="postFileStatus" style="font-size:0.8em; color:#aaa; display:none;"></span>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <span id="char-count" style="font-size:0.8em; color:#666;">0/1000</span>
+                            <button class="btn-primary" onclick="submitPost()">Publier</button>
+                        </div>
+                    </div>
+                    <div id="poll-creation-ui" class="hidden" style="background:#1e1f22; padding:10px; border-radius:4px; margin-bottom:10px;">
+                        <input type="text" id="pollQuestion" placeholder="Question du sondage..." style="width:100%; background:#383a40; border:none; color:white; padding:8px; border-radius:4px; margin-bottom:8px; font-family:inherit;">
+                        <div id="pollOptions"></div>
+                        <button onclick="addPollOption()" class="btn-secondary full-width" style="margin-bottom:8px;">+ Option</button>
+                        <button onclick="closePollUI()" class="btn-secondary full-width">Annuler</button>
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center; font-size:0.85rem;">
+                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" id="postAnonymous"> 🕵️ Anonyme (Leak)</label>
+                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer; display:none;" id="breakingNewsLabel"><input type="checkbox" id="postBreakingNews"> 🚨 Breaking News</label>
+                    </div>
+                    <input type="hidden" id="postMediaUrl">
+                    <input type="hidden" id="pollData">
+                </div>
+                
+                <div id="feed-typing-indicator" class="feed-typing-indicator hidden"></div>
+                
+                <div id="feed-stream"></div>
+            </div>
+        </div>
+
+        <!-- PRESSE VIEW -->
+        <div id="view-presse" class="view-section hidden">
+            <div class="feed-view-header">
+                <h3 style="margin:0; font-size:1.1rem;">📰 La Presse</h3>
+                <div id="presse-char-avatar-wrapper" style="position:relative;"></div>
+            </div>
+            <div class="presse-container">
+                <div id="presse-write-box" class="presse-write-box hidden">
+                    <div class="presse-write-header">
+                        <i class="fa-solid fa-feather-pointed"></i>
+                        <span>Rédiger un article</span>
+                    </div>
+                    <input type="text" id="presseTitle" placeholder="Titre de l'article..." class="presse-title-input">
+                    <textarea id="presseContent" placeholder="Contenu de l'article..." rows="6"></textarea>
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; flex-wrap:wrap; gap:8px;">
+                        <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-image"></i><input type="file" id="presseMediaFile" accept="image/*,video/*" class="hidden" onchange="previewPresseFile()"></label>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <select id="presseUrgency" class="presse-urgency-select">
+                                <option value="">— Niveau —</option>
+                                <option value="urgent">🚨 URGENT</option>
+                                <option value="enquete">🔍 ENQUÊTE</option>
+                                <option value="officiel">📢 COMMUNIQUÉ OFFICIEL</option>
+                                <option value="economie">📉 ÉCONOMIE</option>
+                            </select>
+                            <button class="btn-primary" onclick="submitArticle()">Publier</button>
+                        </div>
+                    </div>
+                    <input type="hidden" id="presseMediaUrl">
+                </div>
+                <div id="presse-no-journalist" class="presse-notice hidden">
+                    <i class="fa-solid fa-id-card" style="font-size:2rem; color:var(--text-dim); margin-bottom:12px;"></i>
+                    <p>Seuls les personnages avec le rôle <strong>Journaliste</strong> peuvent publier dans la Presse.</p>
+                </div>
+                <div id="presse-stream"></div>
+            </div>
+        </div>
+
+        <!-- ACTUALITÉS VIEW -->
+        <div id="view-actualites" class="view-section hidden">
+            <div class="feed-view-header">
+                <h3 style="margin:0; font-size:1.1rem;">📅 Actualités</h3>
+            </div>
+            <div class="actu-container">
+                <div id="actu-admin-form" class="actu-form-box hidden">
+                    <div class="presse-write-header"><i class="fa-solid fa-calendar-plus"></i><span>Ajouter un événement</span></div>
+                    <!-- [AMÉLIORÉ] Menus déroulants -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
+                        <select id="actuJour" class="modal-input" style="margin:0;cursor:pointer;">
+                            <option value="">— Jour —</option>
+                            <option>Lundi</option><option>Mardi</option><option>Mercredi</option>
+                            <option>Jeudi</option><option>Vendredi</option><option>Samedi</option><option>Dimanche</option>
+                        </select>
+                        <input type="date" id="actuDate" class="modal-input" style="margin:0;">
+                        <div style="display:flex;gap:4px;">
+                            <select id="actuHeure" class="modal-input" style="margin:0;flex:1;cursor:pointer;padding:8px 4px;">
+                                <option value="">h</option>
+                                <option>00</option><option>01</option><option>02</option><option>03</option><option>04</option><option>05</option>
+                                <option>06</option><option>07</option><option>08</option><option>09</option><option>10</option><option>11</option>
+                                <option>12</option><option>13</option><option>14</option><option>15</option><option>16</option><option>17</option>
+                                <option>18</option><option>19</option><option>20</option><option>21</option><option>22</option><option>23</option>
+                            </select>
+                            <select id="actuMinute" class="modal-input" style="margin:0;flex:1;cursor:pointer;padding:8px 4px;">
+                                <option>00</option><option>05</option><option>10</option><option>15</option><option>20</option><option>25</option>
+                                <option>30</option><option>35</option><option>40</option><option>45</option><option>50</option><option>55</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" id="actuEvenement" placeholder="Description de l'événement..." class="modal-input" style="flex:1;margin:0;">
+                        <button class="btn-primary" onclick="submitEvent()">Ajouter</button>
+                    </div>
+                </div>
+                <div id="events-list"></div>
+            </div>
+        </div>
+
+        <!-- ===== VUE MP PERSONNAGES (Refonte) ===== -->
+        <div id="view-char-mp" class="view-section hidden">
+            <div class="char-mp-layout">
+
+                <!-- ── Sidebar gauche ── -->
+                <div class="char-mp-sidebar">
+                    <div class="char-mp-sidebar-header">
+                        <i class="fa-solid fa-comments"></i>
+                        <span>Messages Persos</span>
+                    </div>
+
+                    <!-- Bouton nouvelle conversation -->
+                    <button class="char-mp-new-btn" onclick="openNewConvModal()">
+                        <i class="fa-solid fa-plus"></i> Nouvelle conversation
+                    </button>
+
+                    <!-- Liste des conversations, groupées par MES persos -->
+                    <div id="char-mp-convo-list" class="char-mp-convo-list"></div>
+                </div>
+
+                <!-- ── Zone principale ── -->
+                <div class="char-mp-main">
+                    <!-- État vide -->
+                    <div class="char-mp-empty" id="char-mp-empty">
+                        <i class="fa-solid fa-comments"></i>
+                        <p>Sélectionne une conversation</p>
+                        <span>Ou clique sur <strong>+ Nouvelle conversation</strong> pour en démarrer une.</span>
+                    </div>
+
+                    <!-- Conversation active -->
+                    <div id="char-mp-convo" class="hidden" style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
+
+                        <!-- Header de la conv : mon perso → cible -->
+                        <div class="char-mp-convo-header">
+                            <div class="char-mp-header-mine">
+                                <img id="mpMySenderAvatar" src="" class="char-mp-header-avatar char-mp-avatar-mine">
+                                <div class="char-mp-header-info">
+                                    <div id="mpMySenderName" class="char-mp-header-name"></div>
+                                    <div id="mpMySenderRole" class="char-mp-header-role"></div>
+                                </div>
+                            </div>
+                            <div class="char-mp-header-arrow"><i class="fa-solid fa-right-left"></i></div>
+                            <div class="char-mp-header-theirs" onclick="openProfileFromMp()">
+                                <img id="mpTargetAvatar" src="" class="char-mp-header-avatar char-mp-avatar-target">
+                                <div class="char-mp-header-info" style="text-align:right;">
+                                    <div id="mpTargetName" class="char-mp-header-name"></div>
+                                    <div id="mpTargetRole" class="char-mp-header-role"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Messages -->
+                        <div id="char-mp-messages" class="char-mp-messages"></div>
+
+                        <!-- Zone d'envoi -->
+                        <div class="char-mp-input-bar">
+                            <img id="mpInputSenderAvatar" src="" class="char-mp-input-avatar">
+                            <input id="charMpInput" type="text" class="char-input" placeholder="Écrire en tant que…" style="flex:1;" onkeyup="if(event.key==='Enter')sendCharMpMessage()">
+                            <button class="btn-primary" onclick="sendCharMpMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modale Nouvelle Conversation -->
+        <div id="new-conv-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeNewConvModal()">
+            <div class="modal-box" style="max-width:420px;" onclick="event.stopPropagation()">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <h3 style="margin:0;color:white;font-family:var(--font-display);"><i class="fa-solid fa-plus" style="color:var(--accent);margin-right:8px;"></i>Nouvelle conversation</h3>
+                    <button onclick="closeNewConvModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
+                </div>
+                <label class="cfl" style="margin-bottom:4px;display:block;">Je joue ce personnage</label>
+                <select id="newConvMySender" class="char-mp-select" style="margin-bottom:14px;"></select>
+                <label class="cfl" style="margin-bottom:4px;display:block;">Envoyer à</label>
+                <div style="position:relative;">
+                    <input id="newConvSearch" class="char-mp-search-input" type="text" placeholder="Rechercher un personnage…" oninput="filterCharMpSearch(this.value)" autocomplete="off" onblur="setTimeout(()=>hideCharMpResults(),200)">
+                    <div id="newConvResults" class="char-mp-search-results hidden"></div>
+                </div>
+                <p style="font-size:0.75rem;color:var(--text-muted);margin:10px 0 0;">Tu peux aussi ouvrir une conversation depuis le profil d'un personnage.</p>
+            </div>
+        </div>
+
+        <!-- ===== [CITÉS] VUE ===== -->
+        <div id="view-cites" class="view-section hidden">
+
+            <!-- Panneau détail latéral -->
+            <div id="city-detail-overlay" class="modal-overlay hidden" onclick="closeCityDetail()"></div>
+            <div id="city-detail-panel" class="city-detail-panel">
+                <button onclick="closeCityDetail()" class="btn-close-profile"><i class="fa-solid fa-xmark"></i></button>
+
+                <div class="city-hero" id="cityDetailHero">
+                    <img id="cityDetailFlag" src="" class="city-detail-flag" style="display:none;" alt="drapeau">
+                    <div>
+                        <div class="city-hero-name" id="cityDetailName">—</div>
+                        <div class="city-hero-archipel" id="cityDetailArchipel">—</div>
+                    </div>
+                </div>
+
+                <div class="city-stats-row">
+                    <div class="city-stat-card">
+                        <div class="city-stat-value" id="cityDetailPop">—</div>
+                        <div class="city-stat-label"><i class="fa-solid fa-users"></i> Population</div>
+                    </div>
+                    <div class="city-stat-card city-stat-edc">
+                        <div class="city-stat-value" id="cityDetailEDC">—</div>
+                        <div class="city-stat-label">EDC</div>
+                        <div id="cityDetailEvol" class="city-edc-evol"></div>
+                    </div>
+                    <div class="city-stat-card">
+                        <div class="city-stat-value" id="cityDetailTrend">—</div>
+                        <div class="city-stat-label">Tendance</div>
+                    </div>
+                </div>
+
+                <div class="city-section">
+                    <div class="city-section-title"><i class="fa-solid fa-user-tie"></i> Dirigeant</div>
+                    <div class="city-president" id="cityDetailPresident">—</div>
+                </div>
+
+                <div class="city-section">
+                    <div class="city-section-title"><i class="fa-solid fa-chart-line"></i> Historique EDC</div>
+                    <div id="cityEDCChart" class="city-edc-chart"></div>
+                </div>
+
+                <!-- Panneau Admin -->
+                <div id="cityAdminPanel" class="city-admin-panel hidden">
+                    <div class="city-section-title" style="color:#f59e0b;"><i class="fa-solid fa-sliders"></i> Contrôle Admin</div>
+                    <input type="hidden" id="adminCityId">
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                        <div><label class="cfl">Président</label><input type="text" id="adminCityPresident" class="char-input" placeholder="Nom du perso..."></div>
+                        <div><label class="cfl">Population</label><input type="number" id="adminCityPop" class="char-input" placeholder="500000"></div>
+                    </div>
+                    <div style="margin-bottom:10px;">
+                        <label class="cfl">EDC de base (valeur brute en milliards)</label>
+                        <input type="number" id="adminCityEDC" class="char-input" placeholder="ex: 1000000000000">
+                    </div>
+
+                    <!-- Upload drapeau -->
+                    <div style="margin-bottom:12px;">
+                        <label class="cfl">Drapeau</label>
+                        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                            <img id="adminFlagPreview" src="" style="width:52px;height:34px;object-fit:cover;border-radius:4px;border:1px solid var(--border);display:none;" alt="flag">
+                            <label class="file-upload-label" style="flex:1;margin:0;"><span><i class="fa-solid fa-flag"></i> Choisir image</span><input type="file" id="adminFlagFile" accept="image/*" onchange="previewImg(this,'adminFlagPreview');document.getElementById('adminFlagPreview').style.display='block';"></label>
+                            <button id="adminFlagUploadBtn" class="btn-secondary" onclick="adminUploadFlag()" style="white-space:nowrap;padding:8px 12px;font-size:0.78rem;">📤 Uploader</button>
+                        </div>
+                    </div>
+
+                    <button class="btn-secondary full-width" style="margin-bottom:12px;" onclick="adminSaveCityInfo()"><i class="fa-solid fa-floppy-disk"></i> Enregistrer infos</button>
+
+                    <div class="city-trend-btns">
+                        <button class="city-trend-btn trend-up2"    onclick="adminApplyTrend('croissance_forte')"><i class="fa-solid fa-angles-up"></i> +1,5 %</button>
+                        <button class="city-trend-btn trend-up1"    onclick="adminApplyTrend('croissance')"><i class="fa-solid fa-angle-up"></i> +0,7 %</button>
+                        <button class="city-trend-btn trend-stable" onclick="adminApplyTrend('stable')"><i class="fa-solid fa-minus"></i> Stable (0 %)</button>
+                        <button class="city-trend-btn trend-down1"  onclick="adminApplyTrend('baisse')"><i class="fa-solid fa-angle-down"></i> −0,7 %</button>
+                        <button class="city-trend-btn trend-down2"  onclick="adminApplyTrend('chute')"><i class="fa-solid fa-angles-down"></i> −1,5 %</button>
+                    </div>
+                    <!-- Variation personnalisée -->
+                    <div class="city-custom-pct-row">
+                        <label class="cfl" style="white-space:nowrap;">Variation précise</label>
+                        <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+                            <input type="number" id="adminCustomPct" class="char-input" placeholder="ex: 3.5" min="-100" max="100" step="0.1" style="flex:1;text-align:center;">
+                            <span style="color:var(--text-muted);font-size:0.88rem;white-space:nowrap;">%</span>
+                            <button class="btn-primary" style="white-space:nowrap;padding:8px 12px;font-size:0.78rem;" onclick="adminApplyCustomPct()"><i class="fa-solid fa-percent"></i> Appliquer</button>
+                        </div>
+                        <div style="font-size:0.65rem;color:var(--text-muted);margin-top:4px;">Entre −100 et +100, décimales acceptées (ex: −2.5)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Grille principale -->
+            <div class="cites-main">
+                <div class="cites-header">
+                    <h2 class="cites-title"><i class="fa-solid fa-city"></i> Géopolitique — Cités</h2>
+                </div>
+                <div id="cites-grid-container"></div>
+            </div>
+        </div>
+        <!-- ===== [FIN CITÉS] ===== -->
+
+    </div>
+
+    <!-- [NOUVEAU] Modale Admin — Bandeau d'alerte -->
+    <div id="admin-alert-modal" class="modal-overlay hidden" onclick="closeAdminAlertModal()">
+        <div class="modal-box" style="max-width:400px;" onclick="event.stopPropagation()">
+            <h3 style="color:white;margin:0 0 16px;"><i class="fa-solid fa-triangle-exclamation"></i> Bandeau d'Alerte Global</h3>
+            <input type="text" id="alertMessage" class="modal-input" placeholder="Ex: Couvre-feu activé, Tempête radioactive...">
+            <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin:8px 0 4px;">Couleur :</label>
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
+                <button class="alert-color-btn" data-color="red" onclick="selectAlertColor('red')" style="background:#da373c;">🚨 Rouge</button>
+                <button class="alert-color-btn" data-color="orange" onclick="selectAlertColor('orange')" style="background:#f59e0b;">⚠️ Orange</button>
+                <button class="alert-color-btn" data-color="yellow" onclick="selectAlertColor('yellow')" style="background:#eab308;color:#000;">☢️ Jaune</button>
+                <button class="alert-color-btn" data-color="blue" onclick="selectAlertColor('blue')" style="background:#3b82f6;">🌊 Bleu</button>
+            </div>
+            <input type="hidden" id="alertColor" value="red">
+            <div style="display:flex;gap:8px;">
+                <button class="btn-primary" onclick="submitAlert(true)" style="flex:1;"><i class="fa-solid fa-broadcast-tower"></i> Activer</button>
+                <button class="btn-secondary" onclick="submitAlert(false)" style="flex:1;"><i class="fa-solid fa-xmark"></i> Désactiver</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [NOUVEAU] Modale — Message Crypté -->
+    <div id="crypto-modal" class="modal-overlay hidden" onclick="closeCryptoModal()">
+        <div class="modal-box" style="max-width:380px;" onclick="event.stopPropagation()">
+            <h3 style="color:var(--accent-soft);margin:0 0 12px;"><i class="fa-solid fa-lock"></i> Message Crypté</h3>
+            <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 12px;">Seuls ceux qui connaissent le mot de passe RP peuvent lire ce message.</p>
+            <textarea id="cryptoContent" rows="3" class="modal-input" placeholder="Votre message secret..." style="resize:none;width:100%;"></textarea>
+            <input type="text" id="cryptoPassword" class="modal-input" placeholder="Mot de passe RP (pour déchiffrer)">
+            <div style="display:flex;gap:8px;margin-top:10px;">
+                <button class="btn-primary" onclick="sendCryptoMessage()" style="flex:1;"><i class="fa-solid fa-paper-plane"></i> Envoyer</button>
+                <button class="btn-secondary" onclick="closeCryptoModal()">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [NOUVEAU] Modale — Déchiffrer -->
+    <div id="decrypt-modal" class="modal-overlay hidden" onclick="closeDecryptModal()">
+        <div class="modal-box" style="max-width:360px;" onclick="event.stopPropagation()">
+            <h3 style="color:var(--accent-soft);margin:0 0 12px;"><i class="fa-solid fa-unlock"></i> Déchiffrer le message</h3>
+            <input type="text" id="decryptPassword" class="modal-input" placeholder="Mot de passe RP..." onkeyup="if(event.key==='Enter') tryDecrypt()">
+            <input type="hidden" id="decryptMsgId">
+            <div style="display:flex;gap:8px;margin-top:10px;">
+                <button class="btn-primary" onclick="tryDecrypt()" style="flex:1;">Déchiffrer</button>
+                <button class="btn-secondary" onclick="closeDecryptModal()">Annuler</button>
+            </div>
+            <div id="decryptResult" style="margin-top:10px;font-size:0.88rem;"></div>
+        </div>
+    </div>
+
+    <!-- OMBRA MODAL -->
+    <div id="ombra-modal" class="modal-overlay hidden" style="z-index:9999;" onclick="handleOmbraOverlayClick(event)">
+        <div class="ombra-box" onclick="event.stopPropagation()">
+            <div class="ombra-header">
+                <div class="ombra-title"><span class="ombra-dot"></span> OMBRA</div>
+                <span style="font-size:0.7rem; color:#9b7fc7; letter-spacing:0.1em;">RÉSEAU CHIFFRÉ · ANONYME</span>
+                <button onclick="closeOmbra()" style="background:none; border:none; color:#6b4a9a; cursor:pointer; margin-left:auto; font-size:1.1rem;">✕</button>
+            </div>
+            <div id="ombra-messages"></div>
+            <div class="ombra-input-zone">
+                <input id="ombraInput" type="text" placeholder="Message chiffré..." autocomplete="off" onkeyup="if(event.key==='Enter') sendOmbraMessage()">
+                <button onclick="sendOmbraMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ==================== MODALE CRÉATION / MODIFICATION PERSONNAGE ==================== -->
+    <div id="char-modal" class="modal-overlay hidden" onclick="if(event.target===this) closeCharModal()">
+        <div class="char-modal-box" onclick="event.stopPropagation()">
+            <div class="char-modal-header">
+                <span id="char-modal-title" class="char-modal-title">Nouveau Personnage</span>
+                <button onclick="closeCharModal()" class="char-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="char-modal-body">
+
+                <!-- CRÉATION -->
+                <div id="char-modal-create">
+                    <div class="char-form-tabs">
+                        <button class="char-tab active" onclick="switchCharTab('create','identite')">Identité</button>
+                        <button class="char-tab" onclick="switchCharTab('create','parti')">Parti</button>
+                        <button class="char-tab" onclick="switchCharTab('create','entreprises')">Entreprises</button>
+                        <button class="char-tab" onclick="switchCharTab('create','capital')">Capital</button>
+                    </div>
+                    <div id="create-tab-identite" class="char-tab-content active-tab">
+                        <div class="char-form-row">
+                            <div style="flex:1"><label class="cfl">Nom *</label><input type="text" id="newCharName" class="char-input" placeholder="Ex: John Doe"></div>
+                            <div style="flex:1"><label class="cfl">Rôle *</label><input type="text" id="newCharRole" class="char-input" placeholder="Ex: Journaliste"></div>
+                        </div>
+                        <label class="cfl">Avatar</label>
+                        <div class="img-preview-row">
+                            <label class="file-upload-label" style="flex:1;"><span><i class="fa-solid fa-image"></i> Choisir une image</span><input type="file" id="newCharFile" accept="image/*" onchange="previewImg(this,'prev-newChar')"></label>
+                            <img id="prev-newChar" class="img-preview hidden" alt="preview">
+                        </div>
+                        <input type="hidden" id="newCharBase64">
+                        <label class="cfl" style="margin-top:10px;">Bio</label>
+                        <textarea id="newCharDesc" class="char-input" placeholder="Description..." rows="3" style="resize:vertical;"></textarea>
+                        <label class="cfl" style="margin-top:10px;">Couleur identitaire</label>
+                        <div style="display:flex;align-items:center;gap:10px;"><input type="color" id="newCharColor" value="#5c7cfa" style="width:48px;height:36px;border:none;border-radius:var(--radius-sm);cursor:pointer;padding:2px;"><span style="font-size:0.78rem;color:var(--text-muted);">Couleur du nom dans le chat</span></div>
+                    </div>
+                    <div id="create-tab-parti" class="char-tab-content">
+                        <label class="cfl">Nom du parti</label>
+                        <input type="text" id="newCharPartyName" class="char-input" placeholder="Ex: Parti de la République">
+                        <input type="hidden" id="newCharPartyBase64">
+                        <label class="cfl" style="margin-top:10px;">Logo du parti</label>
+                        <div class="img-preview-row">
+                            <label class="file-upload-label" style="flex:1;"><span><i class="fa-solid fa-flag"></i> Logo du Parti</span><input type="file" id="newCharPartyFile" accept="image/*" onchange="previewImg(this,'prev-newParty')"></label>
+                            <img id="prev-newParty" class="img-preview hidden" alt="preview">
+                        </div>
+                    </div>
+                    <div id="create-tab-entreprises" class="char-tab-content">
+                        <div id="newCharCompaniesList"></div>
+                        <div class="char-company-adder">
+                            <div class="char-form-row">
+                                <input type="text" id="newCompanyName" class="char-input" placeholder="Nom de l'entreprise">
+                                <input type="text" id="newCompanyRole" class="char-input" placeholder="Poste (ex: PDG)">
+                            </div>
+                            <label class="file-upload-label" style="margin-top:6px;"><span><i class="fa-solid fa-building"></i> Logo entreprise</span><input type="file" id="newCompanyLogoFile" accept="image/*"></label>
+                            <button type="button" onclick="addCompanyToNewChar()" class="btn-secondary" style="width:100%;margin-top:6px;"><i class="fa-solid fa-plus"></i> Ajouter cette entreprise</button>
+                        </div>
+                    </div>
+                    <div id="create-tab-capital" class="char-tab-content">
+                        <label class="cfl">💰 Capital financier de départ</label>
+                        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+                            <input type="number" id="newCharCapital" class="char-input" placeholder="0" min="0" style="flex:1;">
+                            <span style="color:var(--text-muted);font-size:0.88rem;white-space:nowrap;">crédits</span>
+                        </div>
+                    </div>
+                    <div class="char-modal-footer">
+                        <button onclick="closeCharModal()" class="btn-secondary">Annuler</button>
+                        <button onclick="createCharacter()" class="btn-primary"><i class="fa-solid fa-plus"></i> Créer le personnage</button>
+                    </div>
+                </div>
+
+                <!-- MODIFICATION -->
+                <div id="char-modal-edit" class="hidden">
+                    <input type="hidden" id="editCharId"><input type="hidden" id="editCharOriginalName">
+                    <input type="hidden" id="editCharBase64"><input type="hidden" id="editCharPartyBase64">
+                    <div class="char-form-tabs">
+                        <button class="char-tab active" onclick="switchCharTab('edit','identite')">Identité</button>
+                        <button class="char-tab" onclick="switchCharTab('edit','parti')">Parti</button>
+                        <button class="char-tab" onclick="switchCharTab('edit','entreprises')">Entreprises</button>
+                        <button class="char-tab" onclick="switchCharTab('edit','capital')">Capital</button>
+                    </div>
+                    <div id="edit-tab-identite" class="char-tab-content active-tab">
+                        <div class="char-form-row">
+                            <div style="flex:1"><label class="cfl">Nom *</label><input type="text" id="editCharName" class="char-input" placeholder="Nom"></div>
+                            <div style="flex:1"><label class="cfl">Rôle *</label><input type="text" id="editCharRole" class="char-input" placeholder="Rôle"></div>
+                        </div>
+                        <label class="cfl">Changer l'avatar</label>
+                        <div class="img-preview-row">
+                            <label class="file-upload-label" style="flex:1;"><span><i class="fa-solid fa-image"></i> Nouvelle image</span><input type="file" id="editCharFile" accept="image/*" onchange="previewImg(this,'prev-editChar')"></label>
+                            <img id="prev-editChar" class="img-preview" alt="preview">
+                        </div>
+                        <label class="cfl" style="margin-top:10px;">Bio</label>
+                        <textarea id="editCharDesc" class="char-input" rows="3" style="resize:vertical;" placeholder="Description..."></textarea>
+                        <label class="cfl" style="margin-top:10px;">Couleur</label>
+                        <input type="color" id="editCharColor" style="width:48px;height:36px;border:none;border-radius:var(--radius-sm);cursor:pointer;padding:2px;">
+                    </div>
+                    <div id="edit-tab-parti" class="char-tab-content">
+                        <label class="cfl">Nom du parti</label>
+                        <input type="text" id="editCharPartyName" class="char-input" placeholder="Parti politique">
+                        <label class="cfl" style="margin-top:10px;">Logo du parti</label>
+                        <div class="img-preview-row">
+                            <label class="file-upload-label" style="flex:1;"><span><i class="fa-solid fa-flag"></i> Changer le logo</span><input type="file" id="editCharPartyFile" accept="image/*" onchange="previewImg(this,'prev-editParty')"></label>
+                            <img id="prev-editParty" class="img-preview" alt="preview">
+                        </div>
+                    </div>
+                    <div id="edit-tab-entreprises" class="char-tab-content">
+                        <div id="editCharCompaniesList"></div>
+                        <div class="char-company-adder">
+                            <div class="char-form-row">
+                                <input type="text" id="editCompanyName" class="char-input" placeholder="Nom de l'entreprise">
+                                <input type="text" id="editCompanyRole" class="char-input" placeholder="Poste (ex: PDG)">
+                            </div>
+                            <label class="file-upload-label" style="margin-top:6px;"><span><i class="fa-solid fa-building"></i> Logo</span><input type="file" id="editCompanyLogoFile" accept="image/*"></label>
+                            <button type="button" onclick="addCompanyToEditChar()" class="btn-secondary" style="width:100%;margin-top:6px;"><i class="fa-solid fa-plus"></i> Ajouter</button>
+                        </div>
+                    </div>
+                    <div id="edit-tab-capital" class="char-tab-content">
+                        <label class="cfl">💰 Capital financier</label>
+                        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+                            <input type="number" id="editCharCapital" class="char-input" placeholder="0" min="0" style="flex:1;">
+                            <span style="color:var(--text-muted);font-size:0.88rem;white-space:nowrap;">crédits</span>
+                        </div>
+                    </div>
+                    <div class="char-modal-footer">
+                        <button onclick="cancelEditCharacter()" class="btn-secondary">Annuler</button>
+                        <button onclick="submitEditCharacter()" class="btn-primary"><i class="fa-solid fa-check"></i> Enregistrer</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script> 
+</body>
+</html>
+
 <div id="global-alert-banner" class="global-alert-banner hidden">
     <i class="fa-solid fa-triangle-exclamation"></i>
     <span id="global-alert-text"></span>
