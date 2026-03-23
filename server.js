@@ -630,18 +630,19 @@ io.on('connection', async (socket) => {
       socket.emit('cities_data', cities);
   });
 
-  socket.on('admin_update_city', async ({ cityId, president, population, baseEDC, trend, flag }) => {
+  socket.on('admin_update_city', async ({ cityId, president, population, baseEDC, trend, flag, customPct }) => {
       // Vérifier que l'expéditeur est admin
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
 
+      // Multiplicateurs réalistes (variations douces sur gros chiffres)
       const TREND_MULT = {
-          croissance_forte: 1.08,
-          croissance:       1.03,
-          stable:           1.00,
-          baisse:           0.97,
-          chute:            0.92
+          croissance_forte: 1.015,  // +1,5 %
+          croissance:       1.007,  // +0,7 %
+          stable:           1.000,  // 0 %
+          baisse:           0.993,  // -0,7 %
+          chute:            0.985   // -1,5 %
       };
 
       const city = await City.findById(cityId);
@@ -653,17 +654,26 @@ io.on('connection', async (socket) => {
 
       if(baseEDC !== undefined && baseEDC !== null) {
           city.baseEDC = Number(baseEDC);
-          // Enregistrer dans l'historique quand on change l'EDC de base
           city.historyEDC.push({ value: Number(baseEDC), date: new Date() });
           if(city.historyEDC.length > 30) city.historyEDC.shift();
       }
 
+      // Variation par tendance prédéfinie
       if(trend !== undefined && trend !== null) {
           city.trend = trend;
           const mult = TREND_MULT[trend] || 1;
           const newEDC = Math.round(city.baseEDC * mult);
           city.baseEDC = newEDC;
           city.historyEDC.push({ value: newEDC, date: new Date() });
+          if(city.historyEDC.length > 30) city.historyEDC.shift();
+      }
+
+      // Variation par pourcentage personnalisé
+      if(customPct !== undefined && customPct !== null) {
+          const mult = 1 + (Number(customPct) / 100);
+          const newEDC = Math.round(city.baseEDC * mult);
+          city.baseEDC = Math.max(0, newEDC);
+          city.historyEDC.push({ value: city.baseEDC, date: new Date() });
           if(city.historyEDC.length > 30) city.historyEDC.shift();
       }
 
