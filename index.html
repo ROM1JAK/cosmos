@@ -27,6 +27,8 @@
         </button>
         <button class="nav-btn" id="btn-view-presse" onclick="switchView('presse')"><i class="fa-solid fa-newspaper"></i> Presse</button>
         <button class="nav-btn" id="btn-view-actualites" onclick="switchView('actualites')"><i class="fa-solid fa-calendar-days"></i> Actualités</button>
+        <!-- [CITÉS] Bouton nav -->
+        <button class="nav-btn" id="btn-view-cites" onclick="switchView('cites')"><i class="fa-solid fa-city"></i> Cités</button>
         <button class="nav-btn" id="btn-notifs" onclick="openNotifications()" style="position:relative;">
             <i class="fa-solid fa-bell"></i>
             <span id="notif-badge" class="hidden"></span>
@@ -498,7 +500,87 @@
 
     </div>
 
-    <!-- [NOUVEAU] Modale Admin — Bandeau d'alerte -->
+    <!-- ========== [CITÉS] VUE PRINCIPALE ========== -->
+    <div id="view-cites" class="view-section hidden">
+
+        <!-- Panneau détail (latéral) -->
+        <div id="city-detail-overlay" class="modal-overlay hidden" onclick="closeCityDetail()"></div>
+        <div id="city-detail-panel" class="city-detail-panel">
+            <button onclick="closeCityDetail()" class="btn-close-profile" style="top:12px;right:12px;"><i class="fa-solid fa-xmark"></i></button>
+
+            <!-- Hero -->
+            <div class="city-hero" id="cityDetailHero">
+                <div class="city-hero-name" id="cityDetailName">—</div>
+                <div class="city-hero-archipel" id="cityDetailArchipel">—</div>
+            </div>
+
+            <!-- Stats rapides -->
+            <div class="city-stats-row">
+                <div class="city-stat-card">
+                    <div class="city-stat-value" id="cityDetailPop">—</div>
+                    <div class="city-stat-label">Population</div>
+                </div>
+                <div class="city-stat-card city-stat-edc">
+                    <div class="city-stat-value" id="cityDetailEDC">—</div>
+                    <div class="city-stat-label">EDC</div>
+                    <div id="cityDetailEvol" class="city-edc-evol"></div>
+                </div>
+                <div class="city-stat-card">
+                    <div class="city-stat-value" id="cityDetailTrend">—</div>
+                    <div class="city-stat-label">Tendance</div>
+                </div>
+            </div>
+
+            <!-- Info président -->
+            <div class="city-section">
+                <div class="city-section-title"><i class="fa-solid fa-user-tie"></i> Dirigeant</div>
+                <div class="city-president" id="cityDetailPresident">—</div>
+            </div>
+
+            <!-- Historique EDC mini-chart -->
+            <div class="city-section">
+                <div class="city-section-title"><i class="fa-solid fa-chart-line"></i> Historique EDC (7 dernières valeurs)</div>
+                <div id="cityEDCChart" class="city-edc-chart"></div>
+            </div>
+
+            <!-- Panneau Admin -->
+            <div id="cityAdminPanel" class="city-admin-panel hidden">
+                <div class="city-section-title" style="color:#f59e0b;"><i class="fa-solid fa-sliders"></i> Contrôle Admin</div>
+                <input type="hidden" id="adminCityId">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+                    <div>
+                        <label class="cfl">Président</label>
+                        <input type="text" id="adminCityPresident" class="char-input" placeholder="Nom du président">
+                    </div>
+                    <div>
+                        <label class="cfl">Population</label>
+                        <input type="number" id="adminCityPop" class="char-input" placeholder="500000">
+                    </div>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label class="cfl">EDC de base (valeur brute)</label>
+                    <input type="number" id="adminCityEDC" class="char-input" placeholder="1000000000">
+                </div>
+                <button class="btn-secondary full-width" style="margin-bottom:10px;" onclick="adminSaveCityInfo()"><i class="fa-solid fa-floppy-disk"></i> Enregistrer infos</button>
+                <div class="city-trend-btns">
+                    <button class="city-trend-btn trend-up2"   onclick="adminApplyTrend('croissance_forte')"><i class="fa-solid fa-angles-up"></i> Croissance Forte</button>
+                    <button class="city-trend-btn trend-up1"   onclick="adminApplyTrend('croissance')"><i class="fa-solid fa-angle-up"></i> Croissance Légère</button>
+                    <button class="city-trend-btn trend-stable" onclick="adminApplyTrend('stable')"><i class="fa-solid fa-minus"></i> Stable</button>
+                    <button class="city-trend-btn trend-down1" onclick="adminApplyTrend('baisse')"><i class="fa-solid fa-angle-down"></i> Baisse Légère</button>
+                    <button class="city-trend-btn trend-down2" onclick="adminApplyTrend('chute')"><i class="fa-solid fa-angles-down"></i> Chute Libre</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contenu principal : grille par archipel -->
+        <div class="cites-main">
+            <div class="cites-header">
+                <h2 class="cites-title"><i class="fa-solid fa-city"></i> Géopolitique — Cités</h2>
+            </div>
+            <div id="cites-grid-container"></div>
+        </div>
+    </div>
+    <!-- ========== [FIN CITÉS] ========== -->
     <div id="admin-alert-modal" class="modal-overlay hidden" onclick="closeAdminAlertModal()">
         <div class="modal-box" style="max-width:400px;" onclick="event.stopPropagation()">
             <h3 style="color:white;margin:0 0 16px;"><i class="fa-solid fa-triangle-exclamation"></i> Bandeau d'Alerte Global</h3>
