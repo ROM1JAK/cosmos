@@ -83,6 +83,7 @@ function switchView(view) {
     }
     if(view === 'presse') { loadPresse(); }
     if(view === 'actualites') { loadActualites(); updateActuAdminForm(); }
+    if(view === 'cites') { loadCities(); } // [CITÉS]
     if(view === 'char-mp') {
         // Effacer le badge de notif
         const badge = document.getElementById('char-mp-badge');
@@ -1947,3 +1948,208 @@ function renderEditCharCompanies() {
         </div>`).join('');
 }
 function removeEditCharCompany(i) { editCharCompanies.splice(i, 1); renderEditCharCompanies(); }
+
+// ==================== [CITÉS] SYSTÈME GÉOPOLITIQUE ====================
+
+let citiesData = []; // cache local de toutes les cités
+let currentCityId = null; // cité ouverte dans le panneau
+
+// --- Formatage EDC ---
+function formatEDC(value) {
+    // Arrondir à la centaine de mille la plus proche
+    const rounded = Math.round(value / 100000) * 100000;
+    // Formater avec espaces : 47 100 000
+    return rounded.toLocaleString('fr-FR').replace(/,/g, ' ');
+}
+
+function formatPop(value) {
+    return Math.round(value).toLocaleString('fr-FR').replace(/,/g, ' ');
+}
+
+// Calculer l'évolution % sur les 7 dernières valeurs
+function calcEDCEvolution(historyEDC) {
+    if(!historyEDC || historyEDC.length < 2) return null;
+    const recent = historyEDC.slice(-7);
+    const oldest = recent[0].value;
+    const newest = recent[recent.length - 1].value;
+    if(!oldest) return null;
+    const pct = ((newest - oldest) / oldest) * 100;
+    return pct;
+}
+
+// Libellé de tendance
+function trendLabel(trend) {
+    const map = {
+        croissance_forte: '📈 Croissance Forte',
+        croissance:       '↗ Croissance',
+        stable:           '→ Stable',
+        baisse:           '↘ Baisse',
+        chute:            '📉 Chute Libre'
+    };
+    return map[trend] || trend || '—';
+}
+function trendClass(trend) {
+    if(trend === 'croissance_forte' || trend === 'croissance') return 'trend-positive';
+    if(trend === 'baisse' || trend === 'chute') return 'trend-negative';
+    return 'trend-neutral';
+}
+
+// --- Charger les cités depuis le serveur ---
+function loadCities() {
+    socket.emit('request_cities');
+}
+
+socket.on('cities_data', (cities) => {
+    citiesData = cities;
+    renderCitiesGrid(cities);
+    // Mettre à jour le panneau si une cité est ouverte
+    if(currentCityId) {
+        const updated = cities.find(c => c._id === currentCityId);
+        if(updated) openCityDetail(updated);
+    }
+});
+
+// --- Rendu de la grille par archipel ---
+function renderCitiesGrid(cities) {
+    const container = document.getElementById('cites-grid-container');
+    if(!container) return;
+    container.innerHTML = '';
+
+    // Grouper par archipel
+    const groups = {};
+    cities.forEach(c => {
+        if(!groups[c.archipel]) groups[c.archipel] = [];
+        groups[c.archipel].push(c);
+    });
+
+    const ARCHIPORDER = ['Archipel Pacifique', 'Ancienne Archipel', 'Archipel Sableuse'];
+    ARCHIPORDER.forEach(archip => {
+        const group = groups[archip];
+        if(!group || !group.length) return;
+
+        const section = document.createElement('div');
+        section.className = 'cites-section';
+        section.innerHTML = `<div class="cites-section-title">${archip}</div>`;
+        const grid = document.createElement('div');
+        grid.className = 'cites-grid';
+
+        group.forEach(city => {
+            const evol = calcEDCEvolution(city.historyEDC);
+            const evolHTML = evol !== null
+                ? `<span class="city-card-evol ${evol >= 0 ? 'evol-pos' : 'evol-neg'}">${evol >= 0 ? '+' : ''}${evol.toFixed(1)}%</span>`
+                : '';
+            const card = document.createElement('div');
+            card.className = `city-card ${trendClass(city.trend)}`;
+            card.onclick = () => openCityDetail(city);
+            card.innerHTML = `
+                <div class="city-card-name">${city.name}</div>
+                <div class="city-card-edc">
+                    <span class="city-card-edc-label">EDC</span>
+                    <span class="city-card-edc-value">${formatEDC(city.baseEDC)}</span>
+                    ${evolHTML}
+                </div>
+                <div class="city-card-pop"><i class="fa-solid fa-users" style="font-size:0.65rem;opacity:0.6;"></i> ${formatPop(city.population)}</div>
+                <div class="city-card-trend ${trendClass(city.trend)}">${trendLabel(city.trend)}</div>
+            `;
+            grid.appendChild(card);
+        });
+
+        section.appendChild(grid);
+        container.appendChild(section);
+    });
+}
+
+// --- Ouvrir le panneau de détail ---
+function openCityDetail(city) {
+    currentCityId = city._id;
+    const overlay = document.getElementById('city-detail-overlay');
+    const panel = document.getElementById('city-detail-panel');
+    overlay.classList.remove('hidden');
+    overlay.onclick = closeCityDetail;
+    panel.classList.add('open');
+
+    // Hero
+    document.getElementById('cityDetailName').textContent = city.name;
+    document.getElementById('cityDetailArchipel').textContent = city.archipel;
+    // Couleur hero selon tendance
+    const heroEl = document.getElementById('cityDetailHero');
+    heroEl.className = `city-hero city-hero-${trendClass(city.trend)}`;
+
+    // Stats
+    document.getElementById('cityDetailPop').textContent = formatPop(city.population);
+    document.getElementById('cityDetailEDC').textContent = formatEDC(city.baseEDC);
+    document.getElementById('cityDetailPresident').textContent = city.president || 'Vacant';
+
+    // Tendance
+    const trendEl = document.getElementById('cityDetailTrend');
+    trendEl.textContent = trendLabel(city.trend);
+    trendEl.className = `city-stat-value ${trendClass(city.trend)}`;
+
+    // Évolution 7j
+    const evol = calcEDCEvolution(city.historyEDC);
+    const evolEl = document.getElementById('cityDetailEvol');
+    if(evol !== null) {
+        evolEl.textContent = `${evol >= 0 ? '▲ +' : '▼ '}${evol.toFixed(2)}% sur 7 valeurs`;
+        evolEl.className = `city-edc-evol ${evol >= 0 ? 'evol-pos' : 'evol-neg'}`;
+    } else {
+        evolEl.textContent = 'Données insuffisantes';
+        evolEl.className = 'city-edc-evol trend-neutral';
+    }
+
+    // Mini graphe bar chart
+    renderCityMiniChart(city.historyEDC);
+
+    // Panneau admin
+    const adminPanel = document.getElementById('cityAdminPanel');
+    if(IS_ADMIN) {
+        adminPanel.classList.remove('hidden');
+        document.getElementById('adminCityId').value = city._id;
+        document.getElementById('adminCityPresident').value = city.president || '';
+        document.getElementById('adminCityPop').value = city.population || '';
+        document.getElementById('adminCityEDC').value = city.baseEDC || '';
+    } else {
+        adminPanel.classList.add('hidden');
+    }
+}
+
+function closeCityDetail() {
+    document.getElementById('city-detail-overlay').classList.add('hidden');
+    document.getElementById('city-detail-panel').classList.remove('open');
+    currentCityId = null;
+}
+
+// Mini bar chart de l'historique EDC
+function renderCityMiniChart(historyEDC) {
+    const chart = document.getElementById('cityEDCChart');
+    if(!chart) return;
+    const data = (historyEDC || []).slice(-7);
+    if(!data.length) { chart.innerHTML = '<span style="color:var(--text-muted);font-size:0.78rem;">Aucun historique.</span>'; return; }
+    const maxVal = Math.max(...data.map(d => d.value));
+    const minVal = Math.min(...data.map(d => d.value));
+    const range = maxVal - minVal || 1;
+    chart.innerHTML = data.map((d, i) => {
+        const pct = Math.max(10, ((d.value - minVal) / range) * 100);
+        const isLast = i === data.length - 1;
+        return `<div class="chart-bar-wrap" title="${formatEDC(d.value)}">
+            <div class="chart-bar ${isLast ? 'chart-bar-last' : ''}" style="height:${pct}%"></div>
+            <div class="chart-bar-label">${i + 1}</div>
+        </div>`;
+    }).join('');
+}
+
+// --- Admin : enregistrer infos ---
+function adminSaveCityInfo() {
+    const id        = document.getElementById('adminCityId').value;
+    const president = document.getElementById('adminCityPresident').value.trim();
+    const pop       = parseFloat(document.getElementById('adminCityPop').value) || undefined;
+    const edc       = parseFloat(document.getElementById('adminCityEDC').value) || undefined;
+    socket.emit('admin_update_city', { cityId: id, president, population: pop, baseEDC: edc });
+}
+
+// --- Admin : appliquer une tendance ---
+function adminApplyTrend(trend) {
+    const id = document.getElementById('adminCityId').value;
+    if(!id) return;
+    socket.emit('admin_update_city', { cityId: id, trend });
+}
+// ==================== [FIN CITÉS] ====================
