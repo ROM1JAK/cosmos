@@ -851,3 +851,9 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
     .city-hero-name { font-size: 1.3rem; }
 }
 /* ==================== [FIN CITÉS] ==================== */
+
+/* EDC valeur entière dans le panneau détail */
+.city-edc-full { font-size: 0.6rem; color: var(--text-muted); font-weight: 400; font-family: var(--font-main); margin-top: 2px; letter-spacing: 0; word-break: break-all; }
+
+/* Variation % personnalisée */
+.city-custom-pct-row { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
