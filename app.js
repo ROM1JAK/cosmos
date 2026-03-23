@@ -82,6 +82,21 @@ function switchView(view) {
     }
     if(view === 'presse') { loadPresse(); }
     if(view === 'actualites') { loadActualites(); updateActuAdminForm(); }
+    if(view === 'char-mp') {
+        document.getElementById('char-mp-badge').classList.add('hidden');
+        renderCharMpContacts();
+    }
+}
+
+// Prévisualisation image upload
+function previewImg(input, previewId) {
+    const preview = document.getElementById(previewId);
+    if(!preview) return;
+    if(input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = e => { preview.src = e.target.result; preview.classList.remove('hidden'); };
+        reader.readAsDataURL(input.files[0]);
+    }
 }
 
 async function toggleRecording(source) { 
@@ -256,24 +271,35 @@ function sendOmbraMessage() {
     const input = document.getElementById('ombraInput');
     const content = input.value.trim();
     if(!content) return;
-    socket.emit('ombra_message', { alias: ombraAlias, content, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) });
+    socket.emit('ombra_message', { alias: ombraAlias, content, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), ownerId: PLAYER_ID });
     input.value = '';
 }
-function appendOmbraMessage(alias, content, date, isSelf) {
+function appendOmbraMessage(msgId, alias, content, date, isSelf) {
     const messages = document.getElementById('ombra-messages');
     const div = document.createElement('div');
     div.className = `ombra-msg ${isSelf ? 'ombra-self' : ''}`;
-    div.innerHTML = `<span class="ombra-alias">${alias}</span><span class="ombra-content">${escapeHtml(content)}</span><span class="ombra-time">${date}</span>`;
+    div.id = `ombra-msg-${msgId}`;
+    const canDelete = isSelf || IS_ADMIN;
+    const delBtn = canDelete ? `<button class="ombra-del-btn" onclick="deleteOmbraMessage('${msgId}')" title="Supprimer"><i class="fa-solid fa-trash"></i></button>` : '';
+    div.innerHTML = `<span class="ombra-alias">${alias}</span><span class="ombra-content">${escapeHtml(content)}</span><span class="ombra-time">${date}</span>${delBtn}`;
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
 }
+function deleteOmbraMessage(msgId) {
+    if(!confirm('Supprimer ce message ?')) return;
+    socket.emit('ombra_delete_message', { msgId, requesterId: PLAYER_ID });
+}
 function escapeHtml(text) { const d = document.createElement('div'); d.appendChild(document.createTextNode(text)); return d.innerHTML; }
 
-socket.on('ombra_message', (data) => { appendOmbraMessage(data.alias, data.content, data.date, data.alias === ombraAlias); });
+socket.on('ombra_message', (data) => { appendOmbraMessage(data._id, data.alias, data.content, data.date, data.alias === ombraAlias); });
 socket.on('ombra_history', (history) => {
     const messages = document.getElementById('ombra-messages');
     messages.innerHTML = '';
-    history.forEach(m => appendOmbraMessage(m.alias, m.content, m.date, m.alias === ombraAlias));
+    history.forEach(m => appendOmbraMessage(m._id, m.alias, m.content, m.date, m.alias === ombraAlias));
+});
+socket.on('ombra_message_deleted', (msgId) => {
+    const el = document.getElementById(`ombra-msg-${msgId}`);
+    if(el) el.remove();
 });
 
 socket.on('login_success', (data) => {
@@ -301,9 +327,39 @@ function checkAutoLogin() {
 
 socket.on('connect', () => { checkAutoLogin(); setupEmojiPicker(); });
 socket.on('update_user_list', (users) => {
-    allOnlineUsers = users; const listDiv = document.getElementById('online-users-list');
-    document.getElementById('online-count').textContent = users.length; listDiv.innerHTML = "";
-    users.forEach(u => listDiv.innerHTML += `<div class="online-user" onclick="startDmFromList('${u}')"><span class="status-dot"></span><span>${u}</span></div>`);
+    allOnlineUsers = users;
+    document.getElementById('online-count').textContent = users.length;
+    // Demander la liste des persos en ligne pour la sidebar droite
+    socket.emit('request_all_chars_online');
+});
+
+socket.on('all_chars_online', (chars) => {
+    const listDiv = document.getElementById('online-users-list');
+    if(!listDiv) return;
+    listDiv.innerHTML = '';
+    if(chars.length === 0) {
+        listDiv.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:0.8rem;font-style:italic;">Aucun personnage en ligne</div>';
+        return;
+    }
+    // Grouper par owner
+    const byOwner = {};
+    chars.forEach(c => {
+        if(!byOwner[c.ownerUsername]) byOwner[c.ownerUsername] = [];
+        byOwner[c.ownerUsername].push(c);
+    });
+    Object.entries(byOwner).forEach(([owner, ownerChars]) => {
+        listDiv.innerHTML += `<div class="online-user-group-label">${owner}</div>`;
+        ownerChars.forEach(char => {
+            listDiv.innerHTML += `<div class="online-char-item" onclick="openProfile('${char.name.replace(/'/g, "\\'")}')">
+                <img src="${char.avatar}" class="online-char-avatar">
+                <div class="online-char-info">
+                    <span class="online-char-name" style="color:${char.color||'var(--text-normal)'};">${char.name}</span>
+                    <span class="online-char-role">${char.role}</span>
+                </div>
+                <span class="status-dot"></span>
+            </div>`;
+        });
+    });
 });
 socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId && !currentDmTarget) socket.emit('request_history', currentRoomId); });
 
@@ -582,7 +638,18 @@ function updateBreakingNewsVisibility() {
 let currentProfileChar = null;
 
 function openProfile(name) { 
-    document.getElementById('profile-overlay').classList.remove('hidden'); 
+    currentProfileChar = null;
+    // Reset immédiat pour éviter l'affichage du profil précédent
+    ['profileName','profileRole','profileDesc','profileOwner','profileFollowersCount','profilePostCount'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent = id.includes('Count') ? '0' : '...'; });
+    const av=document.getElementById('profileAvatar'); if(av) av.src='';
+    const pb=document.getElementById('profilePartyBadge'); if(pb) pb.style.display='none';
+    const af=document.getElementById('profileActivityFeed'); if(af) af.innerHTML='<div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">Chargement...</div>';
+    const cg=document.getElementById('profileCompaniesGrid'); if(cg) cg.innerHTML='';
+    const cs=document.getElementById('profileCompaniesSection'); if(cs) cs.style.display='none';
+    closeBioEdit();
+    const overlay = document.getElementById('profile-overlay');
+    overlay.classList.remove('hidden');
+    overlay.onclick = closeProfileModal; // Cliquer dans le vide = fermer
     document.getElementById('profile-slide-panel').classList.add('open');
     socket.emit('get_char_profile', name); 
 }
@@ -814,85 +881,10 @@ function submitAdminStats() {
 }
 
 // ==================== DM ENTRE PERSONNAGES ====================
-let charDmTarget = null; // { _id, name, avatar, ownerId, ownerUsername }
-
-function openCharDmModal(targetChar) {
-    charDmTarget = targetChar;
-    document.getElementById('charDmTargetAvatar').src = targetChar.avatar || '';
-    document.getElementById('charDmTargetName').textContent = targetChar.name;
-    // Remplir sélecteur de perso émetteur
-    const sel = document.getElementById('charDmSenderSelect');
-    sel.innerHTML = myCharacters.map(c => `<option value="${c._id}">${c.name}</option>`).join('');
-    // Charger l'historique pour le premier perso
-    loadCharDmHistory();
-    document.getElementById('char-dm-modal').classList.remove('hidden');
-    // Recharger quand on change de perso émetteur
-    sel.onchange = loadCharDmHistory;
-}
-function closeCharDmModal() { document.getElementById('char-dm-modal').classList.add('hidden'); charDmTarget = null; }
-
-function loadCharDmHistory() {
-    if(!charDmTarget) return;
-    const sel = document.getElementById('charDmSenderSelect');
-    const senderCharId = sel.value;
-    socket.emit('request_char_dm_history', { senderCharId, targetCharId: charDmTarget._id });
-}
-
-function sendCharDm() {
-    if(!charDmTarget || !PLAYER_ID) return;
-    const content = document.getElementById('charDmInput').value.trim();
-    if(!content) return;
-    const sel = document.getElementById('charDmSenderSelect');
-    const senderChar = myCharacters.find(c => c._id === sel.value);
-    if(!senderChar) return;
-    socket.emit('send_char_dm', {
-        senderCharId: senderChar._id, senderCharName: senderChar.name,
-        senderAvatar: senderChar.avatar, senderColor: senderChar.color, senderRole: senderChar.role,
-        senderOwnerUsername: USERNAME,
-        targetCharId: charDmTarget._id, targetCharName: charDmTarget.name,
-        targetOwnerId: charDmTarget.ownerId, targetOwnerUsername: charDmTarget.ownerUsername,
-        ownerId: PLAYER_ID, content,
-        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
-    });
-    document.getElementById('charDmInput').value = '';
-}
-
-socket.on('char_dm_history', ({ msgs }) => {
-    const c = document.getElementById('char-dm-messages');
-    if(!c) return;
-    c.innerHTML = '';
-    const sel = document.getElementById('charDmSenderSelect');
-    const myCharId = sel ? sel.value : null;
-    msgs.forEach(m => appendCharDmMsg(m, myCharId));
-    c.scrollTop = c.scrollHeight;
-});
-
-socket.on('receive_char_dm', (msg) => {
-    const modal = document.getElementById('char-dm-modal');
-    if(!modal.classList.contains('hidden') && charDmTarget) {
-        const sel = document.getElementById('charDmSenderSelect');
-        const myCharId = sel ? sel.value : null;
-        const sameConv = (msg.senderCharId === charDmTarget._id || msg.targetCharId === charDmTarget._id);
-        if(sameConv) { appendCharDmMsg(msg, myCharId); const c = document.getElementById('char-dm-messages'); c.scrollTop = c.scrollHeight; }
-    }
-    if(notificationsEnabled && msg.ownerId !== PLAYER_ID) notifSound.play().catch(()=>{});
-});
-
-function appendCharDmMsg(msg, myCharId) {
-    const c = document.getElementById('char-dm-messages');
-    if(!c) return;
-    const isSelf = msg.senderCharId === myCharId || msg.ownerId === PLAYER_ID;
-    const div = document.createElement('div');
-    div.className = `char-dm-msg ${isSelf ? 'char-dm-self' : ''}`;
-    div.innerHTML = `
-        <img src="${msg.senderAvatar || ''}" class="char-dm-avatar" title="${msg.senderName}">
-        <div class="char-dm-bubble">
-            <span class="char-dm-sender" style="color:${msg.senderColor||'var(--accent)'};">${msg.senderName}</span>
-            <span class="char-dm-text">${formatText(msg.content)}</span>
-            <span class="char-dm-time">${msg.date}</span>
-        </div>`;
-    c.appendChild(div);
-}
+// Les fonctions openCharDmModal, closeCharDmModal, loadCharDmHistory, sendCharDm,
+// appendCharDmMsg, char_dm_history, receive_char_dm sont définies plus bas
+// dans la section "VUE MP PERSONNAGES" avec charMpConversations
+let charDmTarget = null;
 
 socket.on('followers_list_data', (followers) => {
     const listDiv = document.getElementById('followers-list-container'); listDiv.innerHTML = "";
@@ -1681,3 +1673,221 @@ function renderEditCharCompanies() {
         </div>`).join('');
 }
 function removeEditCharCompany(i) { editCharCompanies.splice(i, 1); renderEditCharCompanies(); }
+
+// ==================== VUE MP PERSONNAGES (Discord-style) ====================
+// Stockage des conversations perso : clé = targetCharId, valeur = { char, msgs }
+let charMpConversations = {};   // { charId: { char: {...}, msgs: [] } }
+let charMpCurrentTarget = null; // charId actuellement ouvert
+
+// Quand on ouvre la vue MP Personnages
+function renderCharMpContacts() {
+    const list = document.getElementById('char-mp-contacts');
+    if(!list) return;
+    const convos = Object.values(charMpConversations);
+    if(convos.length === 0) {
+        list.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:0.82rem;text-align:center;font-style:italic;">Aucune conversation.<br>Envoie un message depuis<br>le profil d\'un personnage.</div>';
+        return;
+    }
+    list.innerHTML = convos.map(({ char }) => {
+        const isActive = charMpCurrentTarget === char._id;
+        return `<div class="char-mp-contact-item ${isActive ? 'active' : ''}" onclick="openCharMpConvo('${char._id}')">
+            <img src="${char.avatar}" class="char-mp-contact-avatar">
+            <div class="char-mp-contact-info">
+                <span class="char-mp-contact-name" style="color:${char.color||'white'}">${char.name}</span>
+                <span class="char-mp-contact-role">${char.role}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function openCharMpConvo(targetCharId) {
+    charMpCurrentTarget = targetCharId;
+    const convo = charMpConversations[targetCharId];
+    if(!convo) return;
+
+    // Afficher la zone conversation
+    document.getElementById('char-mp-empty').classList.add('hidden');
+    const convoEl = document.getElementById('char-mp-convo');
+    convoEl.classList.remove('hidden');
+    convoEl.style.display = 'flex';
+
+    // Header
+    document.getElementById('charMpTargetAvatar').src = convo.char.avatar || '';
+    document.getElementById('charMpTargetName').textContent = convo.char.name;
+    document.getElementById('charMpTargetRole').textContent = convo.char.role || '';
+
+    // Sélecteur personnage émetteur
+    const sel = document.getElementById('charMpSenderSelect');
+    sel.innerHTML = myCharacters.map(c => `<option value="${c._id}">${c.name}</option>`).join('');
+    sel.onchange = () => loadCharMpHistory(targetCharId);
+
+    // Charger l'historique
+    loadCharMpHistory(targetCharId);
+    renderCharMpContacts();
+}
+
+function loadCharMpHistory(targetCharId) {
+    const sel = document.getElementById('charMpSenderSelect');
+    const senderCharId = sel ? sel.value : (myCharacters[0] ? myCharacters[0]._id : null);
+    if(!senderCharId || !targetCharId) return;
+    socket.emit('request_char_dm_history', { senderCharId, targetCharId });
+}
+
+function sendCharMpMessage() {
+    if(!charMpCurrentTarget || !PLAYER_ID) return;
+    const content = document.getElementById('charMpInput').value.trim();
+    if(!content) return;
+    const sel = document.getElementById('charMpSenderSelect');
+    const senderChar = myCharacters.find(c => c._id === sel.value);
+    if(!senderChar) return;
+    const convo = charMpConversations[charMpCurrentTarget];
+    if(!convo) return;
+    socket.emit('send_char_dm', {
+        senderCharId: senderChar._id, senderCharName: senderChar.name,
+        senderAvatar: senderChar.avatar, senderColor: senderChar.color, senderRole: senderChar.role,
+        senderOwnerUsername: USERNAME,
+        targetCharId: charMpCurrentTarget, targetCharName: convo.char.name,
+        targetOwnerId: convo.char.ownerId, targetOwnerUsername: convo.char.ownerUsername,
+        ownerId: PLAYER_ID, content,
+        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+    });
+    document.getElementById('charMpInput').value = '';
+}
+
+function appendCharMpMsg(msg) {
+    const c = document.getElementById('char-mp-messages');
+    if(!c) return;
+    const sel = document.getElementById('charMpSenderSelect');
+    const myCharId = sel ? sel.value : null;
+    const isSelf = msg.senderCharId === myCharId || msg.ownerId === PLAYER_ID;
+    const div = document.createElement('div');
+    div.className = `char-dm-msg ${isSelf ? 'char-dm-self' : ''}`;
+    div.innerHTML = `
+        <img src="${msg.senderAvatar||''}" class="char-dm-avatar" title="${msg.senderName}">
+        <div class="char-dm-bubble">
+            <span class="char-dm-sender" style="color:${msg.senderColor||'var(--accent)'};">${msg.senderName}</span>
+            <span class="char-dm-text">${formatText(msg.content)}</span>
+            <span class="char-dm-time">${msg.date}</span>
+        </div>`;
+    c.appendChild(div);
+    c.scrollTop = c.scrollHeight;
+}
+
+// Quand on reçoit l'historique
+socket.on('char_dm_history', ({ msgs }) => {
+    // Mettre à jour la modale classique (si ouverte)
+    const modal = document.getElementById('char-dm-modal');
+    if(!modal.classList.contains('hidden')) {
+        const c = document.getElementById('char-dm-messages');
+        if(c) { c.innerHTML = ''; const sel = document.getElementById('charDmSenderSelect'); const myCharId = sel ? sel.value : null; msgs.forEach(m => appendCharDmMsg(m, myCharId)); c.scrollTop = c.scrollHeight; }
+    }
+    // Mettre à jour la vue MP Personnages si active
+    if(currentView === 'char-mp' && charMpCurrentTarget) {
+        const c = document.getElementById('char-mp-messages');
+        if(c) { c.innerHTML = ''; msgs.forEach(m => appendCharMpMsg(m)); }
+    }
+});
+
+// Réception d'un nouveau message perso
+socket.on('receive_char_dm', (msg) => {
+    const isForMe = msg.targetOwnerId === PLAYER_ID || msg.ownerId === PLAYER_ID;
+    if(!isForMe) return;
+
+    // Identifier l'interlocuteur (pas moi)
+    const otherCharId = msg.ownerId === PLAYER_ID ? msg.targetCharId : msg.senderCharId;
+    const otherName = msg.ownerId === PLAYER_ID ? msg.targetName : msg.senderName;
+    const otherAvatar = msg.ownerId === PLAYER_ID ? '' : (msg.senderAvatar || '');
+    const otherColor = msg.ownerId === PLAYER_ID ? 'var(--text-normal)' : (msg.senderColor || 'var(--text-normal)');
+    const otherRole = msg.ownerId === PLAYER_ID ? '' : (msg.senderRole || '');
+    const otherOwnerId = msg.ownerId === PLAYER_ID ? msg.targetOwnerId : msg.ownerId;
+    const otherOwnerUsername = msg.ownerId === PLAYER_ID ? (msg.targetOwnerUsername || '') : (msg.senderOwnerUsername || '');
+
+    // Enregistrer la conversation si nouvelle
+    if(!charMpConversations[otherCharId]) {
+        charMpConversations[otherCharId] = {
+            char: { _id: otherCharId, name: otherName, avatar: otherAvatar, color: otherColor, role: otherRole, ownerId: otherOwnerId, ownerUsername: otherOwnerUsername },
+            msgs: []
+        };
+    }
+    charMpConversations[otherCharId].msgs.push(msg);
+
+    // Afficher dans la vue MP si c'est la conversation ouverte
+    if(currentView === 'char-mp' && charMpCurrentTarget === otherCharId) {
+        appendCharMpMsg(msg);
+    } else {
+        // Badge de notif
+        const badge = document.getElementById('char-mp-badge');
+        if(badge) { badge.textContent = '●'; badge.classList.remove('hidden'); }
+    }
+
+    // Aussi pour la modale classique si ouverte sur ce perso
+    const modal = document.getElementById('char-dm-modal');
+    if(!modal.classList.contains('hidden') && charDmTarget && charDmTarget._id === otherCharId) {
+        const sel = document.getElementById('charDmSenderSelect');
+        const myCharId = sel ? sel.value : null;
+        appendCharDmMsg(msg, myCharId);
+        const c = document.getElementById('char-dm-messages');
+        if(c) c.scrollTop = c.scrollHeight;
+    }
+
+    if(notificationsEnabled && msg.ownerId !== PLAYER_ID) notifSound.play().catch(()=>{});
+});
+
+// openCharDmModal stocke aussi dans charMpConversations
+function openCharDmModal(targetChar) {
+    charDmTarget = targetChar;
+    // Enregistrer la conversation pour la vue MP
+    if(!charMpConversations[targetChar._id]) {
+        charMpConversations[targetChar._id] = { char: targetChar, msgs: [] };
+        renderCharMpContacts();
+    }
+    document.getElementById('charDmTargetAvatar').src = targetChar.avatar || '';
+    document.getElementById('charDmTargetName').textContent = targetChar.name;
+    const sel = document.getElementById('charDmSenderSelect');
+    sel.innerHTML = myCharacters.map(c => `<option value="${c._id}">${c.name}</option>`).join('');
+    loadCharDmHistory();
+    document.getElementById('char-dm-modal').classList.remove('hidden');
+    sel.onchange = loadCharDmHistory;
+}
+function closeCharDmModal() { document.getElementById('char-dm-modal').classList.add('hidden'); charDmTarget = null; }
+
+function loadCharDmHistory() {
+    if(!charDmTarget) return;
+    const sel = document.getElementById('charDmSenderSelect');
+    socket.emit('request_char_dm_history', { senderCharId: sel.value, targetCharId: charDmTarget._id });
+}
+
+function sendCharDm() {
+    if(!charDmTarget || !PLAYER_ID) return;
+    const content = document.getElementById('charDmInput').value.trim();
+    if(!content) return;
+    const sel = document.getElementById('charDmSenderSelect');
+    const senderChar = myCharacters.find(c => c._id === sel.value);
+    if(!senderChar) return;
+    socket.emit('send_char_dm', {
+        senderCharId: senderChar._id, senderCharName: senderChar.name,
+        senderAvatar: senderChar.avatar, senderColor: senderChar.color, senderRole: senderChar.role,
+        senderOwnerUsername: USERNAME,
+        targetCharId: charDmTarget._id, targetCharName: charDmTarget.name,
+        targetOwnerId: charDmTarget.ownerId, targetOwnerUsername: charDmTarget.ownerUsername,
+        ownerId: PLAYER_ID, content,
+        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+    });
+    document.getElementById('charDmInput').value = '';
+}
+
+function appendCharDmMsg(msg, myCharId) {
+    const c = document.getElementById('char-dm-messages');
+    if(!c) return;
+    const isSelf = msg.senderCharId === myCharId || msg.ownerId === PLAYER_ID;
+    const div = document.createElement('div');
+    div.className = `char-dm-msg ${isSelf ? 'char-dm-self' : ''}`;
+    div.innerHTML = `
+        <img src="${msg.senderAvatar||''}" class="char-dm-avatar" title="${msg.senderName}">
+        <div class="char-dm-bubble">
+            <span class="char-dm-sender" style="color:${msg.senderColor||'var(--accent)'};">${msg.senderName}</span>
+            <span class="char-dm-text">${formatText(msg.content)}</span>
+            <span class="char-dm-time">${msg.date}</span>
+        </div>`;
+    c.appendChild(div);
+}
