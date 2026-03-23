@@ -568,11 +568,21 @@
                     <button class="btn-secondary full-width" style="margin-bottom:12px;" onclick="adminSaveCityInfo()"><i class="fa-solid fa-floppy-disk"></i> Enregistrer infos</button>
 
                     <div class="city-trend-btns">
-                        <button class="city-trend-btn trend-up2"    onclick="adminApplyTrend('croissance_forte')"><i class="fa-solid fa-angles-up"></i> Croissance Forte</button>
-                        <button class="city-trend-btn trend-up1"    onclick="adminApplyTrend('croissance')"><i class="fa-solid fa-angle-up"></i> Croissance Légère</button>
-                        <button class="city-trend-btn trend-stable" onclick="adminApplyTrend('stable')"><i class="fa-solid fa-minus"></i> Stable</button>
-                        <button class="city-trend-btn trend-down1"  onclick="adminApplyTrend('baisse')"><i class="fa-solid fa-angle-down"></i> Baisse Légère</button>
-                        <button class="city-trend-btn trend-down2"  onclick="adminApplyTrend('chute')"><i class="fa-solid fa-angles-down"></i> Chute Libre</button>
+                        <button class="city-trend-btn trend-up2"    onclick="adminApplyTrend('croissance_forte')"><i class="fa-solid fa-angles-up"></i> +1,5 %</button>
+                        <button class="city-trend-btn trend-up1"    onclick="adminApplyTrend('croissance')"><i class="fa-solid fa-angle-up"></i> +0,7 %</button>
+                        <button class="city-trend-btn trend-stable" onclick="adminApplyTrend('stable')"><i class="fa-solid fa-minus"></i> Stable (0 %)</button>
+                        <button class="city-trend-btn trend-down1"  onclick="adminApplyTrend('baisse')"><i class="fa-solid fa-angle-down"></i> −0,7 %</button>
+                        <button class="city-trend-btn trend-down2"  onclick="adminApplyTrend('chute')"><i class="fa-solid fa-angles-down"></i> −1,5 %</button>
+                    </div>
+                    <!-- Variation personnalisée -->
+                    <div class="city-custom-pct-row">
+                        <label class="cfl" style="white-space:nowrap;">Variation précise</label>
+                        <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+                            <input type="number" id="adminCustomPct" class="char-input" placeholder="ex: 3.5" min="-100" max="100" step="0.1" style="flex:1;text-align:center;">
+                            <span style="color:var(--text-muted);font-size:0.88rem;white-space:nowrap;">%</span>
+                            <button class="btn-primary" style="white-space:nowrap;padding:8px 12px;font-size:0.78rem;" onclick="adminApplyCustomPct()"><i class="fa-solid fa-percent"></i> Appliquer</button>
+                        </div>
+                        <div style="font-size:0.65rem;color:var(--text-muted);margin-top:4px;">Entre −100 et +100, décimales acceptées (ex: −2.5)</div>
                     </div>
                 </div>
             </div>
