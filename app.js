@@ -1965,22 +1965,31 @@ function removeEditCharCompany(i) { editCharCompanies.splice(i, 1); renderEditCh
 let citiesData = [];      // cache local
 let currentCityId = null; // cité ouverte dans le panneau
 
-// --- Formatage ---
-// EDC en milliers de milliards : 1 000 000 000 000 = 1 000 Mds → afficher "1 000 Mds"
+// --- Formatage abrégé (cartes + stats) ---
+// EDC : en MMd (milliers de milliards = 10^12) ou Md (milliards = 10^9)
 function formatEDC(value) {
-    if(!value && value !== 0) return '—';
-    // Arrondir à la centaine de milliards (100 000 000 000) la plus proche
-    const rounded = Math.round(value / 100000000000) * 100000000000;
-    const billions = rounded / 1000000000; // en milliards
-    if(billions >= 1000) {
-        const thousands = billions / 1000;
-        return `${thousands.toLocaleString('fr-FR', {maximumFractionDigits: 1})} Bn Mds`;
-    }
-    return `${billions.toLocaleString('fr-FR', {maximumFractionDigits: 1})} Mds`;
+    if(value == null) return '—';
+    const abs = Math.abs(value);
+    if(abs >= 1e15)       return `${(value/1e15).toLocaleString('fr-FR',{maximumFractionDigits:2})} Qd`;   // quadrillions
+    if(abs >= 1e12)       return `${(value/1e12).toLocaleString('fr-FR',{maximumFractionDigits:2})} MMd`;  // milliers de milliards
+    if(abs >= 1e9)        return `${(value/1e9).toLocaleString('fr-FR',{maximumFractionDigits:2})} Md`;    // milliards
+    if(abs >= 1e6)        return `${(value/1e6).toLocaleString('fr-FR',{maximumFractionDigits:2})} M`;     // millions
+    return value.toLocaleString('fr-FR', {maximumFractionDigits:0});
 }
 
+// EDC valeur entière complète (panneau de détail)
+function formatEDCFull(value) {
+    if(value == null) return '—';
+    return Math.round(value).toLocaleString('fr-FR');
+}
+
+// Population avec abréviations : 175 100 000 → 175,1 M
 function formatPop(value) {
-    if(!value && value !== 0) return '—';
+    if(value == null) return '—';
+    const abs = Math.abs(value);
+    if(abs >= 1e9)  return `${(value/1e9).toLocaleString('fr-FR',{maximumFractionDigits:2})} Md`;
+    if(abs >= 1e6)  return `${(value/1e6).toLocaleString('fr-FR',{maximumFractionDigits:1})} M`;
+    if(abs >= 1e3)  return `${(value/1e3).toLocaleString('fr-FR',{maximumFractionDigits:1})} k`;
     return Math.round(value).toLocaleString('fr-FR');
 }
 
@@ -2079,7 +2088,9 @@ function renderCityDetailContent(city) {
 
     // Stats
     document.getElementById('cityDetailPop').textContent = formatPop(city.population);
-    document.getElementById('cityDetailEDC').textContent = formatEDC(city.baseEDC);
+    // EDC : valeur abrégée + valeur entière en dessous
+    const edcEl = document.getElementById('cityDetailEDC');
+    edcEl.innerHTML = `${formatEDC(city.baseEDC)}<div class="city-edc-full">${formatEDCFull(city.baseEDC)}</div>`;
     document.getElementById('cityDetailPresident').textContent = city.president || 'Vacant';
     const trendEl = document.getElementById('cityDetailTrend');
     trendEl.textContent = trendLabel(city.trend);
@@ -2156,6 +2167,15 @@ function adminApplyTrend(trend) {
     const id = document.getElementById('adminCityId').value;
     if(!id) return;
     socket.emit('admin_update_city', { cityId: id, trend });
+}
+
+// Appliquer un pourcentage personnalisé (entre -100 et +100, décimales autorisées)
+function adminApplyCustomPct() {
+    const id  = document.getElementById('adminCityId').value;
+    const pct = parseFloat(document.getElementById('adminCustomPct').value);
+    if(!id) return;
+    if(isNaN(pct) || pct < -100 || pct > 100) return alert('Entrez un pourcentage entre -100 et 100 (décimales acceptées).');
+    socket.emit('admin_update_city', { cityId: id, customPct: pct });
 }
 
 // Upload drapeau (Cloudinary)
