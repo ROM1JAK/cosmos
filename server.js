@@ -99,6 +99,62 @@ const NotificationSchema = new mongoose.Schema({
 });
 const Notification = mongoose.model('Notification', NotificationSchema);
 
+// ========== [CITÉS] SCHÉMA ==========
+const CitySchema = new mongoose.Schema({
+    name:        { type: String, required: true, unique: true },
+    archipel:    { type: String, default: 'Archipel Pacifique' },
+    president:   { type: String, default: 'Vacant' },
+    population:  { type: Number, default: 500000 },
+    baseEDC:     { type: Number, default: 1000000000 },
+    trend:       { type: String, default: 'stable' }, // croissance_forte | croissance | stable | baisse | chute
+    historyEDC:  [{ value: Number, date: { type: Date, default: Date.now } }],
+    updatedAt:   { type: Date, default: Date.now }
+});
+const City = mongoose.model('City', CitySchema);
+
+// Seed : insérer les cités si elles n'existent pas encore
+const CITIES_SEED = [
+    // Archipel Pacifique
+    { name: 'Aguerta',    archipel: 'Archipel Pacifique' },
+    { name: 'Arva',       archipel: 'Archipel Pacifique' },
+    { name: 'Aurion',     archipel: 'Archipel Pacifique' },
+    { name: 'Cellum',     archipel: 'Archipel Pacifique' },
+    { name: 'Elvita',     archipel: 'Archipel Pacifique' },
+    { name: 'Hoross',     archipel: 'Archipel Pacifique' },
+    { name: 'Kama',       archipel: 'Archipel Pacifique' },
+    { name: 'Lesetha',    archipel: 'Archipel Pacifique' },
+    { name: 'Ofarno',     archipel: 'Archipel Pacifique' },
+    { name: 'Orchadia',   archipel: 'Archipel Pacifique' },
+    { name: 'Otima',      archipel: 'Archipel Pacifique' },
+    { name: 'Qruving',    archipel: 'Archipel Pacifique' },
+    { name: 'Shamballa',  archipel: 'Archipel Pacifique' },
+    { name: 'Sioonok',    archipel: 'Archipel Pacifique' },
+    { name: 'Tellos',     archipel: 'Archipel Pacifique' },
+    { name: 'Tesmond',    archipel: 'Archipel Pacifique' },
+    { name: 'Utopia',     archipel: 'Archipel Pacifique' },
+    { name: 'Worford',    archipel: 'Archipel Pacifique' },
+    // Ancienne Archipel
+    { name: 'Burtharb',    archipel: 'Ancienne Archipel' },
+    { name: 'Buswax',      archipel: 'Ancienne Archipel' },
+    { name: 'Hertford',    archipel: 'Ancienne Archipel' },
+    { name: 'Horsmouthia', archipel: 'Ancienne Archipel' },
+    { name: 'Panviles',    archipel: 'Ancienne Archipel' },
+    // Archipel Sableuse
+    { name: 'Alburg',      archipel: 'Archipel Sableuse' },
+    { name: 'Bambeween',   archipel: 'Archipel Sableuse' },
+    { name: 'Bireland',    archipel: 'Archipel Sableuse' },
+    { name: 'Kirchia',     archipel: 'Archipel Sableuse' },
+    { name: 'Pagoas Sud',  archipel: 'Archipel Sableuse' },
+    { name: 'Pagoas Nord', archipel: 'Archipel Sableuse' },
+];
+mongoose.connection.once('open', async () => {
+    for(const c of CITIES_SEED) {
+        const exists = await City.findOne({ name: c.name });
+        if(!exists) await City.create({ ...c, historyEDC: [{ value: c.baseEDC || 1000000000 }] });
+    }
+});
+// ========== [FIN CITÉS SCHÉMA] ==========
+
 let onlineUsers = {}; 
 
 function broadcastUserList() {
@@ -570,6 +626,48 @@ io.on('connection', async (socket) => {
           role: c.role, ownerId: c.ownerId, ownerUsername: c.ownerUsername
       })));
   });
+
+  // ========== [CITÉS] SOCKET EVENTS ==========
+  socket.on('request_cities', async () => {
+      const cities = await City.find().sort({ archipel: 1, name: 1 });
+      socket.emit('cities_data', cities);
+  });
+
+  socket.on('admin_update_city', async ({ cityId, president, population, baseEDC, trend }) => {
+      const user = await User.findOne({ secretCode: Object.entries(onlineUsers).find(([sid]) => sid === socket.id)?.[1] || '' });
+      if(!user || !user.isAdmin) return socket.emit('city_error', 'Non autorisé');
+
+      const TREND_MULTIPLIERS = {
+          croissance_forte: 1.08,
+          croissance:       1.03,
+          stable:           1.00,
+          baisse:          0.97,
+          chute:           0.92
+      };
+
+      const city = await City.findById(cityId);
+      if(!city) return;
+
+      if(president !== undefined) city.president = president;
+      if(population !== undefined) city.population = Number(population);
+      if(baseEDC    !== undefined) city.baseEDC    = Number(baseEDC);
+      if(trend      !== undefined) {
+          city.trend = trend;
+          const multiplier = TREND_MULTIPLIERS[trend] || 1;
+          const newEDC = Math.round(city.baseEDC * multiplier);
+          city.baseEDC = newEDC;
+          // Ajouter à l'historique (garder 30 entrées max)
+          city.historyEDC.push({ value: newEDC, date: new Date() });
+          if(city.historyEDC.length > 30) city.historyEDC.shift();
+      }
+      city.updatedAt = new Date();
+      await city.save();
+
+      // Diffuser à tous les clients
+      const cities = await City.find().sort({ archipel: 1, name: 1 });
+      io.emit('cities_data', cities);
+  });
+  // ========== [FIN CITÉS SOCKET] ==========
 });
 
 const port = process.env.PORT || 3000;
