@@ -548,7 +548,7 @@ socket.on('my_chars_data', (chars) => {
     if (saved && myCharacters.find(c => c._id === saved)) selectCharacter(saved);
     else if (IS_ADMIN && saved === 'narrateur') selectCharacter('narrateur');
 });
-socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(); });
+socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(); closeCharModal(); });
 function deleteCharacter(id) { if(confirm('Supprimer ?')) socket.emit('delete_char', id); }
 socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c => c._id !== id); updateUI(); });
 
@@ -680,6 +680,13 @@ function closeProfileModal() {
     document.getElementById('profile-overlay').classList.add('hidden');
     currentProfileChar = null;
 }
+function editMyCharFromProfile() {
+    if(!currentProfileChar) return;
+    const char = myCharacters.find(c => c._id === currentProfileChar._id);
+    if(!char) return;
+    closeProfileModal();
+    prepareEditCharacter(char._id);
+}
 
 socket.on('char_profile_data', (char) => {
     currentProfileChar = char;
@@ -743,6 +750,13 @@ socket.on('char_profile_data', (char) => {
     if(btnEditBio) {
         if(isOwnChar) { btnEditBio.classList.remove('hidden'); }
         else { btnEditBio.classList.add('hidden'); closeBioEdit(); }
+    }
+
+    // Bouton modifier personnage — visible seulement si c'est un de nos persos
+    const btnEditMyChar = document.getElementById('btn-edit-my-char');
+    if(btnEditMyChar) {
+        if(isOwnChar) { btnEditMyChar.classList.remove('hidden'); }
+        else { btnEditMyChar.classList.add('hidden'); }
     }
 
     // Bouton DM compte
