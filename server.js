@@ -82,7 +82,7 @@ const Post = mongoose.model('Post', PostSchema);
 
 const OmbraMessageSchema = new mongoose.Schema({
     alias: String, content: String, date: String,
-    ownerId: String,  // pour suppr par proprio
+    ownerId: { type: String, default: null },
     timestamp: { type: Date, default: Date.now }
 });
 const OmbraMessage = mongoose.model('OmbraMessage', OmbraMessageSchema);
@@ -550,14 +550,25 @@ io.on('connection', async (socket) => {
       }
   });
 
-  // Liste de tous les personnages des utilisateurs en ligne
+  // Personnages de tous les utilisateurs en ligne (pour sidebar droite)
   socket.on('request_all_chars_online', async () => {
-      const chars = await Character.find();
       const onlineNames = new Set(Object.values(onlineUsers));
-      const result = chars
-          .filter(c => onlineNames.has(c.ownerUsername))
-          .map(c => ({ _id: c._id, name: c.name, avatar: c.avatar, color: c.color, role: c.role, ownerUsername: c.ownerUsername }));
+      const chars = await Character.find({ ownerUsername: { $in: Array.from(onlineNames) } });
+      const result = chars.map(c => ({
+          _id: c._id, name: c.name, avatar: c.avatar, color: c.color,
+          role: c.role, ownerUsername: c.ownerUsername
+      }));
       socket.emit('all_chars_online', result);
+  });
+
+  // Chercher des personnages (pour nouvelle conversation MP)
+  socket.on('search_chars', async ({ query }) => {
+      if(!query || query.length < 1) return socket.emit('chars_search_results', []);
+      const chars = await Character.find({ name: { $regex: query, $options: 'i' } }).limit(10);
+      socket.emit('chars_search_results', chars.map(c => ({
+          _id: c._id, name: c.name, avatar: c.avatar, color: c.color,
+          role: c.role, ownerId: c.ownerId, ownerUsername: c.ownerUsername
+      })));
   });
 });
 
