@@ -1,10 +1,11 @@
 const express = require('express');
+const path    = require('path');
 const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, { maxHttpBufferSize: 10e6 }); 
 const mongoose = require('mongoose');
 
-app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // CONFIGURATION
 const ADMIN_CODE = "ADMIN"; 
@@ -15,122 +16,22 @@ else mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: tru
     .then(() => console.log('Connecté à MongoDB.'))
     .catch(err => console.error("Erreur MongoDB:", err));
 
-// --- SCHEMAS ---
-const UserSchema = new mongoose.Schema({
-    username: { type: String, unique: true },
-    secretCode: String, 
-    isAdmin: { type: Boolean, default: false },
-    uiTheme: { type: String, default: 'default' },
-    ombraAlias: { type: String, default: null }
-});
-const User = mongoose.model('User', UserSchema);
+// --- MODÈLES ---
+const User =         require('./src/models/User');
+const Character =    require('./src/models/Character');
+const Alert =        require('./src/models/Alert');
+const Message =      require('./src/models/Message');
+const Room =         require('./src/models/Room');
+const Post =         require('./src/models/Post');
+const OmbraMessage = require('./src/models/OmbraMessage');
+const Event =        require('./src/models/Event');
+const Notification = require('./src/models/Notification');
 
-const CharacterSchema = new mongoose.Schema({
-    name: String, color: String, avatar: String, role: String, 
-    ownerId: String, ownerUsername: String, description: String,
-    followers: [String],
-    partyName: String, partyLogo: String,
-    isOfficial: { type: Boolean, default: false },
-    companies: [{ name: String, logo: String, role: String, description: String, headquarters: String, revenue: { type: Number, default: 0 } }],
-    // [NOUVEAU] Capital financier
-    capital: { type: Number, default: 0 }
-});
-const Character = mongoose.model('Character', CharacterSchema);
+// ========== [CITÉS] ==========
+const City = require('./src/models/City');
 
-// [NOUVEAU] Schéma alerte globale
-const AlertSchema = new mongoose.Schema({
-    message: String, color: { type: String, default: 'red' },
-    active: { type: Boolean, default: true },
-    timestamp: { type: Date, default: Date.now }
-});
-const Alert = mongoose.model('Alert', AlertSchema);
-
-const MessageSchema = new mongoose.Schema({
-    content: String, type: String, 
-    senderName: String, senderColor: String, senderAvatar: String, senderRole: String, 
-    partyName: String, partyLogo: String, ownerId: String, targetName: String, targetOwnerId: String,
-    roomId: { type: String, required: true },
-    replyTo: { id: String, author: String, content: String },
-    edited: { type: Boolean, default: false },
-    date: String, timestamp: { type: Date, default: Date.now },
-    // [NOUVEAU] DM entre personnages
-    isCharDm: { type: Boolean, default: false },
-    senderCharId: String, targetCharId: String
-});
-const Message = mongoose.model('Message', MessageSchema);
-
-const RoomSchema = new mongoose.Schema({
-    name: { type: String, required: true }, creatorId: String, allowedCharacters: [String]
-});
-const Room = mongoose.model('Room', RoomSchema);
-
-const PostSchema = new mongoose.Schema({
-    content: String, mediaUrl: String, mediaType: String,
-    authorCharId: String, authorName: String, authorAvatar: String, authorRole: String, authorColor: String, ownerId: String,
-    partyName: String, partyLogo: String,
-    likes: [String], 
-    comments: [{ id: String, authorCharId: String, authorName: String, authorAvatar: String, content: String, mediaUrl: String, mediaType: String, ownerId: String, date: String }],
-    date: String, timestamp: { type: Date, default: Date.now },
-    isAnonymous: { type: Boolean, default: false },
-    isBreakingNews: { type: Boolean, default: false },
-    isArticle: { type: Boolean, default: false },
-    isHeadline: { type: Boolean, default: false },
-    urgencyLevel: { type: String, default: null },
-    poll: { question: String, options: [{ text: String, voters: [String] }] }
-});
-const Post = mongoose.model('Post', PostSchema);
-
-const OmbraMessageSchema = new mongoose.Schema({
-    alias: String, content: String, date: String,
-    ownerId: { type: String, default: null },
-    timestamp: { type: Date, default: Date.now }
-});
-const OmbraMessage = mongoose.model('OmbraMessage', OmbraMessageSchema);
-
-const EventSchema = new mongoose.Schema({
-    jour: String, date: String, heure: String, evenement: String,
-    timestamp: { type: Date, default: Date.now }
-});
-const Event = mongoose.model('Event', EventSchema);
-
-const NotificationSchema = new mongoose.Schema({
-    targetOwnerId: String, type: String, content: String, fromName: String,
-    isRead: { type: Boolean, default: false }, timestamp: { type: Date, default: Date.now }
-});
-const Notification = mongoose.model('Notification', NotificationSchema);
-
-// ========== [CITÉS] SCHÉMA ==========
-const CitySchema = new mongoose.Schema({
-    name:       { type: String, required: true, unique: true },
-    archipel:   { type: String, default: 'Archipel Pacifique' },
-    president:  { type: String, default: 'Vacant' },
-    capitale:   { type: String, default: null }, // ville capitale de la cité
-    population: { type: Number, default: 500000 },
-    baseEDC:    { type: Number, default: 1000000000000 }, // en milliards de défaut
-    trend:      { type: String, default: 'stable' },
-    flag:       { type: String, default: null }, // URL image du drapeau
-    historyEDC: [{ value: Number, date: { type: Date, default: Date.now } }],
-    updatedAt:  { type: Date, default: Date.now }
-});
-const City = mongoose.model('City', CitySchema);
-
-// ========== [BOURSE] SCHÉMA ==========
-const StockSchema = new mongoose.Schema({
-    companyName:  String,
-    companyLogo:  String,
-    charId:       String,
-    charName:     String,
-    charColor:    String,
-    stockColor:   { type: String, default: '#6c63ff' },
-    currentValue: { type: Number, default: 1000 },
-    trend:        { type: String, default: 'stable' },
-    history:      [{ value: Number, date: { type: Date, default: Date.now } }],
-    description:   String,
-    headquarters:  { type: String, default: null },
-    updatedAt:     { type: Date, default: Date.now }
-});
-const Stock = mongoose.model('Stock', StockSchema);
-// ========== [FIN BOURSE SCHÉMA] ==========
+// ========== [BOURSE] ==========
+const Stock = require('./src/models/Stock');
 
 const CITIES_SEED = [
     { name: 'Aguerta',    archipel: 'Archipel Pacifique' },
