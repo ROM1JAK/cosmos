@@ -31,7 +31,7 @@ const CharacterSchema = new mongoose.Schema({
     followers: [String],
     partyName: String, partyLogo: String,
     isOfficial: { type: Boolean, default: false },
-    companies: [{ name: String, logo: String, role: String, description: String }],
+    companies: [{ name: String, logo: String, role: String, description: String, headquarters: String }],
     // [NOUVEAU] Capital financier
     capital: { type: Number, default: 0 }
 });
@@ -125,8 +125,9 @@ const StockSchema = new mongoose.Schema({
     currentValue: { type: Number, default: 1000 },
     trend:        { type: String, default: 'stable' },
     history:      [{ value: Number, date: { type: Date, default: Date.now } }],
-    description:  String,
-    updatedAt:    { type: Date, default: Date.now }
+    description:   String,
+    headquarters:  { type: String, default: null },
+    updatedAt:     { type: Date, default: Date.now }
 });
 const Stock = mongoose.model('Stock', StockSchema);
 // ========== [FIN BOURSE SCHÉMA] ==========
@@ -760,14 +761,14 @@ io.on('connection', async (socket) => {
       socket.emit('all_chars_companies', result);
   });
 
-  socket.on('admin_save_stock', async ({ stockId, companyName, companyLogo, charId, charName, charColor, stockColor, currentValue, description }) => {
+  socket.on('admin_save_stock', async ({ stockId, companyName, companyLogo, charId, charName, charColor, stockColor, currentValue, description, headquarters }) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
       let stock = stockId ? await Stock.findById(stockId) : null;
       if(!stock) stock = await Stock.findOne({ companyName, charId });
       if(!stock) {
-          stock = new Stock({ companyName, companyLogo, charId, charName, charColor, stockColor: stockColor || '#6c63ff', currentValue: Number(currentValue) || 0, description });
+          stock = new Stock({ companyName, companyLogo, charId, charName, charColor, stockColor: stockColor || '#6c63ff', currentValue: Number(currentValue) || 0, description, headquarters });
           stock.history.push({ value: Number(currentValue) || 0 });
       } else {
           if(companyName)  stock.companyName  = companyName;
@@ -778,6 +779,7 @@ io.on('connection', async (socket) => {
           stock.stockColor   = stockColor || stock.stockColor;
           stock.currentValue = Number(currentValue) || 0;
           if(description !== undefined) stock.description = description;
+          if(headquarters !== undefined) stock.headquarters = headquarters;
           stock.history.push({ value: Number(currentValue) || 0 });
           if(stock.history.length > 30) stock.history.shift();
       }
@@ -791,11 +793,20 @@ io.on('connection', async (socket) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
-      const TREND_MULT = { croissance_forte: 1.015, croissance: 1.007, stable: 1.000, baisse: 0.993, chute: 0.985 };
+      // Intervalles aléatoires avec 2 décimales
+      const TREND_RANGES = {
+          croissance_forte: [1.3, 1.6],
+          croissance:       [0.5, 0.9],
+          stable:           [-0.1, 0.1],
+          baisse:           [-0.9, -0.5],
+          chute:            [-1.6, -1.2]
+      };
       const stock = await Stock.findById(stockId);
       if(!stock) return;
       stock.trend = trend;
-      const mult = TREND_MULT[trend] || 1;
+      const range = TREND_RANGES[trend] || [0, 0];
+      const randPct = parseFloat((range[0] + Math.random() * (range[1] - range[0])).toFixed(2));
+      const mult = 1 + randPct / 100;
       const newVal = Math.round(stock.currentValue * mult * 100) / 100;
       stock.currentValue = newVal;
       stock.history.push({ value: newVal });
@@ -828,6 +839,22 @@ io.on('connection', async (socket) => {
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
       await Stock.findByIdAndDelete(stockId);
+      const stocks = await Stock.find().sort({ companyName: 1 });
+      io.emit('stocks_updated', stocks);
+  });
+  // Boost bourse via publication pub (Feed / Presse)
+  socket.on('pub_boost_stock', async ({ stockId }) => {
+      if(!stockId) return;
+      const stock = await Stock.findById(stockId).catch(() => null);
+      if(!stock) return;
+      const pct = parseFloat((0.1 + Math.random() * 0.4).toFixed(2)); // 0.10 – 0.50%
+      const mult = 1 + pct / 100;
+      const newVal = Math.round(stock.currentValue * mult * 100) / 100;
+      stock.currentValue = newVal;
+      stock.history.push({ value: newVal });
+      if(stock.history.length > 30) stock.history.shift();
+      stock.updatedAt = new Date();
+      await stock.save();
       const stocks = await Stock.find().sort({ companyName: 1 });
       io.emit('stocks_updated', stocks);
   });
