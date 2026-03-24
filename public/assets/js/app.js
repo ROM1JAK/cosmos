@@ -2790,6 +2790,8 @@ function renderStockGrid(stocks) {
         card.className = `stock-card ${isUp ? 'stock-up' : isDown ? 'stock-down' : 'stock-neutral'}`;
         card.id = `stock-${s._id}`;
         card.style.animationDelay = `${idx * 0.05}s`;
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', () => openStockDetail(String(s._id)));
 
         const adminBtns = IS_ADMIN ? `
             <div class="stock-admin-row">
@@ -2798,6 +2800,8 @@ function renderStockGrid(stocks) {
                 <button class="stock-trend-btn stock-trend-stable" onclick="event.stopPropagation(); adminStockTrend('${s._id}','stable')" title="±0.1%"><i class="fa-solid fa-minus"></i></button>
                 <button class="stock-trend-btn stock-trend-down1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','baisse')" title="-0.5~0.9%"><i class="fa-solid fa-angle-down"></i></button>
                 <button class="stock-trend-btn stock-trend-down2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','chute')" title="-1.2~1.6%"><i class="fa-solid fa-angles-down"></i></button>
+                <input type="number" id="cpct-${s._id}" class="stock-pct-input" placeholder="%" step="0.1" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter'){event.stopPropagation();applyCustomPctCard('${s._id}');}">
+                <button class="stock-trend-btn" onclick="event.stopPropagation(); applyCustomPctCard('${s._id}')" title="Appliquer %" style="background:rgba(108,99,255,0.2);color:var(--accent);border-color:rgba(108,99,255,0.3);"><i class="fa-solid fa-percent"></i></button>
                 <div style="margin-left:auto;display:flex;gap:4px;">
                     <button class="stock-admin-edit" onclick="event.stopPropagation(); openStockEditModal('${s._id}')" title="Modifier"><i class="fa-solid fa-pen"></i></button>
                     <button class="stock-admin-del" onclick="event.stopPropagation(); if(confirm('Supprimer cette action ?')) adminDeleteStock('${s._id}')" title="Supprimer"><i class="fa-solid fa-trash"></i></button>
@@ -2829,29 +2833,39 @@ function renderStockGrid(stocks) {
             ${adminBtns}
         `;
         grid.appendChild(card);
-        renderStockMiniChart(hist.slice(-7), `schart-${s._id}`, s.stockColor || '#6c63ff', pct >= 0);
+        renderStockMiniChart(hist.slice(-7), s.currentValue, `schart-${s._id}`, s.stockColor || '#6c63ff', pct >= 0);
     });
 }
 
-function renderStockMiniChart(history, containerId, color, isUp) {
+function renderStockMiniChart(history, liveValue, containerId, color, isUp) {
     const container = document.getElementById(containerId);
     if(!container) return;
-    if(!history || history.length < 2) {
+    // Build display data: committed history + optional live (pending) point
+    let displayData = [...(history || [])];
+    const lastHistVal = displayData.length > 0 ? displayData[displayData.length - 1].value : null;
+    const hasLive = liveValue != null && (lastHistVal === null || Math.abs(liveValue - lastHistVal) > 0.001);
+    if(hasLive) displayData = [...displayData, { value: liveValue, live: true }];
+
+    if(!displayData || displayData.length < 2) {
         container.innerHTML = '<div style="color:var(--text-dim);font-size:0.7rem;text-align:center;padding:8px 0;">Données insuffisantes</div>';
         return;
     }
-    const vals = history.map(h => h.value);
+    const vals = displayData.map(d => d.value);
     const maxV = Math.max(...vals);
     const minV = Math.min(...vals);
     const range = maxV - minV || 1;
     const W = 240, H = 52;
-    const pts = vals.map((v, i) => {
-        const x = (i / (vals.length - 1)) * (W - 4) + 2;
-        const y = H - 3 - ((v - minV) / range) * (H - 10);
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
+    const pts = displayData.map((d, i) => ({
+        x: parseFloat(((i / (displayData.length - 1)) * (W - 4) + 2).toFixed(1)),
+        y: parseFloat((H - 3 - ((d.value - minV) / range) * (H - 10)).toFixed(1)),
+        value: d.value, date: d.date, live: d.live
+    }));
     const lineColor = isUp ? '#23a559' : '#da373c';
     const uid = containerId.replace(/[^a-z0-9]/gi, '');
+    const committedPts = hasLive ? pts.slice(0, -1) : pts;
+    const committedStr = committedPts.map(p => `${p.x},${p.y}`).join(' ');
+    const livePt = hasLive ? pts[pts.length - 1] : null;
+    const prevPt = hasLive ? pts[pts.length - 2] : null;
     container.innerHTML = `
         <svg viewBox="0 0 ${W} ${H}" class="stock-svg-chart" xmlns="http://www.w3.org/2000/svg" style="overflow:visible;">
             <defs>
@@ -2860,15 +2874,13 @@ function renderStockMiniChart(history, containerId, color, isUp) {
                     <stop offset="100%" stop-color="${lineColor}" stop-opacity="0"/>
                 </linearGradient>
             </defs>
-            <path d="M${pts.join(' L')} L${(W-2)},${H} L2,${H} Z" fill="url(#sg-${uid})"/>
-            <polyline points="${pts.join(' ')}" fill="none" stroke="${lineColor}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
-            ${vals.map((v, i) => {
-                const x = (i / (vals.length - 1)) * (W - 4) + 2;
-                const y = H - 3 - ((v - minV) / range) * (H - 10);
-                const dateStr = (history[i] && history[i].date) ? new Date(history[i].date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) : `J${i+1}`;
-                return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${lineColor}" stroke="var(--bg-secondary)" stroke-width="1.5" class="stock-chart-dot">
-                    <title>${dateStr} — ${formatStockValue(v)}</title>
-                </circle>`;
+            <path d="M${committedStr} L${(W-2)},${H} L2,${H} Z" fill="url(#sg-${uid})"/>
+            <polyline points="${committedStr}" fill="none" stroke="${lineColor}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+            ${hasLive && prevPt ? `<line x1="${prevPt.x}" y1="${prevPt.y}" x2="${livePt.x}" y2="${livePt.y}" stroke="${lineColor}" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.75"/>` : ''}
+            ${pts.map(p => {
+                const dateStr = p.date ? new Date(p.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) : 'Live';
+                if(p.live) return `<circle cx="${p.x}" cy="${p.y}" r="4" fill="${lineColor}" stroke="var(--bg-secondary)" stroke-width="1.5"><animate attributeName="r" values="3;5.5;3" dur="1.8s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0.5;1" dur="1.8s" repeatCount="indefinite"/><title>En direct — ${formatStockValue(p.value)}</title></circle>`;
+                return `<circle cx="${p.x}" cy="${p.y}" r="3" fill="${lineColor}" stroke="var(--bg-secondary)" stroke-width="1.5" class="stock-chart-dot"><title>${dateStr} — ${formatStockValue(p.value)}</title></circle>`;
             }).join('')}
         </svg>`;
 }
@@ -3029,9 +3041,71 @@ function adminDeleteStock(stockId) {
 
 function adminNextTradingDay() {
     if(!IS_ADMIN) return;
-    if(!confirm('Valider le jour suivant ? Cela va enregistrer les valeurs actuelles comme nouveau point sur tous les graphiques.')) return;
     socket.emit('admin_next_trading_day');
 }
+function applyCustomPctCard(stockId) {
+    const input = document.getElementById(`cpct-${stockId}`);
+    if(!input) return;
+    const pct = parseFloat(input.value);
+    if(isNaN(pct)) return;
+    socket.emit('admin_apply_stock_custom', { stockId, pct });
+    input.value = '';
+}
+
+function openStockDetail(stockId) {
+    const stock = stocksData.find(s => String(s._id) === stockId);
+    if(!stock) return;
+    const hist = stock.history || [];
+    const prev = hist.length >= 2 ? hist[hist.length - 2].value : (hist.length === 1 ? hist[0].value : stock.currentValue);
+    const pct = prev ? ((stock.currentValue - prev) / prev * 100) : 0;
+    const isUp = pct > 0, isDown = pct < 0;
+    const revenue = stock.revenue || 0;
+    document.getElementById('stock-detail-content').innerHTML = `
+        <div class="stock-detail-hero">
+            ${stock.companyLogo ? `<img src="${escapeHtml(stock.companyLogo)}" class="stock-detail-logo" alt="">` : `<div class="stock-detail-logo-placeholder"><i class="fa-solid fa-building"></i></div>`}
+            <div>
+                <div class="stock-detail-name">${escapeHtml(stock.companyName)}</div>
+                <div class="stock-detail-char" style="color:${stock.charColor||'var(--text-muted)'}"><i class="fa-solid fa-user"></i> ${escapeHtml(stock.charName||'')}</div>
+                ${stock.headquarters ? `<div class="stock-detail-meta"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(stock.headquarters)}</div>` : ''}
+            </div>
+        </div>
+        <div class="stock-detail-value-row">
+            <span class="stock-detail-value" style="color:${isUp?'#23a559':isDown?'#da373c':'white'}">${formatStockValue(stock.currentValue)}</span>
+            <span class="stock-badge ${isUp?'badge-up':isDown?'badge-down':'badge-neutral'}">${isUp?'▲':isDown?'▼':'—'} ${Math.abs(pct).toFixed(2)}%</span>
+        </div>
+        ${revenue > 0 ? `<div class="stock-detail-stat"><i class="fa-solid fa-chart-bar" style="color:var(--accent)"></i> CA : <strong>${formatStockValue(revenue)}</strong></div>` : ''}
+        ${stock.description ? `<div class="stock-detail-desc">${escapeHtml(stock.description)}</div>` : ''}
+        <div class="stock-detail-chart-wrap" id="stock-detail-chart"></div>
+    `;
+    renderStockMiniChart(hist.slice(-14), stock.currentValue, 'stock-detail-chart', stock.stockColor || '#6c63ff', pct >= 0);
+    const adminEl = document.getElementById('stock-detail-admin');
+    if(IS_ADMIN) {
+        document.getElementById('stockDetailCharId').value = stock.charId || '';
+        document.getElementById('stockDetailCompanyName').value = stock.companyName || '';
+        document.getElementById('stockDetailRevenue').value = revenue > 0 ? revenue : '';
+        adminEl.classList.remove('hidden');
+    } else {
+        adminEl.classList.add('hidden');
+    }
+    document.getElementById('stock-detail-overlay').classList.remove('hidden');
+    document.getElementById('stock-detail-panel').classList.add('open');
+}
+
+function closeStockDetail() {
+    document.getElementById('stock-detail-overlay').classList.add('hidden');
+    document.getElementById('stock-detail-panel').classList.remove('open');
+}
+
+function adminSetStockRevenue() {
+    if(!IS_ADMIN) return;
+    const charId = document.getElementById('stockDetailCharId').value;
+    const companyName = document.getElementById('stockDetailCompanyName').value;
+    const revenue = parseFloat(document.getElementById('stockDetailRevenue').value);
+    if(!charId || !companyName || isNaN(revenue)) return;
+    socket.emit('admin_set_company_revenue', { charId, companyName, revenue });
+    showToast('Chiffre d\'affaires mis à jour !');
+}
+
 // ==================== [FIN BOURSE] ====================
 
 // ==================== [WIKI] ====================

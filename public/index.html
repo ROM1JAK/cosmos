@@ -719,6 +719,22 @@
         <!-- ===== [BOURSE] VUE ===== -->
         <div id="view-bourse" class="view-section hidden" style="flex-direction:column;">
 
+            <!-- Panneau détail action -->
+            <div id="stock-detail-overlay" class="modal-overlay hidden" onclick="closeStockDetail()"></div>
+            <div id="stock-detail-panel" class="city-detail-panel">
+                <button onclick="closeStockDetail()" class="btn-close-profile"><i class="fa-solid fa-xmark"></i></button>
+                <div id="stock-detail-content"></div>
+                <div id="stock-detail-admin" class="hidden">
+                    <div class="city-section-title" style="color:#f59e0b;margin-top:20px;"><i class="fa-solid fa-sliders"></i> Admin — Chiffre d'affaires</div>
+                    <input type="hidden" id="stockDetailCharId">
+                    <input type="hidden" id="stockDetailCompanyName">
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                        <input type="number" id="stockDetailRevenue" class="char-input" placeholder="Chiffre d'affaires (crédits)" min="0" style="flex:1;">
+                        <button class="btn-primary" onclick="adminSetStockRevenue()"><i class="fa-solid fa-check"></i> Sauver</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Ticker -->
             <div class="bourse-ticker-bar">
                 <div class="bourse-ticker-label"><i class="fa-solid fa-chart-line"></i> BOURSE</div>

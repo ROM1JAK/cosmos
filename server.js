@@ -108,6 +108,27 @@ async function applyStockValueChange(stock, oldValue, newValue) {
     } catch(e) { console.error('applyStockValueChange error:', e); }
 }
 
+async function getEnrichedStocks() {
+    const stocks = await Stock.find().sort({ companyName: 1 });
+    const charIds = [...new Set(stocks.filter(s => s.charId).map(s => String(s.charId)))];
+    if(!charIds.length) return stocks.map(s => s.toObject());
+    const chars = await Character.find({ _id: { $in: charIds } }).select('_id companies capital');
+    const charMap = {};
+    chars.forEach(c => { charMap[String(c._id)] = c; });
+    return stocks.map(s => {
+        const obj = s.toObject();
+        const char = charMap[String(s.charId)];
+        if(char) {
+            const co = (char.companies || []).find(c => c.name === s.companyName);
+            obj.revenue = co ? (co.revenue || 0) : 0;
+            obj.capital = char.capital || 0;
+        } else {
+            obj.revenue = 0;
+        }
+        return obj;
+    });
+}
+
 function broadcastUserList() {
     const uniqueNames = [...new Set(Object.values(onlineUsers))];
     io.emit('update_user_list', uniqueNames);
@@ -685,8 +706,8 @@ io.on('connection', async (socket) => {
 
   // ========== [BOURSE] SOCKET EVENTS ==========
   socket.on('request_stocks', async () => {
-      const stocks = await Stock.find().sort({ companyName: 1 });
-      socket.emit('stocks_data', stocks);
+      const enriched = await getEnrichedStocks();
+      socket.emit('stocks_data', enriched);
   });
 
   socket.on('request_all_chars_companies', async () => {
@@ -726,7 +747,7 @@ io.on('connection', async (socket) => {
       }
       stock.updatedAt = new Date();
       await stock.save();
-      const stocks = await Stock.find().sort({ companyName: 1 });
+      const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
   });
 
@@ -754,7 +775,7 @@ io.on('connection', async (socket) => {
       stock.updatedAt = new Date();
       await stock.save();
       await applyStockValueChange(stock, oldTrendVal, newVal);
-      const stocks = await Stock.find().sort({ companyName: 1 });
+      const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
   });
 
@@ -772,7 +793,7 @@ io.on('connection', async (socket) => {
       stock.updatedAt = new Date();
       await stock.save();
       await applyStockValueChange(stock, oldCustomVal, newVal);
-      const stocks = await Stock.find().sort({ companyName: 1 });
+      const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
   });
 
@@ -781,7 +802,7 @@ io.on('connection', async (socket) => {
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
       await Stock.findByIdAndDelete(stockId);
-      const stocks = await Stock.find().sort({ companyName: 1 });
+      const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
   });
   // Boost bourse via publication pub (Feed / Presse)
@@ -798,7 +819,7 @@ io.on('connection', async (socket) => {
       stock.updatedAt = new Date();
       await stock.save();
       await applyStockValueChange(stock, oldPubVal, newVal);
-      const stocks = await Stock.find().sort({ companyName: 1 });
+      const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
   });
 
@@ -815,7 +836,7 @@ io.on('connection', async (socket) => {
           stock.updatedAt = now;
           await stock.save();
       }
-      const stocks = await Stock.find().sort({ companyName: 1 });
+      const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
   });
 
@@ -836,6 +857,8 @@ io.on('connection', async (socket) => {
       const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
       const charData = char.toObject(); charData.postCount = postCount; charData.lastPosts = lastPosts;
       io.emit('char_profile_data', charData);
+      const stocksRefresh = await getEnrichedStocks();
+      io.emit('stocks_updated', stocksRefresh);
   });
   // ========== [FIN BOURSE SOCKET] ==========
   // ========== [WIKI] SOCKET EVENTS ==========

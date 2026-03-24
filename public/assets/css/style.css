@@ -1854,3 +1854,30 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 }
 .wiki-empty i { font-size: 2rem; opacity: 0.4; }
 /* ==================== [FIN WIKI] ==================== */
+
+/* ==================== [BOURSE - DÉTAIL ACTION] ==================== */
+.stock-detail-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; padding: 16px 24px 0; }
+.stock-detail-logo { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border); flex-shrink: 0; }
+.stock-detail-logo-placeholder { width: 60px; height: 60px; border-radius: 50%; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; font-size: 1.6rem; color: var(--text-muted); flex-shrink: 0; }
+.stock-detail-name { font-size: 1.1rem; font-weight: 700; color: white; }
+.stock-detail-char { font-size: 0.82rem; margin-top: 3px; }
+.stock-detail-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.stock-detail-value-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 0 24px; }
+.stock-detail-value { font-size: 1.55rem; font-weight: 800; }
+.stock-detail-stat { font-size: 0.83rem; color: var(--text-muted); margin-bottom: 10px; padding: 0 24px; display: flex; align-items: center; gap: 6px; }
+.stock-detail-stat strong { color: white; }
+.stock-detail-desc { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 14px; line-height: 1.5; padding: 0 24px; }
+.stock-detail-chart-wrap { width: 100%; height: 80px; padding: 0 8px; box-sizing: border-box; }
+.stock-detail-chart-wrap .stock-svg-chart { width: 100%; height: 100%; }
+#stock-detail-admin { padding: 0 24px 24px; }
+
+/* Inline custom % input in stock admin row */
+.stock-pct-input {
+    width: 52px; height: 26px; padding: 0 5px;
+    background: var(--bg-primary); border: 1px solid var(--border);
+    color: white; font-size: 0.72rem; border-radius: var(--radius-sm);
+    text-align: center; -moz-appearance: textfield;
+}
+.stock-pct-input::-webkit-outer-spin-button,
+.stock-pct-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.stock-pct-input:focus { outline: none; border-color: var(--accent); }
