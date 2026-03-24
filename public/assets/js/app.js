@@ -2902,8 +2902,8 @@ function renderStockMiniChart(history, liveValue, containerId, color, isUp) {
             ${hasLive && prevPt ? `<line x1="${prevPt.x}" y1="${prevPt.y}" x2="${livePt.x}" y2="${livePt.y}" stroke="${lineColor}" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.75"/>` : ''}
             ${pts.map(p => {
                 const dateStr = p.date ? new Date(p.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) : 'Live';
-                if(p.live) return `<circle cx="${p.x}" cy="${p.y}" r="4" fill="${lineColor}" stroke="var(--bg-secondary)" stroke-width="1.5"><animate attributeName="r" values="3;5.5;3" dur="1.8s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0.5;1" dur="1.8s" repeatCount="indefinite"/><title>En direct — ${formatStockValue(p.value)}</title></circle>`;
-                return `<circle cx="${p.x}" cy="${p.y}" r="3" fill="${lineColor}" stroke="var(--bg-secondary)" stroke-width="1.5" class="stock-chart-dot"><title>${dateStr} — ${formatStockValue(p.value)}</title></circle>`;
+                if(p.live) return `<circle cx="${p.x}" cy="${p.y}" r="4" fill="${lineColor}" stroke="var(--bg-secondary)" stroke-width="1.5" style="cursor:pointer" data-tip="En direct — ${formatStockValue(p.value)}" onmouseover="showChartTooltip(event,this.dataset.tip)" onmouseout="hideChartTooltip()"><animate attributeName="r" values="3;5.5;3" dur="1.8s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0.5;1" dur="1.8s" repeatCount="indefinite"/></circle>`;
+                return `<circle cx="${p.x}" cy="${p.y}" r="3" fill="${lineColor}" stroke="var(--bg-secondary)" stroke-width="1.5" style="cursor:pointer" class="stock-chart-dot" data-tip="${dateStr} — ${formatStockValue(p.value)}" onmouseover="showChartTooltip(event,this.dataset.tip)" onmouseout="hideChartTooltip()"></circle>`;
             }).join('')}
         </svg>`;
 }
@@ -2985,6 +2985,9 @@ function openStockAddModal() {
     document.getElementById('bourseStockColor').value = '#6c63ff';
     document.getElementById('bourseStockDesc').value = '';
     const hqEl = document.getElementById('bourseStockHQ'); if(hqEl) hqEl.value = '';
+    const logoUrlEl = document.getElementById('bourseStockLogoUrl'); if(logoUrlEl) logoUrlEl.value = '';
+    const logoFileEl = document.getElementById('bourseStockLogoFile'); if(logoFileEl) logoFileEl.value = '';
+    const logoPreview = document.getElementById('bourseStockLogoPreview'); if(logoPreview) logoPreview.style.display = 'none';
     const sel = document.getElementById('bourseStockCharSelect');
     if(sel) sel.value = '';
     document.getElementById('bourse-stock-modal-title').textContent = '📈 Coter une action';
@@ -3001,6 +3004,10 @@ function openStockEditModal(stockId) {
     document.getElementById('bourseStockColor').value = stock.stockColor || '#6c63ff';
     document.getElementById('bourseStockDesc').value = stock.description || '';
     const hqEl2 = document.getElementById('bourseStockHQ'); if(hqEl2) hqEl2.value = stock.headquarters || '';
+    const logoUrlEl2 = document.getElementById('bourseStockLogoUrl'); if(logoUrlEl2) logoUrlEl2.value = stock.companyLogo || '';
+    const logoFileEl2 = document.getElementById('bourseStockLogoFile'); if(logoFileEl2) logoFileEl2.value = '';
+    const logoPreview2 = document.getElementById('bourseStockLogoPreview');
+    if(logoPreview2) { logoPreview2.src = stock.companyLogo || ''; logoPreview2.style.display = stock.companyLogo ? 'block' : 'none'; }
     document.getElementById('bourse-stock-modal-title').textContent = '✏️ Modifier l\'action';
     document.getElementById('bourse-stock-modal').classList.remove('hidden');
     socket.emit('request_all_chars_companies');
@@ -3029,7 +3036,7 @@ socket.on('all_chars_companies', (data) => {
     if(prevVal) select.value = prevVal;
 });
 
-function submitStockAdmin() {
+async function submitStockAdmin() {
     const idVal = document.getElementById('bourseStockId').value;
     const selectVal = document.getElementById('bourseStockCharSelect').value;
     const value = parseFloat(document.getElementById('bourseStockValue').value);
@@ -3044,12 +3051,49 @@ function submitStockAdmin() {
         companyData = { charId: currentStockEdit.charId, charName: currentStockEdit.charName, charColor: currentStockEdit.charColor, companyName: currentStockEdit.companyName, companyLogo: currentStockEdit.companyLogo };
     }
     if(!companyData.companyName) return alert('Sélectionnez une entreprise.');
+    const logoFile = document.getElementById('bourseStockLogoFile')?.files[0];
+    const logoUrlVal = document.getElementById('bourseStockLogoUrl')?.value.trim();
+    if(logoFile) {
+        const uploaded = await uploadToCloudinary(logoFile);
+        if(uploaded) companyData.companyLogo = uploaded;
+    } else if(logoUrlVal) {
+        companyData.companyLogo = logoUrlVal;
+    }
     socket.emit('admin_save_stock', { stockId: idVal || null, ...companyData, stockColor: color, currentValue: value, description: desc, headquarters: hq });
     closeStockModal();
 }
 
 function adminStockTrend(stockId, trend) {
     socket.emit('admin_apply_stock_trend', { stockId, trend });
+}
+
+function previewStockLogo(input) {
+    const preview = document.getElementById('bourseStockLogoPreview');
+    if(!preview || !input.files || !input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = e => { preview.src = e.target.result; preview.style.display = 'block'; };
+    reader.readAsDataURL(input.files[0]);
+    const urlEl = document.getElementById('bourseStockLogoUrl');
+    if(urlEl) urlEl.value = '';
+}
+
+function showChartTooltip(evt, text) {
+    let tip = document.getElementById('stock-chart-tooltip');
+    if(!tip) {
+        tip = document.createElement('div');
+        tip.id = 'stock-chart-tooltip';
+        tip.className = 'stock-chart-tooltip';
+        document.body.appendChild(tip);
+    }
+    tip.textContent = text;
+    tip.style.display = 'block';
+    tip.style.left = (evt.clientX + 12) + 'px';
+    tip.style.top = (evt.clientY - 36) + 'px';
+}
+
+function hideChartTooltip() {
+    const tip = document.getElementById('stock-chart-tooltip');
+    if(tip) tip.style.display = 'none';
 }
 
 function adminApplyStockCustomPct() {
@@ -3068,6 +3112,7 @@ function adminDeleteStock(stockId) {
 function adminResetStockHistory(stockId) {
     if(!IS_ADMIN || !stockId) return;
     socket.emit('admin_reset_stock_history', { stockId });
+    closeStockDetail();
     showToast('Historique réinitialisé !');
 }
 
@@ -3095,7 +3140,7 @@ function openStockDetail(stockId) {
     document.getElementById('stock-detail-content').innerHTML = `
         <div class="stock-detail-hero">
             ${stock.companyLogo ? `<img src="${escapeHtml(stock.companyLogo)}" class="stock-detail-logo" alt="">` : `<div class="stock-detail-logo-placeholder"><i class="fa-solid fa-building"></i></div>`}
-            <div>
+            <div class="stock-detail-info">
                 <div class="stock-detail-name">${escapeHtml(stock.companyName)}</div>
                 <div class="stock-detail-char" style="color:${stock.charColor||'var(--text-muted)'}"><i class="fa-solid fa-user"></i> ${escapeHtml(stock.charName||'')}</div>
                 ${stock.headquarters ? `<div class="stock-detail-meta"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(stock.headquarters)}</div>` : ''}
