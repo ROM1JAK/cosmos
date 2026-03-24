@@ -815,6 +815,20 @@ io.on('connection', async (socket) => {
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
   });
+
+  socket.on('admin_reset_stock_history', async ({ stockId }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      const stock = await Stock.findById(stockId);
+      if(!stock) return;
+      stock.history = [{ value: stock.currentValue, date: new Date() }];
+      stock.updatedAt = new Date();
+      await stock.save();
+      const stocks = await getEnrichedStocks();
+      io.emit('stocks_updated', stocks);
+  });
+
   // Boost bourse via publication pub (Feed / Presse)
   socket.on('pub_boost_stock', async ({ stockId }) => {
       if(!stockId) return;

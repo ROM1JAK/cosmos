@@ -732,6 +732,10 @@
                         <input type="number" id="stockDetailRevenue" class="char-input" placeholder="Chiffre d'affaires (crédits)" min="0" style="flex:1;">
                         <button class="btn-primary" onclick="adminSetStockRevenue()"><i class="fa-solid fa-check"></i> Sauver</button>
                     </div>
+                    <div style="display:flex;gap:8px;margin-top:10px;">
+                        <button class="btn-secondary" onclick="openStockEditModal(currentStockDetailId)" style="flex:1;font-size:0.82rem;"><i class="fa-solid fa-pen"></i> Modifier l'action</button>
+                        <button class="btn-secondary" onclick="if(confirm('Réinitialiser tout l\'historique de cette action ?')) adminResetStockHistory(currentStockDetailId)" style="font-size:0.82rem;color:#f59e0b;border-color:rgba(245,158,11,0.4);"><i class="fa-solid fa-clock-rotate-left"></i> Réinit. historique</button>
+                    </div>
                 </div>
             </div>
 
@@ -767,22 +771,6 @@
                 <!-- Graphique comparatif top 10 -->
                 <div id="bourse-comp-chart" class="bourse-comp-chart-wrap"></div>
 
-                <!-- Admin — variation précise -->
-                <div id="bourse-admin-controls" class="bourse-admin-controls hidden">
-                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
-                        <div class="city-section-title" style="color:#f59e0b;margin:0;"><i class="fa-solid fa-sliders"></i> Variation précise (Admin)</div>
-                        <button class="btn-primary" onclick="adminNextTradingDay()" style="background:linear-gradient(135deg,#6c63ff,#4f46e5);font-size:0.85rem;padding:8px 18px;"><i class="fa-solid fa-forward-step"></i> Jour suivant</button>
-                    </div>
-                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                        <select id="bourseCustomStockId" class="char-input" style="flex:2; min-width:200px;">
-                            <option value="">— Choisir une action —</option>
-                        </select>
-                        <input type="number" id="bourseCustomPct" class="char-input" placeholder="Ex: -3.5" min="-100" max="100" step="0.1" style="width:100px; text-align:center;">
-                        <span style="color:var(--text-muted); font-size:0.82rem;">%</span>
-                        <button class="btn-primary" onclick="adminApplyStockCustomPct()"><i class="fa-solid fa-percent"></i> Appliquer</button>
-                    </div>
-                    <div style="font-size:0.65rem; color:var(--text-muted); margin-top:6px;">Entre −1 000% et +1 000%, décimales acceptées</div>
-                </div>
 
             </div>
         </div>

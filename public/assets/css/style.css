@@ -577,9 +577,9 @@ body[data-theme="ombra"] { --accent: #7c3aed; --accent-glow: rgba(124,58,237,0.3
 .article-actions .action-item.liked { color: #c0392b; }
 .article-del-btn { position: absolute; top: 14px; right: 14px; background: rgba(192,57,43,0.12); border: 1px solid rgba(192,57,43,0.3); color: #c0392b; padding: 5px 9px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
 .article-del-btn:hover { background: rgba(192,57,43,0.22); }
-.article-edit-btn { position: absolute; top: 14px; right: 50px; background: rgba(108,99,255,0.12); border: 1px solid rgba(108,99,255,0.3); color: var(--accent); padding: 5px 9px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
+.article-edit-btn { position: absolute; top: 14px; right: 54px; background: rgba(108,99,255,0.12); border: 1px solid rgba(108,99,255,0.3); color: var(--accent); padding: 5px 9px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
 .article-edit-btn:hover { background: rgba(108,99,255,0.28); }
-.article-headline-btn { position: absolute; top: 14px; right: 56px; background: rgba(192,151,59,0.15); border: 1px solid rgba(192,151,59,0.4); color: #8b6914; padding: 5px 9px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.78rem; font-weight: 700; transition: all 0.2s; }
+.article-headline-btn { position: absolute; top: 14px; right: 102px; background: rgba(192,151,59,0.15); border: 1px solid rgba(192,151,59,0.4); color: #8b6914; padding: 5px 9px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.78rem; font-weight: 700; transition: all 0.2s; white-space: nowrap; }
 .article-headline-btn:hover { background: rgba(192,151,59,0.3); }
 .article-headline .article-headline-btn { background: rgba(192,151,59,0.3); color: #c0973b; border-color: #c0973b; }
 
@@ -1040,8 +1040,8 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 
 .bourse-container { flex: 1; overflow-y: auto; padding: 20px 24px 40px; }
 .bourse-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
-.bourse-title { font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; color: white; margin: 0 0 4px; letter-spacing: -0.02em; }
-.bourse-subtitle { font-size: 0.75rem; color: var(--text-muted); }
+.bourse-title { font-family: var(--font-display); font-size: 1.35rem; font-weight: 800; color: white; margin: 0 0 4px; letter-spacing: 0.01em; }
+.bourse-subtitle { font-size: 0.78rem; color: var(--text-muted); letter-spacing: 0.03em; }
 .bourse-summary-row { display: flex; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
 .bourse-summary-card {
     background: var(--bg-secondary);
@@ -1093,8 +1093,8 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .stock-logo-popup img { width: 100px; height: 100px; object-fit: cover; border-radius: 7px; display: block; }
 .stock-logo-wrap:hover .stock-logo-popup { display: block; }
 .stock-info { flex: 1; min-width: 0; }
-.stock-name { font-weight: 700; font-size: 0.88rem; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.stock-char { font-size: 0.68rem; margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+.stock-name { font-weight: 700; font-size: 0.92rem; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.01em; }
+.stock-char { font-size: 0.72rem; margin-top: 3px; display: flex; align-items: center; gap: 4px; line-height: 1.4; }
 .stock-char i { font-size: 0.6rem; opacity: 0.7; }
 .stock-badge { font-size: 0.72rem; font-weight: 800; padding: 3px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; }
 .badge-up      { background: rgba(35,165,89,0.2); color: #23a559; }
@@ -1102,8 +1102,8 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .badge-neutral { background: var(--bg-hover); color: var(--text-muted); }
 
 .stock-value-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
-.stock-current-value { font-family: var(--font-display); font-size: 1.1rem; font-weight: 800; color: white; }
-.stock-prev-value { font-size: 0.68rem; color: var(--text-muted); }
+.stock-current-value { font-family: var(--font-display); font-size: 1.15rem; font-weight: 800; color: white; letter-spacing: 0.02em; }
+.stock-prev-value { font-size: 0.72rem; color: var(--text-muted); }
 .stock-chart-container { margin-bottom: 8px; }
 .stock-svg-chart { width: 100%; height: 52px; display: block; }
 .stock-chart-dot { cursor: pointer; transition: r 0.15s; }
@@ -1117,7 +1117,9 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .stock-hl-label { color: var(--text-dim); font-size: 0.6rem; }
 .stock-trend-badge { font-size: 0.68rem; font-weight: 600; padding: 2px 8px; border-radius: 20px; width: fit-content; margin-bottom: 8px; }
 
-.stock-admin-row { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.stock-admin-row { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.stock-admin-trend-row { display: flex; gap: 4px; align-items: center; flex-wrap: nowrap; }
+.stock-admin-actions-row { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
 .stock-trend-btn {
     background: var(--bg-primary); border: 1px solid var(--border); color: white;
     width: 26px; height: 26px; border-radius: var(--radius-sm); cursor: pointer;
@@ -1133,9 +1135,12 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
     background: rgba(108,99,255,0.2); border: 1px solid rgba(108,99,255,0.3);
     color: var(--accent); width: 26px; height: 26px; border-radius: var(--radius-sm);
     cursor: pointer; font-size: 0.72rem; display: flex; align-items: center; justify-content: center;
-    margin-left: auto; transition: all 0.18s;
+    transition: all 0.18s;
 }
 .stock-admin-edit:hover { background: rgba(108,99,255,0.4); }
+.stock-admin-reset {
+    background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.3); color: #f59e0b;
+}
 .stock-admin-del {
     background: rgba(218,55,60,0.15); border: 1px solid rgba(218,55,60,0.3);
     color: var(--danger, #da373c); width: 26px; height: 26px; border-radius: var(--radius-sm);
