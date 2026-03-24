@@ -2813,20 +2813,16 @@ function renderStockGrid(stocks) {
 
         const adminBtns = IS_ADMIN ? `
             <div class="stock-admin-row">
-                <div class="stock-admin-trend-row">
-                    <button class="stock-trend-btn stock-trend-up2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','croissance_forte')" title="+1.3~1.6%"><i class="fa-solid fa-angles-up"></i></button>
-                    <button class="stock-trend-btn stock-trend-up1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','croissance')" title="+0.5~0.9%"><i class="fa-solid fa-angle-up"></i></button>
-                    <button class="stock-trend-btn stock-trend-stable" onclick="event.stopPropagation(); adminStockTrend('${s._id}','stable')" title="±0.1%"><i class="fa-solid fa-minus"></i></button>
-                    <button class="stock-trend-btn stock-trend-down1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','baisse')" title="-0.5~0.9%"><i class="fa-solid fa-angle-down"></i></button>
-                    <button class="stock-trend-btn stock-trend-down2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','chute')" title="-1.2~1.6%"><i class="fa-solid fa-angles-down"></i></button>
-                    <input type="number" id="cpct-${s._id}" class="stock-pct-input" placeholder="%" step="0.1" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter'){event.stopPropagation();applyCustomPctCard('${s._id}');}">
-                    <button class="stock-trend-btn" onclick="event.stopPropagation(); applyCustomPctCard('${s._id}')" title="Appliquer %" style="background:rgba(108,99,255,0.2);color:var(--accent);border-color:rgba(108,99,255,0.3);"><i class="fa-solid fa-percent"></i></button>
-                </div>
-                <div class="stock-admin-actions-row">
-                    <button class="stock-trend-btn stock-admin-reset" onclick="event.stopPropagation(); if(confirm('Réinitialiser l\'historique de cette action ?')) adminResetStockHistory('${s._id}')" title="Réinitialiser l'historique"><i class="fa-solid fa-clock-rotate-left"></i></button>
-                    <button class="stock-admin-edit" onclick="event.stopPropagation(); openStockEditModal('${s._id}')" title="Modifier"><i class="fa-solid fa-pen"></i></button>
-                    <button class="stock-admin-del" onclick="event.stopPropagation(); if(confirm('Supprimer cette action ?')) adminDeleteStock('${s._id}')" title="Supprimer"><i class="fa-solid fa-trash"></i></button>
-                </div>
+                <button class="stock-trend-btn stock-trend-up2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','croissance_forte')" title="+1.3~1.6%"><i class="fa-solid fa-angles-up"></i></button>
+                <button class="stock-trend-btn stock-trend-up1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','croissance')" title="+0.5~0.9%"><i class="fa-solid fa-angle-up"></i></button>
+                <button class="stock-trend-btn stock-trend-stable" onclick="event.stopPropagation(); adminStockTrend('${s._id}','stable')" title="±0.1%"><i class="fa-solid fa-minus"></i></button>
+                <button class="stock-trend-btn stock-trend-down1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','baisse')" title="-0.5~0.9%"><i class="fa-solid fa-angle-down"></i></button>
+                <button class="stock-trend-btn stock-trend-down2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','chute')" title="-1.2~1.6%"><i class="fa-solid fa-angles-down"></i></button>
+                <input type="number" id="cpct-${s._id}" class="stock-pct-input" placeholder="%" step="0.1" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter'){event.stopPropagation();applyCustomPctCard('${s._id}');}">
+                <button class="stock-trend-btn" onclick="event.stopPropagation(); applyCustomPctCard('${s._id}')" title="Appliquer %" style="background:rgba(108,99,255,0.2);color:var(--accent);border-color:rgba(108,99,255,0.3);"><i class="fa-solid fa-percent"></i></button>
+                <button class="stock-trend-btn stock-admin-reset" onclick="event.stopPropagation(); if(confirm('Réinitialiser l\'historique de cette action ?')) adminResetStockHistory('${s._id}')" title="Réinitialiser l'historique"><i class="fa-solid fa-clock-rotate-left"></i></button>
+                <button class="stock-admin-edit" onclick="event.stopPropagation(); openStockEditModal('${s._id}')" title="Modifier"><i class="fa-solid fa-pen"></i></button>
+                <button class="stock-admin-del" onclick="event.stopPropagation(); if(confirm('Supprimer cette action ?')) adminDeleteStock('${s._id}')" title="Supprimer"><i class="fa-solid fa-trash"></i></button>
             </div>` : '';
 
         card.innerHTML = `
