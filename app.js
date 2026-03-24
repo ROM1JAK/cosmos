@@ -335,10 +335,7 @@ socket.on('login_success', (data) => {
     if(navAccBtn) { navAccBtn.classList.add('logged-in'); document.getElementById('nav-account-label').textContent = USERNAME; }
     closeLoginModal(); socket.emit('request_initial_data', PLAYER_ID); socket.emit('request_dm_contacts', USERNAME);
     const savedRoom = localStorage.getItem('saved_room_id'); joinRoom(savedRoom || 'global');
-    const lastTab = localStorage.getItem('last_tab');
-    const lastTabTime = parseInt(localStorage.getItem('last_tab_time') || '0');
-    const TAB_TIMEOUT = 6 * 60 * 60 * 1000;
-    if(lastTab && (Date.now() - lastTabTime < TAB_TIMEOUT)) { switchView(lastTab); } else { switchView('accueil'); }
+    switchView('accueil');
 });
 socket.on('login_error', (msg) => { const el = document.getElementById('login-error-msg'); el.textContent = msg; el.style.display = 'block'; });
 socket.on('username_change_success', (newName) => { USERNAME = newName; localStorage.setItem('rp_username', newName); document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`; document.getElementById('settings-msg').textContent = "OK !"; });
