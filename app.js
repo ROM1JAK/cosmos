@@ -18,7 +18,7 @@ let unreadRooms = new Set();
 let unreadDms = new Set(); 
 let dmContacts = []; 
 let firstUnreadMap = {}; 
-let currentView = 'chat'; 
+let currentView = 'accueil'; 
 let notificationsEnabled = true; 
 let currentSelectedChar = null; 
 let mediaRecorder;
@@ -331,6 +331,8 @@ socket.on('login_success', (data) => {
     
     document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`;
     document.getElementById('btn-account-main').innerHTML = '<i class="fa-solid fa-user"></i> Mon Profil';
+    const navAccBtn = document.getElementById('btn-nav-account');
+    if(navAccBtn) { navAccBtn.classList.add('logged-in'); document.getElementById('nav-account-label').textContent = USERNAME; }
     closeLoginModal(); socket.emit('request_initial_data', PLAYER_ID); socket.emit('request_dm_contacts', USERNAME);
     const savedRoom = localStorage.getItem('saved_room_id'); joinRoom(savedRoom || 'global');
     const lastTab = localStorage.getItem('last_tab');
@@ -1560,16 +1562,17 @@ socket.on('post_deleted', (id) => { const el = document.getElementById(`post-${i
 socket.on('reload_posts', () => loadFeed());
 
 function generateCommentsHTML(comments, postId) {
+    if(!comments || comments.length === 0) return '<div class="comment-empty"><i class="fa-regular fa-comment"></i><p>Aucun commentaire pour l\'instant…</p></div>';
     let html = "";
     comments.forEach(c => {
-        const delBtn = IS_ADMIN ? `<span style="color:#da373c; cursor:pointer; margin-left:10px;" onclick="deleteComment('${postId}', '${c.id}')">X</span>` : "";
+        const delBtn = IS_ADMIN ? `<button class="comment-del-btn" onclick="deleteComment('${postId}', '${c.id}')"><i class="fa-solid fa-trash"></i></button>` : "";
         let mediaHtml = "";
         if(c.mediaUrl) {
-            if(c.mediaType === 'image') mediaHtml = `<img src="${c.mediaUrl}" style="max-width:200px; border-radius:4px; margin-top:5px;">`;
-            if(c.mediaType === 'video') mediaHtml = `<video src="${c.mediaUrl}" controls style="max-width:200px; border-radius:4px; margin-top:5px;"></video>`;
-            if(c.mediaType === 'audio') mediaHtml = `<audio src="${c.mediaUrl}" controls style="max-width:200px; margin-top:5px;"></audio>`;
+            if(c.mediaType === 'image') mediaHtml = `<img src="${c.mediaUrl}" class="comment-media">`;
+            if(c.mediaType === 'video') mediaHtml = `<video src="${c.mediaUrl}" controls class="comment-media"></video>`;
+            if(c.mediaType === 'audio') mediaHtml = `<audio src="${c.mediaUrl}" controls style="width:100%; margin-top:5px;"></audio>`;
         }
-        html += `<div class="comment-item"><div class="comment-bubble"><div class="comment-meta"><img src="${c.authorAvatar}" style="width:20px;height:20px;border-radius:50%;margin-right:5px;"><b>${c.authorName}</b> ${c.date}</div><div style="margin-left:25px;">${c.content} ${mediaHtml} ${delBtn}</div></div></div>`;
+        html += `<div class="comment-item"><img src="${c.authorAvatar}" class="comment-avatar" onclick="openProfile('${c.authorName.replace(/'/g, "\\'")}')"><div class="comment-bubble"><div class="comment-meta"><span class="comment-author">${c.authorName}</span><span class="comment-time">${c.date}</span>${delBtn}</div><div class="comment-text">${c.content}${mediaHtml}</div></div></div>`;
     });
     return html;
 }
@@ -1856,24 +1859,30 @@ socket.on('new_article', (post) => {
 function updateActuAdminForm() {
     const form = document.getElementById('actu-admin-form');
     if(form) { if(IS_ADMIN) form.classList.remove('hidden'); else form.classList.add('hidden'); }
+    const dateInput = document.getElementById('actuDate');
+    if(dateInput) { dateInput.max = new Date().toISOString().split('T')[0]; }
 }
 function loadActualites() { actuRequestPending = true; socket.emit('request_events'); }
 function submitEvent() {
-    const jour = document.getElementById('actuJour').value;
     const dateRaw = document.getElementById('actuDate').value;
     const heure = document.getElementById('actuHeure').value;
     const minuteEl = document.getElementById('actuMinute');
     const minute = minuteEl ? minuteEl.value : '00';
     const evenement = document.getElementById('actuEvenement').value.trim();
     if(!evenement) return;
+    // Bloquer les dates dans le futur
+    if(dateRaw) {
+        const today = new Date(); today.setHours(23,59,59,999);
+        const sel = new Date(dateRaw + 'T23:59:59');
+        if(sel > today) return alert('Impossible de planifier un événement dans le futur.');
+    }
     const heureFormatted = heure ? `${heure}h${minute}` : '';
     let dateFormatted = dateRaw;
     if(dateRaw) {
         const d = new Date(dateRaw + 'T12:00:00');
         if(!isNaN(d)) dateFormatted = d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' });
     }
-    socket.emit('create_event', { jour, date: dateFormatted, heure: heureFormatted, evenement });
-    document.getElementById('actuJour').value = '';
+    socket.emit('create_event', { jour: '', date: dateFormatted, heure: heureFormatted, evenement });
     document.getElementById('actuDate').value = '';
     document.getElementById('actuHeure').value = '';
     if(minuteEl) minuteEl.value = '00';
