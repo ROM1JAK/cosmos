@@ -31,7 +31,7 @@ const CharacterSchema = new mongoose.Schema({
     followers: [String],
     partyName: String, partyLogo: String,
     isOfficial: { type: Boolean, default: false },
-    companies: [{ name: String, logo: String, role: String, description: String, headquarters: String }],
+    companies: [{ name: String, logo: String, role: String, description: String, headquarters: String, revenue: { type: Number, default: 0 } }],
     // [NOUVEAU] Capital financier
     capital: { type: Number, default: 0 }
 });
@@ -171,7 +171,36 @@ mongoose.connection.once('open', async () => {
 });
 // ========== [FIN CITÉS SCHÉMA] ==========
 
-let onlineUsers = {}; 
+let onlineUsers = {};
+
+// [BOURSE] Helper — propage la variation de prix aux actifs du personnage lié
+async function applyStockValueChange(stock, oldValue, newValue) {
+    if(!stock.charId || !oldValue || oldValue === newValue) return;
+    const pct = (newValue - oldValue) / oldValue;
+    if(Math.abs(pct) < 0.00001) return;
+    try {
+        const char = await Character.findById(stock.charId);
+        if(!char) return;
+        let changed = false;
+        if((char.capital || 0) > 0) {
+            char.capital = Math.round(char.capital * (1 + pct) * 100) / 100;
+            changed = true;
+        }
+        if(char.companies && char.companies.length > 0) {
+            char.companies.forEach(co => {
+                if(co.name === stock.companyName && (co.revenue || 0) > 0) {
+                    co.revenue = Math.round(co.revenue * (1 + pct) * 100) / 100;
+                    changed = true;
+                }
+            });
+        }
+        if(changed) {
+            char.markModified('companies');
+            await char.save();
+            io.emit('char_updated', char.toObject());
+        }
+    } catch(e) { console.error('applyStockValueChange error:', e); }
+}
 
 function broadcastUserList() {
     const uniqueNames = [...new Set(Object.values(onlineUsers))];
@@ -804,6 +833,7 @@ io.on('connection', async (socket) => {
       const stock = await Stock.findById(stockId);
       if(!stock) return;
       stock.trend = trend;
+      const oldTrendVal = stock.currentValue;
       const range = TREND_RANGES[trend] || [0, 0];
       const randPct = parseFloat((range[0] + Math.random() * (range[1] - range[0])).toFixed(2));
       const mult = 1 + randPct / 100;
@@ -813,6 +843,7 @@ io.on('connection', async (socket) => {
       if(stock.history.length > 30) stock.history.shift();
       stock.updatedAt = new Date();
       await stock.save();
+      await applyStockValueChange(stock, oldTrendVal, newVal);
       const stocks = await Stock.find().sort({ companyName: 1 });
       io.emit('stocks_updated', stocks);
   });
@@ -823,6 +854,7 @@ io.on('connection', async (socket) => {
       if(!user || !user.isAdmin) return;
       const stock = await Stock.findById(stockId);
       if(!stock) return;
+      const oldCustomVal = stock.currentValue;
       const mult = 1 + (Number(pct) / 100);
       const newVal = Math.max(0, Math.round(stock.currentValue * mult * 100) / 100);
       stock.currentValue = newVal;
@@ -830,6 +862,7 @@ io.on('connection', async (socket) => {
       if(stock.history.length > 30) stock.history.shift();
       stock.updatedAt = new Date();
       await stock.save();
+      await applyStockValueChange(stock, oldCustomVal, newVal);
       const stocks = await Stock.find().sort({ companyName: 1 });
       io.emit('stocks_updated', stocks);
   });
@@ -847,6 +880,7 @@ io.on('connection', async (socket) => {
       if(!stockId) return;
       const stock = await Stock.findById(stockId).catch(() => null);
       if(!stock) return;
+      const oldPubVal = stock.currentValue;
       const pct = parseFloat((0.1 + Math.random() * 0.4).toFixed(2)); // 0.10 – 0.50%
       const mult = 1 + pct / 100;
       const newVal = Math.round(stock.currentValue * mult * 100) / 100;
@@ -855,8 +889,28 @@ io.on('connection', async (socket) => {
       if(stock.history.length > 30) stock.history.shift();
       stock.updatedAt = new Date();
       await stock.save();
+      await applyStockValueChange(stock, oldPubVal, newVal);
       const stocks = await Stock.find().sort({ companyName: 1 });
       io.emit('stocks_updated', stocks);
+  });
+
+  // Admin — définir le chiffre d'affaires d'une entreprise
+  socket.on('admin_set_company_revenue', async ({ charId, companyName, revenue }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      const char = await Character.findById(charId);
+      if(!char) return;
+      const idx = char.companies ? char.companies.findIndex(co => co.name === companyName) : -1;
+      if(idx < 0) return;
+      char.companies[idx].revenue = Math.max(0, Number(revenue) || 0);
+      char.markModified('companies');
+      await char.save();
+      io.emit('char_updated', char.toObject());
+      const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
+      const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
+      const charData = char.toObject(); charData.postCount = postCount; charData.lastPosts = lastPosts;
+      io.emit('char_profile_data', charData);
   });
   // ========== [FIN BOURSE SOCKET] ==========
 });
