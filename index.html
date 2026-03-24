@@ -19,6 +19,10 @@
 </div>
 
 <nav id="top-nav">
+        <button id="btn-nav-account" class="nav-profile-btn" onclick="openAccountUI()">
+            <i class="fa-solid fa-circle-user"></i>
+            <span id="nav-account-label">Connexion</span>
+        </button>
         <button class="nav-btn" id="btn-view-accueil" onclick="switchView('accueil')"><i class="fa-solid fa-house"></i><span class="nav-label"> Accueil</span></button>
         <button class="nav-btn" id="btn-view-chat" onclick="switchView('chat')"><i class="fa-solid fa-comments"></i><span class="nav-label"> Chat</span></button>
         <button class="nav-btn" id="btn-view-feed" onclick="switchView('feed')"><i class="fa-solid fa-bullhorn"></i><span class="nav-label"> Feed</span></button>
@@ -249,21 +253,29 @@
     </div>
     
     <div id="post-detail-modal" class="modal-overlay hidden" onclick="closePostDetail()">
-        <div class="modal-box" style="max-width: 600px; padding:0; overflow:hidden; max-height:90vh; display:flex; flex-direction:column;" onclick="event.stopPropagation()">
-            <div style="padding:15px; border-bottom:1px solid #222; display:flex; justify-content:space-between;">
-                <h3 style="color:white; margin:0;">Discussion</h3> <button onclick="closePostDetail()" style="background:none; border:none; color:#aaa; cursor:pointer;">X</button>
+        <div class="post-detail-box" onclick="event.stopPropagation()">
+            <div class="post-detail-header">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <i class="fa-solid fa-comment-dots" style="color:var(--accent);"></i>
+                    <h3>Discussion</h3>
+                </div>
+                <button onclick="closePostDetail()" class="post-detail-close"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div style="overflow-y:auto; padding:15px; flex:1;">
+            <div class="post-detail-scroll">
                 <div id="post-detail-content"></div>
-                <div id="post-detail-comments-list" style="margin-top:20px;"></div>
+                <div class="post-detail-comments-header">
+                    <i class="fa-solid fa-comments"></i>
+                    <span id="post-detail-comment-count">Commentaires</span>
+                </div>
+                <div id="post-detail-comments-list"></div>
             </div>
-            <div style="padding:15px; background: var(--bg-chat); border-top:1px solid #222;">
+            <div class="post-detail-footer">
                 <div id="comment-staging" class="chat-staging hidden"></div>
-                <div class="comment-form" style="display:flex; gap:5px;">
-                    <input type="text" id="post-detail-comment-input" class="modal-input" placeholder="Commentaire..." style="margin:0;">
-                    <button class="btn-icon" onclick="toggleRecording('comment')"><i class="fa-solid fa-microphone"></i></button>
-                    <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-paperclip"></i><input type="file" id="comment-file-input" class="hidden" accept="image/*,video/*" onchange="stageCommentMedia(this)"></label>
-                    <button id="btn-detail-comment" class="btn-primary">Envoyer</button>
+                <div class="comment-form">
+                    <input type="text" id="post-detail-comment-input" class="comment-input-field" placeholder="Écrire un commentaire...">
+                    <button class="btn-icon" onclick="toggleRecording('comment')" title="Vocal"><i class="fa-solid fa-microphone"></i></button>
+                    <label class="btn-icon" style="cursor:pointer;" title="Joindre"><i class="fa-solid fa-paperclip"></i><input type="file" id="comment-file-input" class="hidden" accept="image/*,video/*" onchange="stageCommentMedia(this)"></label>
+                    <button id="btn-detail-comment" class="btn-primary" style="padding:8px 16px;">Envoyer</button>
                 </div>
             </div>
         </div>
@@ -274,7 +286,7 @@
     <div id="main-view-wrapper">
 
         <!-- ===== [ACCUEIL] ===== -->
-        <div id="view-accueil" class="view-section hidden">
+        <div id="view-accueil" class="view-section active">
             <div class="accueil-container">
                 <div class="accueil-hero">
                     <h1 class="accueil-title"><i class="fa-solid fa-globe"></i> ConvSmos</h1>
@@ -316,7 +328,7 @@
         </div>
         <!-- ===== [FIN ACCUEIL] ===== -->
 
-        <div id="view-chat" class="view-section active">
+        <div id="view-chat" class="view-section hidden">
             <div id="app-container">
                 <div id="sidebar">
                     <div class="sidebar-header">
@@ -474,13 +486,7 @@
             <div class="actu-container">
                 <div id="actu-admin-form" class="actu-form-box hidden">
                     <div class="presse-write-header"><i class="fa-solid fa-calendar-plus"></i><span>Ajouter un événement</span></div>
-                    <!-- [AMÉLIORÉ] Menus déroulants -->
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
-                        <select id="actuJour" class="modal-input" style="margin:0;cursor:pointer;">
-                            <option value="">— Jour —</option>
-                            <option>Lundi</option><option>Mardi</option><option>Mercredi</option>
-                            <option>Jeudi</option><option>Vendredi</option><option>Samedi</option><option>Dimanche</option>
-                        </select>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
                         <input type="date" id="actuDate" class="modal-input" style="margin:0;">
                         <div style="display:flex;gap:4px;">
                             <select id="actuHeure" class="modal-input" style="margin:0;flex:1;cursor:pointer;padding:8px 4px;">
