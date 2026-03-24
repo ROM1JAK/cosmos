@@ -577,6 +577,8 @@ body[data-theme="ombra"] { --accent: #7c3aed; --accent-glow: rgba(124,58,237,0.3
 .article-actions .action-item.liked { color: #c0392b; }
 .article-del-btn { position: absolute; top: 14px; right: 14px; background: rgba(192,57,43,0.12); border: 1px solid rgba(192,57,43,0.3); color: #c0392b; padding: 5px 9px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
 .article-del-btn:hover { background: rgba(192,57,43,0.22); }
+.article-edit-btn { position: absolute; top: 14px; right: 50px; background: rgba(108,99,255,0.12); border: 1px solid rgba(108,99,255,0.3); color: var(--accent); padding: 5px 9px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
+.article-edit-btn:hover { background: rgba(108,99,255,0.28); }
 .article-headline-btn { position: absolute; top: 14px; right: 56px; background: rgba(192,151,59,0.15); border: 1px solid rgba(192,151,59,0.4); color: #8b6914; padding: 5px 9px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.78rem; font-weight: 700; transition: all 0.2s; }
 .article-headline-btn:hover { background: rgba(192,151,59,0.3); }
 .article-headline .article-headline-btn { background: rgba(192,151,59,0.3); color: #c0973b; border-color: #c0973b; }

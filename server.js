@@ -82,8 +82,8 @@ async function applyStockValueChange(stock, oldValue, newValue) {
     if(!stock.charId || !oldValue || oldValue === newValue) return;
     const pct = (newValue - oldValue) / oldValue;
     if(Math.abs(pct) < 0.00001) return;
-    // Amplifier l'effet sur le capital (x3 pour un impact plus marqué)
-    const amplifiedPct = pct * 3;
+    // Amplifier l'effet sur le capital (x1 pour un impact réaliste)
+    const amplifiedPct = pct;
     try {
         const char = await Character.findById(stock.charId);
         if(!char) return;
@@ -499,6 +499,16 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('delete_post', async (postId) => { await Post.findByIdAndDelete(postId); io.emit('post_deleted', postId); });
+
+  socket.on('edit_post', async ({ postId, content, ownerId }) => {
+      const post = await Post.findById(postId);
+      if(!post) return;
+      if(post.ownerId !== ownerId && !(await User.findOne({ secretCode: ownerId, isAdmin: true }))) return;
+      post.content = content;
+      post.edited = true;
+      await post.save();
+      io.emit('post_updated', post);
+  });
 
   socket.on('like_post', async ({ postId, charId }) => { 
       const post = await Post.findById(postId);

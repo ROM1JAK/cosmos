@@ -1518,6 +1518,32 @@ function toggleLike(id) {
     if(!PLAYER_ID) return; if(!currentFeedCharId) return alert("Sélectionnez un perso (Feed).");
     socket.emit('like_post', { postId: id, charId: currentFeedCharId }); 
 }
+function openArticleEditModal(postId) {
+    const post = presseArticlesCache.find(a => String(a._id) === postId);
+    if(!post) return;
+    let titleText = '', bodyText = post.content || '';
+    const titleMatch = post.content && post.content.match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
+    if(titleMatch) { titleText = titleMatch[1]; bodyText = titleMatch[2]; }
+    document.getElementById('editArticleId').value = postId;
+    document.getElementById('editArticleTitle').value = titleText;
+    document.getElementById('editArticleContent').value = bodyText;
+    document.getElementById('article-edit-modal').classList.remove('hidden');
+}
+
+function closeArticleEditModal() {
+    document.getElementById('article-edit-modal').classList.add('hidden');
+}
+
+function submitArticleEdit() {
+    const postId = document.getElementById('editArticleId').value;
+    const title = document.getElementById('editArticleTitle').value.trim();
+    const body = document.getElementById('editArticleContent').value.trim();
+    if(!postId) return;
+    const newContent = title ? `[TITRE]${title}[/TITRE]\n${body}` : body;
+    socket.emit('edit_post', { postId, content: newContent, ownerId: PLAYER_ID });
+    closeArticleEditModal();
+}
+
 function deletePost(id) { if(confirm("Supprimer ?")) socket.emit('delete_post', id); }
 
 let currentDetailPostId = null;
@@ -1781,6 +1807,7 @@ function createArticleElement(post) {
     div.id = `article-${post._id}`;
 
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="article-del-btn" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
+    const editBtn = (post.ownerId === PLAYER_ID || IS_ADMIN) ? `<button class="article-edit-btn" onclick="event.stopPropagation(); openArticleEditModal('${post._id}')"><i class="fa-solid fa-pen"></i></button>` : '';
     const headlineBtn = IS_ADMIN ? `<button class="article-headline-btn" onclick="event.stopPropagation(); toggleHeadline('${post._id}', ${!post.isHeadline})" title="${post.isHeadline ? 'Retirer de la Une' : 'Mettre à la Une'}"><i class="fa-solid fa-star"></i> ${post.isHeadline ? 'Retirer la Une' : 'La Une'}</button>` : '';
 
     let titleText = '', bodyText = post.content || '';
@@ -1816,20 +1843,12 @@ function createArticleElement(post) {
         ${bannerHTML}
         <div class="article-body">
             ${delBtn}
+            ${editBtn}
             ${headlineBtn}
             ${urgencyHTML}
             <h2 class="article-title">${escapeHtml(titleText)}</h2>
-            <div class="article-byline" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
-                <img src="${post.authorAvatar}" class="article-author-avatar">
-                <div>
-                    <span class="article-author-name">${post.authorName}</span>${partyHTML}
-                    <span class="article-author-role">${post.authorRole}</span>
-                </div>
-                <span class="article-date">${post.date}</span>
-            </div>
             <div class="article-separator"></div>
             ${articleBodyHTML}
-            <!-- [NOUVEAU] Signature rédacteur en pied d'article -->
             <div class="article-footer-signature" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
                 <img src="${post.authorAvatar}" class="article-sig-avatar">
                 <div>
@@ -2897,32 +2916,35 @@ function renderBourseCompChart(stocks) {
         container.innerHTML = '';
         return;
     }
-    const W = 600, H = 110, xPad = 44, yPad = 10;
+    const W = 600, H = 80, xPad = 60, yPad = 8;
     const chartW = W - xPad * 2, chartH = H - yPad * 2;
     const maxPts = 7;
-    let allPcts = [];
+    // Collect all history values for Y scale
+    let allVals = [];
     const lines = top10.map(s => {
         const hist = (s.history || []).slice(-maxPts);
-        const base = hist[0]?.value || 1;
-        const pcts = hist.map(h => base > 0 ? +((h.value - base) / base * 100).toFixed(2) : 0);
-        allPcts.push(...pcts);
-        return { name: s.companyName, color: s.stockColor || '#6c63ff', pcts };
+        const vals = hist.map(h => h.value);
+        allVals.push(...vals);
+        return { name: s.companyName, color: s.stockColor || '#6c63ff', vals, hist };
     });
-    const maxAbs = Math.max(...allPcts.map(Math.abs), 0.5);
-    const zeroY = yPad + chartH / 2;
+    const maxVal = Math.max(...allVals, 1);
+    const minVal = Math.min(...allVals, 0);
+    const valRange = maxVal - minVal || 1;
     const linesSVG = lines.map(line => {
-        if(line.pcts.length < 2) return '';
-        const pts = line.pcts.map((p, i) => {
-            const x = xPad + (i / Math.max(line.pcts.length - 1, 1)) * chartW;
-            const y = yPad + chartH / 2 - (p / maxAbs) * (chartH / 2);
+        if(line.vals.length < 2) return '';
+        const pts = line.vals.map((v, i) => {
+            const x = xPad + (i / Math.max(line.vals.length - 1, 1)) * chartW;
+            const y = yPad + chartH - ((v - minVal) / valRange) * chartH;
             return `${x.toFixed(1)},${y.toFixed(1)}`;
         }).join(' ');
         return `<polyline points="${pts}" fill="none" stroke="${line.color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" opacity="0.88"/>`;
     }).join('');
-    const gridLines = [-maxAbs, -maxAbs/2, 0, maxAbs/2, maxAbs].map(v => {
-        const y = yPad + chartH / 2 - (v / maxAbs) * (chartH / 2);
-        return `<line x1="${xPad}" y1="${y.toFixed(1)}" x2="${W-xPad}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,${v===0?'0.18':'0.07'})" stroke-width="1" stroke-dasharray="${v===0?'':'3,3'}"/>
-        <text x="${xPad-5}" y="${(y+3.5).toFixed(1)}" fill="rgba(255,255,255,0.3)" font-size="9" text-anchor="end">${v===0?'0%':v>0?'+'+v.toFixed(1)+'%':v.toFixed(1)+'%'}</text>`;
+    // Y axis labels: 3 ticks (min, mid, max)
+    const ticks = [minVal, (minVal + maxVal) / 2, maxVal];
+    const gridLines = ticks.map(v => {
+        const y = yPad + chartH - ((v - minVal) / valRange) * chartH;
+        return `<line x1="${xPad}" y1="${y.toFixed(1)}" x2="${W-xPad}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.09)" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="${xPad-5}" y="${(y+3.5).toFixed(1)}" fill="rgba(255,255,255,0.35)" font-size="8" text-anchor="end">${formatStockValue(v)}</text>`;
     }).join('');
     const legendHTML = lines.map(l =>
         `<span class="bourse-comp-legend-item"><span class="bourse-comp-legend-dot" style="background:${l.color}"></span>${escapeHtml(l.name)}</span>`

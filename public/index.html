@@ -25,7 +25,7 @@
         </button>
         <button class="nav-btn" id="btn-view-accueil" onclick="switchView('accueil')"><i class="fa-solid fa-house"></i><span class="nav-label"> Accueil</span></button>
         <button class="nav-btn" id="btn-view-chat" onclick="switchView('chat')"><i class="fa-solid fa-comments"></i><span class="nav-label"> Chat</span></button>
-        <button class="nav-btn" id="btn-view-feed" onclick="switchView('feed')"><i class="fa-solid fa-bullhorn"></i><span class="nav-label"> Feed</span></button>
+        <button class="nav-btn" id="btn-view-feed" onclick="switchView('feed')"><i class="fa-solid fa-bullhorn"></i><span class="nav-label"> Réseau</span></button>
         <button class="nav-btn nav-char-mp" id="btn-view-char-mp" onclick="switchView('char-mp')" style="position:relative;">
             <i class="fa-solid fa-user-group"></i><span class="nav-label"> MP Perso</span>
             <span id="char-mp-badge" class="nav-unread-dot hidden"></span>
@@ -752,7 +752,8 @@
                         <h2 class="bourse-title"><i class="fa-solid fa-landmark"></i> Bourse de ConvSmos</h2>
                         <div class="bourse-subtitle">Marché financier fictif &middot; Mis à jour en direct</div>
                     </div>
-                    <div id="bourse-admin-header" class="hidden">
+                    <div id="bourse-admin-header" class="hidden" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <button class="btn-primary" onclick="adminNextTradingDay()" style="background:linear-gradient(135deg,#6c63ff,#4f46e5);"><i class="fa-solid fa-forward-step"></i> Jour suivant</button>
                         <button class="btn-primary" onclick="openStockAddModal()"><i class="fa-solid fa-plus"></i> Coter une action</button>
                     </div>
                 </div>
@@ -857,6 +858,22 @@
             <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
                 <button onclick="closeWikiModal()" class="btn-secondary">Annuler</button>
                 <button onclick="submitWikiPage()" class="btn-primary"><i class="fa-solid fa-check"></i> Enregistrer</button>
+            </div>
+        </div>
+    </div>
+    <!-- [PRESSE] Modale — Modifier un article -->
+    <div id="article-edit-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeArticleEditModal()">
+        <div class="modal-box" style="max-width:600px;" onclick="event.stopPropagation()">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="margin:0; color:white;"><i class="fa-solid fa-feather-pointed"></i> Modifier l'article</h3>
+                <button onclick="closeArticleEditModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
+            </div>
+            <input type="hidden" id="editArticleId">
+            <input type="text" id="editArticleTitle" class="modal-input" placeholder="Titre de l'article...">
+            <textarea id="editArticleContent" class="modal-input" rows="10" placeholder="Contenu de l'article..." style="margin-top:10px; resize:vertical;"></textarea>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+                <button onclick="closeArticleEditModal()" class="btn-secondary">Annuler</button>
+                <button onclick="submitArticleEdit()" class="btn-primary"><i class="fa-solid fa-check"></i> Enregistrer</button>
             </div>
         </div>
     </div>
@@ -971,7 +988,7 @@
                     <div id="create-tab-identite" class="char-tab-content active-tab">
                         <div class="char-form-row">
                             <div style="flex:1"><label class="cfl">Nom *</label><input type="text" id="newCharName" class="char-input" placeholder="Ex: John Doe"></div>
-                            <div style="flex:1"><label class="cfl">Rôle *</label><input type="text" id="newCharRole" class="char-input" placeholder="Ex: Journaliste"></div>
+                            <div style="flex:1"><label class="cfl">Rôle *</label><div style="display:flex;gap:6px;align-items:center;"><input type="text" id="newCharRole" class="char-input" placeholder="Ex: Journaliste" style="flex:1;"><button type="button" class="btn-secondary" style="white-space:nowrap;font-size:0.72rem;padding:5px 8px;" onclick="document.getElementById('newCharRole').value='Journaliste';"><i class="fa-solid fa-newspaper"></i></button></div></div>
                         </div>
                         <label class="cfl">Avatar</label>
                         <div class="img-preview-row">
@@ -1042,7 +1059,7 @@
                     <div id="edit-tab-identite" class="char-tab-content active-tab">
                         <div class="char-form-row">
                             <div style="flex:1"><label class="cfl">Nom *</label><input type="text" id="editCharName" class="char-input" placeholder="Nom"></div>
-                            <div style="flex:1"><label class="cfl">Rôle *</label><input type="text" id="editCharRole" class="char-input" placeholder="Rôle"></div>
+                            <div style="flex:1"><label class="cfl">Rôle *</label><div style="display:flex;gap:6px;align-items:center;"><input type="text" id="editCharRole" class="char-input" placeholder="Rôle" style="flex:1;"><button type="button" class="btn-secondary" style="white-space:nowrap;font-size:0.72rem;padding:5px 8px;" onclick="document.getElementById('editCharRole').value='Journaliste';"><i class="fa-solid fa-newspaper"></i></button></div></div>
                         </div>
                         <label class="cfl">Changer l'avatar</label>
                         <div class="img-preview-row">
