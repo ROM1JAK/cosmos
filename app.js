@@ -94,6 +94,7 @@ function switchView(view) {
     }
     if(view === 'cites') { loadCities(); } // [CITÉS]
     if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); }
+    if(view === 'mes-persos') { renderMesPersos(); }
     if(view === 'char-mp') {
         // Effacer le badge de notif
         const badge = document.getElementById('char-mp-badge');
@@ -582,6 +583,7 @@ function updateUI() {
     else selectCharacter(currentSelectedChar._id);
 
     updateFeedCharUI(); updatePresseCharUI(); updateBreakingNewsVisibility();
+    if(currentView === 'mes-persos') renderMesPersos();
 }
 
 // FEED AVATAR SELECTOR
@@ -889,14 +891,16 @@ async function submitAddCompany() {
     const name = document.getElementById('companyName').value.trim();
     const role = document.getElementById('companyRole').value.trim();
     const desc = document.getElementById('companyDesc').value.trim();
+    const hq   = document.getElementById('companyHQ')?.value.trim() || null;
     const logoFile = document.getElementById('companyLogoFile').files[0];
     if(!name) return alert("Nom de l'entreprise requis.");
     let logo = null;
     if(logoFile) logo = await uploadToCloudinary(logoFile);
-    socket.emit('admin_add_company', { charId: currentProfileChar._id, company: { name, logo, role, description: desc } });
+    socket.emit('admin_add_company', { charId: currentProfileChar._id, company: { name, logo, role, description: desc, headquarters: hq } });
     document.getElementById('companyName').value = '';
     document.getElementById('companyRole').value = '';
     document.getElementById('companyDesc').value = '';
+    if(document.getElementById('companyHQ')) document.getElementById('companyHQ').value = '';
     document.getElementById('companyLogoFile').value = '';
     closeCompanyModal();
 }
@@ -1445,9 +1449,15 @@ function submitPost() {
     socket.emit('create_post', postData);
     socket.emit('typing_feed_stop', { charName: char.name });
     
+    // Pub boost bourse
+    const isPub = document.getElementById('postIsPub')?.checked;
+    const pubStockId = isPub ? document.getElementById('postPubStockId')?.value : null;
+    if(isPub && pubStockId) socket.emit('pub_boost_stock', { stockId: pubStockId });
+    
     document.getElementById('postContent').value = ""; document.getElementById('postMediaUrl').value = ""; document.getElementById('postMediaFile').value = ""; 
     document.getElementById('postFileStatus').style.display = 'none'; document.getElementById('postAnonymous').checked = false; document.getElementById('postBreakingNews').checked = false;
     document.getElementById('char-count').textContent = `0/1000`; pollOptions = []; document.getElementById('poll-creation-ui').classList.add('hidden'); pollUIOpen = false;
+    const pubCb = document.getElementById('postIsPub'); if(pubCb) { pubCb.checked = false; toggleFeedPubSelect(); }
 }
 
 function votePoll(postId, optionIndex) {
@@ -1699,11 +1709,18 @@ function submitArticle() {
     };
 
     socket.emit('create_post', articleData);
+    
+    // Pub boost bourse
+    const isPresseP = document.getElementById('presseIsPub')?.checked;
+    const pressePubId = isPresseP ? document.getElementById('pressePubStockId')?.value : null;
+    if(isPresseP && pressePubId) socket.emit('pub_boost_stock', { stockId: pressePubId });
+
     document.getElementById('presseTitle').value = '';
     document.getElementById('presseContent').value = '';
     document.getElementById('presseMediaUrl').value = '';
     document.getElementById('presseMediaFile').value = '';
     document.getElementById('presseUrgency').value = '';
+    const presseP = document.getElementById('presseIsPub'); if(presseP) { presseP.checked = false; togglePressePubSelect(); }
 }
 
 function createArticleElement(post) {
@@ -2044,6 +2061,83 @@ function renderEditCharCompanies() {
         </div>`).join('');
 }
 function removeEditCharCompany(i) { editCharCompanies.splice(i, 1); renderEditCharCompanies(); }
+
+// ==================== [MES PERSONNAGES] ====================
+function renderMesPersos() {
+    const container = document.getElementById('mes-persos-list');
+    if(!container) return;
+    if(!myCharacters.length) {
+        container.innerHTML = `<div class="mp-empty"><i class="fa-solid fa-user-slash"></i><p>Aucun personnage créé.</p><button class="btn-primary" onclick="openCharModal('create')"><i class="fa-solid fa-plus"></i> Créer un personnage</button></div>`;
+        return;
+    }
+    container.innerHTML = '';
+    myCharacters.forEach(char => {
+        const card = document.createElement('div');
+        card.className = 'mp-char-card';
+        card.style.borderLeft = `4px solid ${char.color || 'var(--accent)'}`;
+        const companies = char.companies || [];
+        const compHTML = companies.map(co => `
+            <div class="mp-company-item">
+                <div class="mp-company-logo-wrap">${co.logo ? `<img src="${co.logo}" class="mp-company-logo">` : '<i class="fa-solid fa-building"></i>'}</div>
+                <div>
+                    <div class="mp-company-name">${escapeHtml(co.name)}</div>
+                    <div class="mp-company-role">${escapeHtml(co.role || '')}</div>
+                    ${co.headquarters ? `<div class="mp-company-hq"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(co.headquarters)}</div>` : ''}
+                </div>
+            </div>`).join('');
+        const partyHTML = char.partyName ? `<div class="mp-char-party">${char.partyLogo ? `<img src="${char.partyLogo}" class="party-logo" style="width:14px;height:14px;">` : ''} ${escapeHtml(char.partyName)}</div>` : '';
+        card.innerHTML = `
+            <div class="mp-char-header">
+                <img src="${char.avatar}" class="mp-char-avatar" onclick="openProfile('${char.name.replace(/'/g, "\\'")}')">
+                <div class="mp-char-info">
+                    <div class="mp-char-name" style="color:${char.color || 'white'}">${escapeHtml(char.name)}</div>
+                    <div class="mp-char-role">${escapeHtml(char.role)}</div>
+                    ${partyHTML}
+                    ${char.description ? `<div class="mp-char-desc">${escapeHtml(char.description.length > 110 ? char.description.slice(0,110)+'…' : char.description)}</div>` : ''}
+                </div>
+                <div class="mp-char-actions">
+                    <button onclick="openProfile('${char.name.replace(/'/g, "\\'")}');" class="btn-mini-action" title="Profil"><i class="fa-solid fa-user"></i></button>
+                    <button onclick="prepareEditCharacter('${char._id}')" class="btn-mini-action" title="Modifier"><i class="fa-solid fa-pen"></i></button>
+                    <button onclick="deleteCharacter('${char._id}')" class="btn-mini-action" title="Supprimer" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            </div>
+            <div class="mp-char-stats">
+                <div class="mp-stat"><span>${char.followers ? char.followers.length : 0}</span><span>Abonnés</span></div>
+                <div class="mp-stat"><span>${char.capital ? formatStockValue(char.capital) : '0'}</span><span>Capital</span></div>
+                <div class="mp-stat"><span>${companies.length}</span><span>Entreprise${companies.length !== 1 ? 's' : ''}</span></div>
+            </div>
+            ${companies.length ? `<div class="mp-char-companies"><div class="mp-section-label"><i class="fa-solid fa-building"></i> Entreprises</div><div class="mp-companies-list">${compHTML}</div></div>` : ''}
+        `;
+        container.appendChild(card);
+    });
+}
+
+// ==================== [PUB BOOST] ====================
+function toggleFeedPubSelect() {
+    const cb = document.getElementById('postIsPub');
+    const wrap = document.getElementById('feed-pub-stock-wrap');
+    if(wrap) wrap.classList.toggle('hidden', !cb?.checked);
+}
+function togglePressePubSelect() {
+    const cb = document.getElementById('presseIsPub');
+    const wrap = document.getElementById('presse-pub-stock-wrap');
+    if(wrap) wrap.classList.toggle('hidden', !cb?.checked);
+}
+function populatePubStockSelects() {
+    ['postPubStockId', 'pressePubStockId'].forEach(selId => {
+        const sel = document.getElementById(selId);
+        if(!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">— Choisir une action —</option>';
+        stocksData.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s._id;
+            opt.textContent = s.companyName;
+            sel.appendChild(opt);
+        });
+        if(cur) sel.value = cur;
+    });
+}
 
 // ==================== [CITÉS] SYSTÈME GÉOPOLITIQUE ====================
 
@@ -2399,15 +2493,19 @@ socket.on('stocks_data', (stocks) => {
     renderStockTicker(stocks);
     renderStockGrid(stocks);
     renderBourseSummary(stocks);
+    renderBourseCompChart(stocks);
     updateBourseCustomSelect(stocks);
     updateBourseAdminUI();
+    populatePubStockSelects();
 });
 socket.on('stocks_updated', (stocks) => {
     stocksData = stocks;
     renderStockTicker(stocks);
     renderStockGrid(stocks);
     renderBourseSummary(stocks);
+    renderBourseCompChart(stocks);
     updateBourseCustomSelect(stocks);
+    populatePubStockSelects();
 });
 
 function renderStockTicker(stocks) {
@@ -2420,8 +2518,11 @@ function renderStockTicker(stocks) {
         const pct = prev ? ((s.currentValue - prev) / prev * 100) : 0;
         const color = pct > 0 ? '#23a559' : pct < 0 ? '#da373c' : '#888';
         const arrow = pct > 0 ? '▲' : pct < 0 ? '▼' : '—';
+        const logoHTML = s.companyLogo
+            ? `<span class="ticker-logo-wrap"><img src="${s.companyLogo}" class="ticker-logo" alt=""><div class="ticker-logo-popup"><img src="${s.companyLogo}" alt="${escapeHtml(s.companyName)}"></div></span>`
+            : '';
         return `<span class="ticker-item">
-            ${s.companyLogo ? `<img src="${s.companyLogo}" class="ticker-logo" alt="">` : ''}
+            ${logoHTML}
             <span class="ticker-name">${escapeHtml(s.companyName)}</span>
             <span class="ticker-value">${formatStockValue(s.currentValue)}</span>
             <span class="ticker-change" style="color:${color}">${arrow} ${Math.abs(pct).toFixed(2)}%</span>
@@ -2491,6 +2592,9 @@ function renderStockGrid(stocks) {
         const prev = hist.length >= 2 ? hist[hist.length - 2].value : s.currentValue;
         const pct = prev ? ((s.currentValue - prev) / prev * 100) : 0;
         const isUp = pct > 0, isDown = pct < 0;
+        const hist7 = hist.slice(-7);
+        const hi7 = hist7.length ? Math.max(...hist7.map(h => h.value)) : null;
+        const lo7 = hist7.length ? Math.min(...hist7.map(h => h.value)) : null;
         const card = document.createElement('div');
         card.className = `stock-card ${isUp ? 'stock-up' : isDown ? 'stock-down' : 'stock-neutral'}`;
         card.id = `stock-${s._id}`;
@@ -2498,11 +2602,11 @@ function renderStockGrid(stocks) {
 
         const adminBtns = IS_ADMIN ? `
             <div class="stock-admin-row">
-                <button class="stock-trend-btn stock-trend-up2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','croissance_forte')" title="+1.5%"><i class="fa-solid fa-angles-up"></i></button>
-                <button class="stock-trend-btn stock-trend-up1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','croissance')" title="+0.7%"><i class="fa-solid fa-angle-up"></i></button>
-                <button class="stock-trend-btn stock-trend-stable" onclick="event.stopPropagation(); adminStockTrend('${s._id}','stable')" title="Stable"><i class="fa-solid fa-minus"></i></button>
-                <button class="stock-trend-btn stock-trend-down1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','baisse')" title="-0.7%"><i class="fa-solid fa-angle-down"></i></button>
-                <button class="stock-trend-btn stock-trend-down2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','chute')" title="-1.5%"><i class="fa-solid fa-angles-down"></i></button>
+                <button class="stock-trend-btn stock-trend-up2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','croissance_forte')" title="+1.3~1.6%"><i class="fa-solid fa-angles-up"></i></button>
+                <button class="stock-trend-btn stock-trend-up1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','croissance')" title="+0.5~0.9%"><i class="fa-solid fa-angle-up"></i></button>
+                <button class="stock-trend-btn stock-trend-stable" onclick="event.stopPropagation(); adminStockTrend('${s._id}','stable')" title="±0.1%"><i class="fa-solid fa-minus"></i></button>
+                <button class="stock-trend-btn stock-trend-down1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','baisse')" title="-0.5~0.9%"><i class="fa-solid fa-angle-down"></i></button>
+                <button class="stock-trend-btn stock-trend-down2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','chute')" title="-1.2~1.6%"><i class="fa-solid fa-angles-down"></i></button>
                 <div style="margin-left:auto;display:flex;gap:4px;">
                     <button class="stock-admin-edit" onclick="event.stopPropagation(); openStockEditModal('${s._id}')" title="Modifier"><i class="fa-solid fa-pen"></i></button>
                     <button class="stock-admin-del" onclick="event.stopPropagation(); if(confirm('Supprimer cette action ?')) adminDeleteStock('${s._id}')" title="Supprimer"><i class="fa-solid fa-trash"></i></button>
@@ -2513,10 +2617,11 @@ function renderStockGrid(stocks) {
             <div class="stock-header">
                 <div class="stock-logo-wrap" style="border-color:${s.stockColor||'var(--accent)'}">
                     ${s.companyLogo ? `<img src="${s.companyLogo}" class="stock-logo" alt="">` : `<i class="fa-solid fa-building"></i>`}
+                    ${s.companyLogo ? `<div class="stock-logo-popup"><img src="${s.companyLogo}" alt="${escapeHtml(s.companyName)}"></div>` : ''}
                 </div>
                 <div class="stock-info">
                     <div class="stock-name">${escapeHtml(s.companyName)}</div>
-                    <div class="stock-char" style="color:${s.charColor||'var(--text-muted)'}"><i class="fa-solid fa-user"></i> ${escapeHtml(s.charName||'')}</div>
+                    <div class="stock-char" style="color:${s.charColor||'var(--text-muted)'}"><i class="fa-solid fa-user"></i> ${escapeHtml(s.charName||'')}${s.headquarters ? ` <span class="stock-hq"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(s.headquarters)}</span>` : ''}</div>
                 </div>
                 <div class="stock-badge ${isUp ? 'badge-up' : isDown ? 'badge-down' : 'badge-neutral'}">
                     ${isUp ? '▲' : isDown ? '▼' : '—'} ${Math.abs(pct).toFixed(2)}%
@@ -2526,6 +2631,7 @@ function renderStockGrid(stocks) {
                 <span class="stock-current-value" style="color:${isUp?'#23a559':isDown?'#da373c':'white'}">${formatStockValue(s.currentValue)}</span>
                 <span class="stock-prev-value">Préc: ${formatStockValue(prev)}</span>
             </div>
+            ${(hi7 !== null && lo7 !== null) ? `<div class="stock-highlow-row"><span class="stock-low7"><i class="fa-solid fa-arrow-down"></i> ${formatStockValue(lo7)}</span><span class="stock-hl-label">7j bas/haut</span><span class="stock-high7"><i class="fa-solid fa-arrow-up"></i> ${formatStockValue(hi7)}</span></div>` : ''}
             <div class="stock-chart-container" id="schart-${s._id}"></div>
             ${s.description ? `<div class="stock-desc">${escapeHtml(s.description)}</div>` : ''}
             <div class="stock-trend-badge ${trendClass(s.trend)}">${trendLabel(s.trend)}</div>
@@ -2576,8 +2682,60 @@ function renderStockMiniChart(history, containerId, color, isUp) {
         </svg>`;
 }
 
-function updateBourseCustomSelect(stocks) {
-    const sel = document.getElementById('bourseCustomStockId');
+// Graphique comparatif top 10
+function renderBourseCompChart(stocks) {
+    const container = document.getElementById('bourse-comp-chart');
+    if(!container) return;
+    const top10 = [...stocks]
+        .filter(s => s.history && s.history.length >= 2)
+        .sort((a, b) => b.currentValue - a.currentValue)
+        .slice(0, 10);
+    if(top10.length < 2) {
+        container.innerHTML = '';
+        return;
+    }
+    const W = 600, H = 180, xPad = 44, yPad = 18;
+    const chartW = W - xPad * 2, chartH = H - yPad * 2;
+    const maxPts = 7;
+    let allPcts = [];
+    const lines = top10.map(s => {
+        const hist = (s.history || []).slice(-maxPts);
+        const base = hist[0]?.value || 1;
+        const pcts = hist.map(h => base > 0 ? +((h.value - base) / base * 100).toFixed(2) : 0);
+        allPcts.push(...pcts);
+        return { name: s.companyName, color: s.stockColor || '#6c63ff', pcts };
+    });
+    const maxAbs = Math.max(...allPcts.map(Math.abs), 0.5);
+    const zeroY = yPad + chartH / 2;
+    const linesSVG = lines.map(line => {
+        if(line.pcts.length < 2) return '';
+        const pts = line.pcts.map((p, i) => {
+            const x = xPad + (i / Math.max(line.pcts.length - 1, 1)) * chartW;
+            const y = yPad + chartH / 2 - (p / maxAbs) * (chartH / 2);
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(' ');
+        return `<polyline points="${pts}" fill="none" stroke="${line.color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" opacity="0.88"/>`;
+    }).join('');
+    const gridLines = [-maxAbs, -maxAbs/2, 0, maxAbs/2, maxAbs].map(v => {
+        const y = yPad + chartH / 2 - (v / maxAbs) * (chartH / 2);
+        return `<line x1="${xPad}" y1="${y.toFixed(1)}" x2="${W-xPad}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,${v===0?'0.18':'0.07'})" stroke-width="1" stroke-dasharray="${v===0?'':'3,3'}"/>
+        <text x="${xPad-5}" y="${(y+3.5).toFixed(1)}" fill="rgba(255,255,255,0.3)" font-size="9" text-anchor="end">${v===0?'0%':v>0?'+'+v.toFixed(1)+'%':v.toFixed(1)+'%'}</text>`;
+    }).join('');
+    const legendHTML = lines.map(l =>
+        `<span class="bourse-comp-legend-item"><span class="bourse-comp-legend-dot" style="background:${l.color}"></span>${escapeHtml(l.name)}</span>`
+    ).join('');
+    container.innerHTML = `
+        <div class="bourse-comp-header">
+            <div class="bourse-section-title"><i class="fa-solid fa-chart-mixed"></i> Top 10 — Performance comparative (7 dernières valeurs)</div>
+        </div>
+        <svg viewBox="0 0 ${W} ${H}" class="bourse-comp-svg" xmlns="http://www.w3.org/2000/svg">
+            ${gridLines}
+            ${linesSVG}
+        </svg>
+        <div class="bourse-comp-legend">${legendHTML}</div>`;
+}
+
+function updateBourseCustomSelect(stocks) {    const sel = document.getElementById('bourseCustomStockId');
     if(!sel) return;
     const currentVal = sel.value;
     sel.innerHTML = '<option value="">— Choisir une action —</option>';
@@ -2597,6 +2755,7 @@ function openStockAddModal() {
     document.getElementById('bourseStockValue').value = '';
     document.getElementById('bourseStockColor').value = '#6c63ff';
     document.getElementById('bourseStockDesc').value = '';
+    const hqEl = document.getElementById('bourseStockHQ'); if(hqEl) hqEl.value = '';
     const sel = document.getElementById('bourseStockCharSelect');
     if(sel) sel.value = '';
     document.getElementById('bourse-stock-modal-title').textContent = '📈 Coter une action';
@@ -2612,6 +2771,7 @@ function openStockEditModal(stockId) {
     document.getElementById('bourseStockValue').value = stock.currentValue || '';
     document.getElementById('bourseStockColor').value = stock.stockColor || '#6c63ff';
     document.getElementById('bourseStockDesc').value = stock.description || '';
+    const hqEl2 = document.getElementById('bourseStockHQ'); if(hqEl2) hqEl2.value = stock.headquarters || '';
     document.getElementById('bourse-stock-modal-title').textContent = '✏️ Modifier l\'action';
     document.getElementById('bourse-stock-modal').classList.remove('hidden');
     socket.emit('request_all_chars_companies');
@@ -2646,6 +2806,7 @@ function submitStockAdmin() {
     const value = parseFloat(document.getElementById('bourseStockValue').value);
     const color = document.getElementById('bourseStockColor').value;
     const desc = document.getElementById('bourseStockDesc').value.trim();
+    const hq = document.getElementById('bourseStockHQ')?.value.trim() || null;
     if(!value || isNaN(value)) return alert('Valeur boursière requise.');
     let companyData = {};
     if(selectVal) {
@@ -2654,7 +2815,7 @@ function submitStockAdmin() {
         companyData = { charId: currentStockEdit.charId, charName: currentStockEdit.charName, charColor: currentStockEdit.charColor, companyName: currentStockEdit.companyName, companyLogo: currentStockEdit.companyLogo };
     }
     if(!companyData.companyName) return alert('Sélectionnez une entreprise.');
-    socket.emit('admin_save_stock', { stockId: idVal || null, ...companyData, stockColor: color, currentValue: value, description: desc });
+    socket.emit('admin_save_stock', { stockId: idVal || null, ...companyData, stockColor: color, currentValue: value, description: desc, headquarters: hq });
     closeStockModal();
 }
 
