@@ -32,6 +32,7 @@
         </button>
         <button class="nav-btn" id="btn-view-cites" onclick="switchView('cites')"><i class="fa-solid fa-city"></i><span class="nav-label"> Cités</span></button>
         <button class="nav-btn" id="btn-view-bourse" onclick="switchView('bourse')"><i class="fa-solid fa-chart-line"></i><span class="nav-label"> Bourse</span></button>
+        <button class="nav-btn" id="btn-view-mes-persos" onclick="switchView('mes-persos')"><i class="fa-solid fa-id-card"></i><span class="nav-label"> Mes Persos</span></button>
         <button class="nav-btn" id="btn-notifs" onclick="openNotifications()" style="position:relative;">
             <i class="fa-solid fa-bell"></i>
             <span id="notif-badge" class="hidden"></span>
@@ -200,6 +201,7 @@
                 <input type="text" id="companyName" placeholder="Nom de l'entreprise" class="modal-input">
                 <input type="text" id="companyRole" placeholder="Poste du personnage (ex: PDG)" class="modal-input">
                 <input type="text" id="companyDesc" placeholder="Description (optionnel)" class="modal-input">
+                <input type="text" id="companyHQ" placeholder="Siège social (ex: Aguerta, District Financier)" class="modal-input">
                 <label class="file-upload-label" style="margin-top:6px;"><span>Logo de l'entreprise</span><input type="file" id="companyLogoFile" accept="image/*"></label>
                 <button class="btn-primary full-width" style="margin-top:10px;" onclick="submitAddCompany()"><i class="fa-solid fa-plus"></i> Ajouter</button>
             </div>
@@ -360,6 +362,11 @@
                     <div style="display:flex; gap:10px; align-items:center; font-size:0.85rem;">
                         <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" id="postAnonymous"> 🕵️ Anonyme (Leak)</label>
                         <label style="display:flex; align-items:center; gap:5px; cursor:pointer; display:none;" id="breakingNewsLabel"><input type="checkbox" id="postBreakingNews"> 🚨 Breaking News</label>
+                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" id="postIsPub" onchange="toggleFeedPubSelect()"> 📢 Pub</label>
+                    </div>
+                    <div id="feed-pub-stock-wrap" class="hidden" style="margin-top:6px;">
+                        <select id="postPubStockId" class="char-input" style="width:100%;margin-top:4px;"><option value="">— Entreprise concernée —</option></select>
+                        <div style="font-size:0.65rem;color:var(--accent-soft);margin-top:3px;"><i class="fa-solid fa-chart-line"></i> Boost bourse +0.10 – +0.50%</div>
                     </div>
                     <input type="hidden" id="postMediaUrl">
                     <input type="hidden" id="pollData">
@@ -395,8 +402,13 @@
                                 <option value="officiel">📢 COMMUNIQUÉ OFFICIEL</option>
                                 <option value="economie">📉 ÉCONOMIE</option>
                             </select>
+                            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.85rem;"><input type="checkbox" id="presseIsPub" onchange="togglePressePubSelect()"> 📢 Pub</label>
                             <button class="btn-primary" onclick="submitArticle()">Publier</button>
                         </div>
+                    </div>
+                    <div id="presse-pub-stock-wrap" class="hidden" style="margin-top:8px;">
+                        <select id="pressePubStockId" class="char-input" style="width:100%;margin-bottom:3px;"><option value="">— Entreprise concernée —</option></select>
+                        <div style="font-size:0.65rem;color:var(--accent-soft);"><i class="fa-solid fa-chart-line"></i> Boost bourse +0.10 – +0.50%</div>
                     </div>
                     <input type="hidden" id="presseMediaUrl">
                 </div>
@@ -679,7 +691,8 @@
                 <!-- Summary cards -->
                 <div id="bourse-summary-row" class="bourse-summary-row"></div>
 
-                <!-- Stocks grid -->
+                <!-- Graphique comparatif top 10 -->
+                <div id="bourse-comp-chart" class="bourse-comp-chart-wrap"></div>
                 <div id="bourse-stocks-grid" class="bourse-stocks-grid"></div>
 
                 <!-- Admin — variation précise -->
@@ -699,6 +712,18 @@
             </div>
         </div>
         <!-- ===== [FIN BOURSE] ===== -->
+
+        <!-- ===== [MES PERSONNAGES] ===== -->
+        <div id="view-mes-persos" class="view-section hidden">
+            <div class="feed-view-header">
+                <h3 style="margin:0;font-size:1.1rem;"><i class="fa-solid fa-id-card"></i> Mes Personnages</h3>
+                <button class="btn-primary" onclick="openCharModal('create')" style="font-size:0.8rem;padding:6px 12px;"><i class="fa-solid fa-plus"></i> Nouveau personnage</button>
+            </div>
+            <div class="mes-persos-container">
+                <div id="mes-persos-list" class="mes-persos-grid"></div>
+            </div>
+        </div>
+        <!-- ===== [FIN MES PERSONNAGES] ===== -->
 
     </div>
 
@@ -723,6 +748,8 @@
             </div>
             <label class="cfl" style="margin-top:10px;">Description (optionnel)</label>
             <input type="text" id="bourseStockDesc" class="modal-input" placeholder="Ex: Aéronautique, armement…">
+            <label class="cfl" style="margin-top:10px;">Siège social (optionnel)</label>
+            <input type="text" id="bourseStockHQ" class="modal-input" placeholder="Ex: Aguerta, District Financier">
             <div style="display:flex; gap:8px; margin-top:14px;">
                 <button class="btn-primary" onclick="submitStockAdmin()" style="flex:1;"><i class="fa-solid fa-floppy-disk"></i> Enregistrer</button>
                 <button class="btn-secondary" onclick="closeStockModal()">Annuler</button>
