@@ -19,7 +19,8 @@
 </div>
 
 <nav id="top-nav">
-        <button class="nav-btn active" id="btn-view-chat" onclick="switchView('chat')"><i class="fa-solid fa-comments"></i><span class="nav-label"> Chat</span></button>
+        <button class="nav-btn" id="btn-view-accueil" onclick="switchView('accueil')"><i class="fa-solid fa-house"></i><span class="nav-label"> Accueil</span></button>
+        <button class="nav-btn" id="btn-view-chat" onclick="switchView('chat')"><i class="fa-solid fa-comments"></i><span class="nav-label"> Chat</span></button>
         <button class="nav-btn" id="btn-view-feed" onclick="switchView('feed')"><i class="fa-solid fa-bullhorn"></i><span class="nav-label"> Feed</span></button>
         <button class="nav-btn nav-char-mp" id="btn-view-char-mp" onclick="switchView('char-mp')" style="position:relative;">
             <i class="fa-solid fa-user-group"></i><span class="nav-label"> MP Perso</span>
@@ -202,6 +203,7 @@
                 <input type="text" id="companyRole" placeholder="Poste du personnage (ex: PDG)" class="modal-input">
                 <input type="text" id="companyDesc" placeholder="Description (optionnel)" class="modal-input">
                 <input type="text" id="companyHQ" placeholder="Siège social (ex: Aguerta, District Financier)" class="modal-input">
+                <input type="number" id="companyRevenue" placeholder="Chiffre d'affaires initial (optionnel, en crédits)" class="modal-input" min="0">
                 <label class="file-upload-label" style="margin-top:6px;"><span>Logo de l'entreprise</span><input type="file" id="companyLogoFile" accept="image/*"></label>
                 <button class="btn-primary full-width" style="margin-top:10px;" onclick="submitAddCompany()"><i class="fa-solid fa-plus"></i> Ajouter</button>
             </div>
@@ -270,6 +272,50 @@
     <button id="menu-toggle-btn" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
 
     <div id="main-view-wrapper">
+
+        <!-- ===== [ACCUEIL] ===== -->
+        <div id="view-accueil" class="view-section hidden">
+            <div class="accueil-container">
+                <div class="accueil-hero">
+                    <h1 class="accueil-title"><i class="fa-solid fa-globe"></i> ConvSmos</h1>
+                    <p class="accueil-subtitle">Monde roleplay vivant &middot; Politique, Économie &amp; Société</p>
+                </div>
+                <div class="accueil-nav-cards">
+                    <div class="accueil-nav-card" onclick="switchView('feed')"><i class="fa-solid fa-bullhorn"></i><span>Feed</span></div>
+                    <div class="accueil-nav-card" onclick="switchView('presse')"><i class="fa-solid fa-newspaper"></i><span>Presse</span></div>
+                    <div class="accueil-nav-card" onclick="switchView('actualites')"><i class="fa-solid fa-calendar-days"></i><span>Actualités</span></div>
+                    <div class="accueil-nav-card" onclick="switchView('cites')"><i class="fa-solid fa-city"></i><span>Cités</span></div>
+                    <div class="accueil-nav-card" onclick="switchView('bourse')"><i class="fa-solid fa-chart-line"></i><span>Bourse</span></div>
+                    <div class="accueil-nav-card" onclick="switchView('chat')"><i class="fa-solid fa-comments"></i><span>Chat</span></div>
+                    <div class="accueil-nav-card" onclick="switchView('mes-persos')"><i class="fa-solid fa-id-card"></i><span>Mes Persos</span></div>
+                    <div class="accueil-nav-card" onclick="switchView('char-mp')"><i class="fa-solid fa-user-group"></i><span>MP Perso</span></div>
+                </div>
+                <div class="accueil-content-grid">
+                    <div class="accueil-widget">
+                        <div class="accueil-widget-title"><i class="fa-solid fa-bullhorn"></i> Derniers posts</div>
+                        <div id="accueil-feed-preview" class="accueil-widget-body"></div>
+                        <div class="accueil-widget-footer"><button class="accueil-more-btn" onclick="switchView('feed')">Voir le feed <i class="fa-solid fa-arrow-right"></i></button></div>
+                    </div>
+                    <div class="accueil-widget">
+                        <div class="accueil-widget-title"><i class="fa-solid fa-calendar-days"></i> Prochains événements</div>
+                        <div id="accueil-events-preview" class="accueil-widget-body"></div>
+                        <div class="accueil-widget-footer"><button class="accueil-more-btn" onclick="switchView('actualites')">Toutes les actualités <i class="fa-solid fa-arrow-right"></i></button></div>
+                    </div>
+                    <div class="accueil-widget">
+                        <div class="accueil-widget-title"><i class="fa-solid fa-chart-line"></i> Bourse — Top 5</div>
+                        <div id="accueil-stocks-preview" class="accueil-widget-body"></div>
+                        <div class="accueil-widget-footer"><button class="accueil-more-btn" onclick="switchView('bourse')">Ouvrir la Bourse <i class="fa-solid fa-arrow-right"></i></button></div>
+                    </div>
+                    <div class="accueil-widget">
+                        <div class="accueil-widget-title"><i class="fa-solid fa-id-card"></i> Mes Personnages</div>
+                        <div id="accueil-chars-preview" class="accueil-widget-body"></div>
+                        <div class="accueil-widget-footer"><button class="accueil-more-btn" onclick="switchView('mes-persos')">Gérer mes persos <i class="fa-solid fa-arrow-right"></i></button></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- ===== [FIN ACCUEIL] ===== -->
+
         <div id="view-chat" class="view-section active">
             <div id="app-container">
                 <div id="sidebar">
@@ -691,9 +737,11 @@
                 <!-- Summary cards -->
                 <div id="bourse-summary-row" class="bourse-summary-row"></div>
 
+                <!-- Stocks grid -->
+                <div id="bourse-stocks-grid" class="bourse-stocks-grid"></div>
+
                 <!-- Graphique comparatif top 10 -->
                 <div id="bourse-comp-chart" class="bourse-comp-chart-wrap"></div>
-                <div id="bourse-stocks-grid" class="bourse-stocks-grid"></div>
 
                 <!-- Admin — variation précise -->
                 <div id="bourse-admin-controls" class="bourse-admin-controls hidden">
