@@ -98,6 +98,7 @@ function switchView(view) {
     }
     if(view === 'cites') { loadCities(); } // [CITÉS]
     if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); }
+    if(view === 'wiki') { loadWiki(); }
     if(view === 'accueil') { renderAccueil(); socket.emit('request_feed'); socket.emit('request_events'); if(!stocksData.length) socket.emit('request_stocks'); }
     if(view === 'mes-persos') { renderMesPersos(); }
     if(view === 'char-mp') {
@@ -476,9 +477,12 @@ async function createCharacter() {
     const partyName = document.getElementById('newCharPartyName').value.trim();
     const fileInput = document.getElementById('newCharFile');
     const partyFileInput = document.getElementById('newCharPartyFile');
-    // [NOUVEAU] Capital
     const capitalEl = document.getElementById('newCharCapital');
     const capital = capitalEl ? (parseFloat(capitalEl.value) || 0) : 0;
+    const partyFounder = document.getElementById('newCharPartyFounder')?.value.trim() || '';
+    const partyCreationDate = document.getElementById('newCharPartyCreationDate')?.value.trim() || '';
+    const partyMotto = document.getElementById('newCharPartyMotto')?.value.trim() || '';
+    const partyDescription = document.getElementById('newCharPartyDescription')?.value.trim() || '';
     
     let avatar = fileInput.files[0] ? await uploadToCloudinary(fileInput.files[0]) : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
     let partyLogo = partyFileInput.files[0] ? await uploadToCloudinary(partyFileInput.files[0]) : null;
@@ -492,7 +496,11 @@ async function createCharacter() {
         description: document.getElementById('newCharDesc').value.trim(), 
         ownerId: PLAYER_ID, 
         partyName: partyName || null, 
-        partyLogo: partyLogo || null, 
+        partyLogo: partyLogo || null,
+        partyFounder: partyFounder || null,
+        partyCreationDate: partyCreationDate || null,
+        partyMotto: partyMotto || null,
+        partyDescription: partyDescription || null,
         isOfficial,
         companies: newCharCompanies || [],
         capital
@@ -500,6 +508,10 @@ async function createCharacter() {
     toggleCreateForm();
     fileInput.value = ""; partyFileInput.value = "";
     document.getElementById('newCharPartyName').value = "";
+    if(document.getElementById('newCharPartyFounder')) document.getElementById('newCharPartyFounder').value = '';
+    if(document.getElementById('newCharPartyCreationDate')) document.getElementById('newCharPartyCreationDate').value = '';
+    if(document.getElementById('newCharPartyMotto')) document.getElementById('newCharPartyMotto').value = '';
+    if(document.getElementById('newCharPartyDescription')) document.getElementById('newCharPartyDescription').value = '';
     if(capitalEl) capitalEl.value = '';
     newCharCompanies = [];
     renderNewCharCompanies();
@@ -516,6 +528,10 @@ function prepareEditCharacter(id) {
     document.getElementById('editCharPartyName').value = char.partyName || '';
     document.getElementById('editCharPartyBase64').value = char.partyLogo || '';
     document.getElementById('editCharCapital').value = char.capital || 0;
+    if(document.getElementById('editCharPartyFounder')) document.getElementById('editCharPartyFounder').value = char.partyFounder || '';
+    if(document.getElementById('editCharPartyCreationDate')) document.getElementById('editCharPartyCreationDate').value = char.partyCreationDate || '';
+    if(document.getElementById('editCharPartyMotto')) document.getElementById('editCharPartyMotto').value = char.partyMotto || '';
+    if(document.getElementById('editCharPartyDescription')) document.getElementById('editCharPartyDescription').value = char.partyDescription || '';
     // Charger les entreprises existantes
     editCharCompanies = (char.companies || []).map(c => ({...c}));
     renderEditCharCompanies();
@@ -543,6 +559,10 @@ async function submitEditCharacter() {
         ownerId: PLAYER_ID, currentRoomId,
         partyName: newPartyName || null,
         partyLogo: newPartyLogo || null,
+        partyFounder: document.getElementById('editCharPartyFounder')?.value.trim() || null,
+        partyCreationDate: document.getElementById('editCharPartyCreationDate')?.value.trim() || null,
+        partyMotto: document.getElementById('editCharPartyMotto')?.value.trim() || null,
+        partyDescription: document.getElementById('editCharPartyDescription')?.value.trim() || null,
         isOfficial,
         capital: newCapital,
         companies: editCharCompanies
@@ -3006,4 +3026,172 @@ function adminApplyStockCustomPct() {
 function adminDeleteStock(stockId) {
     socket.emit('admin_delete_stock', { stockId });
 }
+
+function adminNextTradingDay() {
+    if(!IS_ADMIN) return;
+    if(!confirm('Valider le jour suivant ? Cela va enregistrer les valeurs actuelles comme nouveau point sur tous les graphiques.')) return;
+    socket.emit('admin_next_trading_day');
+}
 // ==================== [FIN BOURSE] ====================
+
+// ==================== [WIKI] ====================
+let wikiCache = [];
+let currentWikiPageId = null;
+
+function loadWiki() {
+    socket.emit('request_wiki_pages');
+}
+
+socket.on('wiki_pages_data', (pages) => {
+    wikiCache = pages;
+    renderWikiList(pages);
+    updateWikiAdminUI();
+});
+
+function updateWikiAdminUI() {
+    const header = document.getElementById('wiki-admin-header');
+    if(header) { if(IS_ADMIN) header.classList.remove('hidden'); else header.classList.add('hidden'); }
+}
+
+function renderWikiList(pages) {
+    const container = document.getElementById('wiki-categories-container');
+    if(!container) return;
+
+    // On ne réaffiche la liste que si on est sur la vue liste
+    if(!document.getElementById('wiki-list-view').classList.contains('hidden')) {
+        const categories = { histoire: [], personnages: [], lore: [] };
+        pages.forEach(p => {
+            const cat = p.category || 'histoire';
+            if(!categories[cat]) categories[cat] = [];
+            categories[cat].push(p);
+        });
+        const LABELS = { histoire: '📜 Histoire', personnages: '👤 Personnages', lore: '🌍 Lore' };
+        let html = '';
+        for(const [cat, items] of Object.entries(categories)) {
+            if(!items.length) continue;
+            html += `<div class="wiki-category-section">
+                <div class="wiki-category-title">${LABELS[cat] || cat}</div>
+                <div class="wiki-cards-grid">
+                    ${items.map(p => `
+                        <div class="wiki-card" onclick="openWikiPage('${p._id}')">
+                            ${p.coverImage ? `<img src="${escapeHtml(p.coverImage)}" class="wiki-card-cover" alt="">` : `<div class="wiki-card-cover wiki-card-cover-placeholder"><i class="fa-solid fa-book-open"></i></div>`}
+                            <div class="wiki-card-body">
+                                <div class="wiki-card-title">${escapeHtml(p.title)}</div>
+                                <div class="wiki-card-meta">${escapeHtml(p.authorName || 'Admin')} · ${new Date(p.updatedAt).toLocaleDateString('fr-FR')}</div>
+                            </div>
+                            ${IS_ADMIN ? `<div class="wiki-card-admin">
+                                <button onclick="event.stopPropagation(); openWikiEditModal('${p._id}')" title="Modifier"><i class="fa-solid fa-pen"></i></button>
+                                <button onclick="event.stopPropagation(); deleteWikiPage('${p._id}')" title="Supprimer" style="color:#da373c;"><i class="fa-solid fa-trash"></i></button>
+                            </div>` : ''}
+                        </div>`).join('')}
+                </div>
+            </div>`;
+        }
+        if(!html) html = '<div class="wiki-empty"><i class="fa-solid fa-book-open"></i><p>Le Wiki est vide pour l\'instant.</p></div>';
+        container.innerHTML = html;
+    }
+}
+
+function openWikiPage(id) {
+    const page = wikiCache.find(p => String(p._id) === String(id));
+    if(!page) return;
+    currentWikiPageId = id;
+
+    document.getElementById('wiki-list-view').classList.add('hidden');
+    document.getElementById('wiki-page-view').classList.remove('hidden');
+
+    const content = document.getElementById('wiki-page-content');
+    const coverHTML = page.coverImage
+        ? `<img src="${escapeHtml(page.coverImage)}" class="wiki-full-cover" alt="">`
+        : '';
+    const LABELS = { histoire: '📜 Histoire', personnages: '👤 Personnages', lore: '🌍 Lore' };
+    const adminButtons = IS_ADMIN
+        ? `<div style="display:flex;gap:8px;margin-bottom:16px;">
+               <button class="btn-secondary" onclick="openWikiEditModal('${page._id}')"><i class="fa-solid fa-pen"></i> Modifier</button>
+               <button class="btn-secondary" style="color:#da373c;" onclick="deleteWikiPage('${page._id}')"><i class="fa-solid fa-trash"></i> Supprimer</button>
+           </div>`
+        : '';
+    content.innerHTML = `
+        ${coverHTML}
+        <div class="wiki-page-header">
+            <span class="wiki-page-cat">${LABELS[page.category] || page.category}</span>
+            <h1 class="wiki-page-title">${escapeHtml(page.title)}</h1>
+            <div class="wiki-page-meta">Par ${escapeHtml(page.authorName || 'Admin')} · Mis à jour le ${new Date(page.updatedAt).toLocaleDateString('fr-FR')}</div>
+        </div>
+        ${adminButtons}
+        <div class="wiki-page-body">${renderWikiMarkdown(page.content || '')}</div>`;
+}
+
+function closeWikiPage() {
+    currentWikiPageId = null;
+    document.getElementById('wiki-list-view').classList.remove('hidden');
+    document.getElementById('wiki-page-view').classList.add('hidden');
+}
+
+function renderWikiMarkdown(text) {
+    if(!text) return '';
+    return text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/^#{3} (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^#{2} (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^#{1} (.+)$/gm, '<h1>$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
+}
+
+// --- Admin Wiki ---
+function openWikiCreateModal() {
+    document.getElementById('wikiPageId').value = '';
+    document.getElementById('wikiPageTitle').value = '';
+    document.getElementById('wikiPageCategory').value = 'histoire';
+    document.getElementById('wikiPageCoverUrl').value = '';
+    document.getElementById('wikiPageContent').value = '';
+    document.getElementById('wiki-modal-title').innerHTML = '<i class="fa-solid fa-plus"></i> Nouvelle page Wiki';
+    document.getElementById('wiki-edit-modal').classList.remove('hidden');
+}
+
+function openWikiEditModal(id) {
+    const page = wikiCache.find(p => String(p._id) === String(id));
+    if(!page) return;
+    document.getElementById('wikiPageId').value = page._id;
+    document.getElementById('wikiPageTitle').value = page.title || '';
+    document.getElementById('wikiPageCategory').value = page.category || 'histoire';
+    document.getElementById('wikiPageCoverUrl').value = page.coverImage || '';
+    document.getElementById('wikiPageContent').value = page.content || '';
+    document.getElementById('wiki-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Modifier la page';
+    document.getElementById('wiki-edit-modal').classList.remove('hidden');
+}
+
+function closeWikiModal() {
+    document.getElementById('wiki-edit-modal').classList.add('hidden');
+}
+
+async function uploadWikiCover(input) {
+    const file = input.files[0];
+    if(!file) return;
+    const url = await uploadToCloudinary(file);
+    if(url) document.getElementById('wikiPageCoverUrl').value = url;
+}
+
+function submitWikiPage() {
+    const pageId = document.getElementById('wikiPageId').value;
+    const title = document.getElementById('wikiPageTitle').value.trim();
+    const category = document.getElementById('wikiPageCategory').value;
+    const content = document.getElementById('wikiPageContent').value;
+    const coverImage = document.getElementById('wikiPageCoverUrl').value.trim() || null;
+    if(!title) return alert('Un titre est requis.');
+    if(pageId) {
+        socket.emit('edit_wiki_page', { pageId, title, category, content, coverImage });
+    } else {
+        socket.emit('create_wiki_page', { title, category, content, coverImage, authorName: USERNAME });
+    }
+    closeWikiModal();
+}
+
+function deleteWikiPage(id) {
+    if(!confirm('Supprimer cette page wiki ?')) return;
+    socket.emit('delete_wiki_page', { pageId: id });
+    if(currentWikiPageId === id) closeWikiPage();
+}
+// ==================== [FIN WIKI] ====================

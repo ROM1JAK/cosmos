@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
@@ -37,6 +37,7 @@
         </button>
         <button class="nav-btn" id="btn-view-cites" onclick="switchView('cites')"><i class="fa-solid fa-city"></i><span class="nav-label"> Cités</span></button>
         <button class="nav-btn" id="btn-view-bourse" onclick="switchView('bourse')"><i class="fa-solid fa-chart-line"></i><span class="nav-label"> Bourse</span></button>
+        <button class="nav-btn" id="btn-view-wiki" onclick="switchView('wiki')"><i class="fa-solid fa-book-open"></i><span class="nav-label"> Wiki</span></button>
         <button class="nav-btn" id="btn-view-mes-persos" onclick="switchView('mes-persos')"><i class="fa-solid fa-id-card"></i><span class="nav-label"> Mes Persos</span></button>
         <button class="nav-btn" id="btn-notifs" onclick="openNotifications()" style="position:relative;">
             <i class="fa-solid fa-bell"></i>
@@ -751,7 +752,10 @@
 
                 <!-- Admin — variation précise -->
                 <div id="bourse-admin-controls" class="bourse-admin-controls hidden">
-                    <div class="city-section-title" style="color:#f59e0b;margin-bottom:12px;"><i class="fa-solid fa-sliders"></i> Variation précise (Admin)</div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+                        <div class="city-section-title" style="color:#f59e0b;margin:0;"><i class="fa-solid fa-sliders"></i> Variation précise (Admin)</div>
+                        <button class="btn-primary" onclick="adminNextTradingDay()" style="background:linear-gradient(135deg,#6c63ff,#4f46e5);font-size:0.85rem;padding:8px 18px;"><i class="fa-solid fa-forward-step"></i> Jour suivant</button>
+                    </div>
                     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                         <select id="bourseCustomStockId" class="char-input" style="flex:2; min-width:200px;">
                             <option value="">— Choisir une action —</option>
@@ -779,9 +783,67 @@
         </div>
         <!-- ===== [FIN MES PERSONNAGES] ===== -->
 
+        <!-- ===== [WIKI] ===== -->
+        <div id="view-wiki" class="view-section hidden" style="flex-direction:column;">
+            <div class="wiki-container">
+
+                <!-- En-tête -->
+                <div class="wiki-header">
+                    <div>
+                        <h2 class="wiki-title"><i class="fa-solid fa-book-open"></i> Wiki</h2>
+                        <div class="wiki-subtitle">Encyclopédie collaborative du monde de Cosmos</div>
+                    </div>
+                    <div id="wiki-admin-header" class="hidden">
+                        <button class="btn-primary" onclick="openWikiCreateModal()"><i class="fa-solid fa-plus"></i> Nouvelle page</button>
+                    </div>
+                </div>
+
+                <!-- Vue liste (par défaut) -->
+                <div id="wiki-list-view">
+                    <div id="wiki-categories-container"></div>
+                </div>
+
+                <!-- Vue page complète -->
+                <div id="wiki-page-view" class="hidden">
+                    <button class="btn-secondary" onclick="closeWikiPage()" style="margin-bottom:16px;"><i class="fa-solid fa-arrow-left"></i> Retour</button>
+                    <div id="wiki-page-content"></div>
+                </div>
+
+            </div>
+        </div>
+        <!-- ===== [FIN WIKI] ===== -->
+
     </div>
 
-    <!-- [BOURSE] Modale Admin — Coter/éditer une action -->
+    <!-- [WIKI] Modale Admin — Créer/éditer une page -->
+    <div id="wiki-edit-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeWikiModal()">
+        <div class="modal-box" style="max-width:600px;" onclick="event.stopPropagation()">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 id="wiki-modal-title" style="margin:0; color:white;"><i class="fa-solid fa-book-open"></i> Page Wiki</h3>
+                <button onclick="closeWikiModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
+            </div>
+            <input type="hidden" id="wikiPageId">
+            <label class="cfl">Titre</label>
+            <input type="text" id="wikiPageTitle" class="modal-input" placeholder="Ex: Histoire de Cosmos…">
+            <label class="cfl" style="margin-top:10px;">Catégorie</label>
+            <select id="wikiPageCategory" class="modal-input">
+                <option value="histoire">📜 Histoire</option>
+                <option value="personnages">👤 Personnages</option>
+                <option value="lore">🌍 Lore</option>
+            </select>
+            <label class="cfl" style="margin-top:10px;">Image de couverture (URL ou upload)</label>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <input type="text" id="wikiPageCoverUrl" class="modal-input" placeholder="https://…" style="flex:1;">
+                <label class="file-upload-label" style="flex-shrink:0;"><span><i class="fa-solid fa-upload"></i> Upload</span><input type="file" accept="image/*" onchange="uploadWikiCover(this)"></label>
+            </div>
+            <label class="cfl" style="margin-top:10px;">Contenu</label>
+            <textarea id="wikiPageContent" class="modal-input" placeholder="Contenu de la page (Markdown supporté : **gras**, *italique*, ## Titre…)" rows="10" style="resize:vertical; font-family:monospace; font-size:0.82rem;"></textarea>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+                <button onclick="closeWikiModal()" class="btn-secondary">Annuler</button>
+                <button onclick="submitWikiPage()" class="btn-primary"><i class="fa-solid fa-check"></i> Enregistrer</button>
+            </div>
+        </div>
+    </div>
     <div id="bourse-stock-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeStockModal()">
         <div class="modal-box" style="max-width:420px;" onclick="event.stopPropagation()">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -915,6 +977,14 @@
                             <label class="file-upload-label" style="flex:1;"><span><i class="fa-solid fa-flag"></i> Logo du Parti</span><input type="file" id="newCharPartyFile" accept="image/*" onchange="previewImg(this,'prev-newParty')"></label>
                             <img id="prev-newParty" class="img-preview hidden" alt="preview">
                         </div>
+                        <div class="char-form-row" style="margin-top:10px;">
+                            <div style="flex:1"><label class="cfl">Fondateur</label><input type="text" id="newCharPartyFounder" class="char-input" placeholder="Ex: Jean Dupont"></div>
+                            <div style="flex:1"><label class="cfl">Date de création</label><input type="text" id="newCharPartyCreationDate" class="char-input" placeholder="Ex: 15 mars 2040"></div>
+                        </div>
+                        <label class="cfl" style="margin-top:10px;">Devise / Slogan</label>
+                        <input type="text" id="newCharPartyMotto" class="char-input" placeholder="Ex: Liberté, Progrès, Justice">
+                        <label class="cfl" style="margin-top:10px;">Description du parti</label>
+                        <textarea id="newCharPartyDescription" class="char-input" placeholder="Histoire, idéologie, objectifs..." rows="3" style="resize:vertical;"></textarea>
                     </div>
                     <div id="create-tab-entreprises" class="char-tab-content">
                         <div id="newCharCompaniesList"></div>
@@ -976,6 +1046,14 @@
                             <label class="file-upload-label" style="flex:1;"><span><i class="fa-solid fa-flag"></i> Changer le logo</span><input type="file" id="editCharPartyFile" accept="image/*" onchange="previewImg(this,'prev-editParty')"></label>
                             <img id="prev-editParty" class="img-preview" alt="preview">
                         </div>
+                        <div class="char-form-row" style="margin-top:10px;">
+                            <div style="flex:1"><label class="cfl">Fondateur</label><input type="text" id="editCharPartyFounder" class="char-input" placeholder="Ex: Jean Dupont"></div>
+                            <div style="flex:1"><label class="cfl">Date de création</label><input type="text" id="editCharPartyCreationDate" class="char-input" placeholder="Ex: 15 mars 2040"></div>
+                        </div>
+                        <label class="cfl" style="margin-top:10px;">Devise / Slogan</label>
+                        <input type="text" id="editCharPartyMotto" class="char-input" placeholder="Ex: Liberté, Progrès, Justice">
+                        <label class="cfl" style="margin-top:10px;">Description du parti</label>
+                        <textarea id="editCharPartyDescription" class="char-input" placeholder="Histoire, idéologie, objectifs..." rows="3" style="resize:vertical;"></textarea>
                     </div>
                     <div id="edit-tab-entreprises" class="char-tab-content">
                         <div id="editCharCompaniesList"></div>

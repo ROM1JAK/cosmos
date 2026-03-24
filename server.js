@@ -33,6 +33,9 @@ const City = require('./src/models/City');
 // ========== [BOURSE] ==========
 const Stock = require('./src/models/Stock');
 
+// ========== [WIKI] ==========
+const WikiPage = require('./src/models/WikiPage');
+
 const CITIES_SEED = [
     { name: 'Aguerta',    archipel: 'Archipel Pacifique' },
     { name: 'Arva',       archipel: 'Archipel Pacifique' },
@@ -79,18 +82,20 @@ async function applyStockValueChange(stock, oldValue, newValue) {
     if(!stock.charId || !oldValue || oldValue === newValue) return;
     const pct = (newValue - oldValue) / oldValue;
     if(Math.abs(pct) < 0.00001) return;
+    // Amplifier l'effet sur le capital (x3 pour un impact plus marqué)
+    const amplifiedPct = pct * 3;
     try {
         const char = await Character.findById(stock.charId);
         if(!char) return;
         let changed = false;
         if((char.capital || 0) > 0) {
-            char.capital = Math.round(char.capital * (1 + pct) * 100) / 100;
+            char.capital = Math.round(char.capital * (1 + amplifiedPct) * 100) / 100;
             changed = true;
         }
         if(char.companies && char.companies.length > 0) {
             char.companies.forEach(co => {
                 if(co.name === stock.companyName && (co.revenue || 0) > 0) {
-                    co.revenue = Math.round(co.revenue * (1 + pct) * 100) / 100;
+                    co.revenue = Math.round(co.revenue * (1 + amplifiedPct) * 100) / 100;
                     changed = true;
                 }
             });
@@ -207,7 +212,11 @@ io.on('connection', async (socket) => {
   socket.on('edit_char', async (data) => {
       const updateData = { 
           name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor, 
-          description: data.newDescription, partyName: data.partyName, partyLogo: data.partyLogo, 
+          description: data.newDescription, partyName: data.partyName, partyLogo: data.partyLogo,
+          partyFounder: data.partyFounder || null,
+          partyCreationDate: data.partyCreationDate || null,
+          partyMotto: data.partyMotto || null,
+          partyDescription: data.partyDescription || null,
           isOfficial: data.isOfficial
       };
       // [NOUVEAU] Sauvegarder capital et entreprises si fournis
@@ -699,6 +708,7 @@ io.on('connection', async (socket) => {
       if(!stock) stock = await Stock.findOne({ companyName, charId });
       if(!stock) {
           stock = new Stock({ companyName, companyLogo, charId, charName, charColor, stockColor: stockColor || '#6c63ff', currentValue: Number(currentValue) || 0, description, headquarters });
+          // Premier point d'historique à la création seulement
           stock.history.push({ value: Number(currentValue) || 0 });
       } else {
           if(companyName)  stock.companyName  = companyName;
@@ -707,11 +717,12 @@ io.on('connection', async (socket) => {
           if(charName)     stock.charName     = charName;
           if(charColor)    stock.charColor    = charColor;
           stock.stockColor   = stockColor || stock.stockColor;
+          const oldVal = stock.currentValue;
           stock.currentValue = Number(currentValue) || 0;
+          // Ne pas pousser à l'historique ici — le bouton Jour suivant le fera
           if(description !== undefined) stock.description = description;
           if(headquarters !== undefined) stock.headquarters = headquarters;
-          stock.history.push({ value: Number(currentValue) || 0 });
-          if(stock.history.length > 30) stock.history.shift();
+          await applyStockValueChange(stock, oldVal, stock.currentValue);
       }
       stock.updatedAt = new Date();
       await stock.save();
@@ -723,7 +734,6 @@ io.on('connection', async (socket) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
-      // Intervalles aléatoires avec 2 décimales
       const TREND_RANGES = {
           croissance_forte: [1.3, 1.6],
           croissance:       [0.5, 0.9],
@@ -740,8 +750,7 @@ io.on('connection', async (socket) => {
       const mult = 1 + randPct / 100;
       const newVal = Math.round(stock.currentValue * mult * 100) / 100;
       stock.currentValue = newVal;
-      stock.history.push({ value: newVal });
-      if(stock.history.length > 30) stock.history.shift();
+      // Ne pas pousser à l'historique ici — le bouton Jour suivant le fera
       stock.updatedAt = new Date();
       await stock.save();
       await applyStockValueChange(stock, oldTrendVal, newVal);
@@ -759,8 +768,7 @@ io.on('connection', async (socket) => {
       const mult = 1 + (Number(pct) / 100);
       const newVal = Math.max(0, Math.round(stock.currentValue * mult * 100) / 100);
       stock.currentValue = newVal;
-      stock.history.push({ value: newVal });
-      if(stock.history.length > 30) stock.history.shift();
+      // Ne pas pousser à l'historique ici — le bouton Jour suivant le fera
       stock.updatedAt = new Date();
       await stock.save();
       await applyStockValueChange(stock, oldCustomVal, newVal);
@@ -786,11 +794,27 @@ io.on('connection', async (socket) => {
       const mult = 1 + pct / 100;
       const newVal = Math.round(stock.currentValue * mult * 100) / 100;
       stock.currentValue = newVal;
-      stock.history.push({ value: newVal });
-      if(stock.history.length > 30) stock.history.shift();
+      // Ne pas pousser à l'historique ici — le bouton Jour suivant le fera
       stock.updatedAt = new Date();
       await stock.save();
       await applyStockValueChange(stock, oldPubVal, newVal);
+      const stocks = await Stock.find().sort({ companyName: 1 });
+      io.emit('stocks_updated', stocks);
+  });
+
+  // Jour suivant — commit de tous les currentValues vers l'historique
+  socket.on('admin_next_trading_day', async () => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      const allStocks = await Stock.find();
+      const now = new Date();
+      for(const stock of allStocks) {
+          stock.history.push({ value: stock.currentValue, date: now });
+          if(stock.history.length > 30) stock.history.shift();
+          stock.updatedAt = now;
+          await stock.save();
+      }
       const stocks = await Stock.find().sort({ companyName: 1 });
       io.emit('stocks_updated', stocks);
   });
@@ -814,6 +838,45 @@ io.on('connection', async (socket) => {
       io.emit('char_profile_data', charData);
   });
   // ========== [FIN BOURSE SOCKET] ==========
+  // ========== [WIKI] SOCKET EVENTS ==========
+  socket.on('request_wiki_pages', async () => {
+      const pages = await WikiPage.find().sort({ category: 1, createdAt: -1 });
+      socket.emit('wiki_pages_data', pages);
+  });
+
+  socket.on('create_wiki_page', async ({ title, category, content, coverImage, authorName }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      const page = new WikiPage({ title, category: category || 'histoire', content, coverImage: coverImage || null, authorName: authorName || user.username });
+      await page.save();
+      const pages = await WikiPage.find().sort({ category: 1, createdAt: -1 });
+      io.emit('wiki_pages_data', pages);
+  });
+
+  socket.on('edit_wiki_page', async ({ pageId, title, category, content, coverImage }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      const update = { updatedAt: new Date() };
+      if(title !== undefined) update.title = title;
+      if(category !== undefined) update.category = category;
+      if(content !== undefined) update.content = content;
+      if(coverImage !== undefined) update.coverImage = coverImage;
+      await WikiPage.findByIdAndUpdate(pageId, update);
+      const pages = await WikiPage.find().sort({ category: 1, createdAt: -1 });
+      io.emit('wiki_pages_data', pages);
+  });
+
+  socket.on('delete_wiki_page', async ({ pageId }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      await WikiPage.findByIdAndDelete(pageId);
+      const pages = await WikiPage.find().sort({ category: 1, createdAt: -1 });
+      io.emit('wiki_pages_data', pages);
+  });
+  // ========== [FIN WIKI SOCKET] ==========
 });
 
 const port = process.env.PORT || 3000;
