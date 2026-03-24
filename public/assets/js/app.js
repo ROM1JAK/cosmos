@@ -3181,8 +3181,8 @@ function renderWikiCategories() {
     if(!sidebar || !contentArea) return;
     const categories = [...new Set(wikiData.map(p => p.category))].sort();
     if(categories.length === 0) {
-        sidebar.innerHTML = '<p style="color:var(--text-muted);padding:14px;font-size:0.85rem;">Aucune catégorie.</p>';
-        contentArea.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:60px 20px;font-size:1rem;">Le wiki est vide pour l\'instant.</p>';
+        sidebar.innerHTML = '<p style="color:var(--text-normal);padding:14px;font-size:0.85rem;opacity:0.6;">Aucune catégorie.</p>';
+        contentArea.innerHTML = '<p style="color:var(--text-normal);text-align:center;padding:60px 20px;font-size:1rem;opacity:0.5;">Le wiki est vide pour l\'instant.<br><small style="opacity:0.5;">Crée la première page en cliquant sur &laquo; Nouvelle page &raquo;.</small></p>';
         return;
     }
     sidebar.innerHTML = categories.map(cat => `
