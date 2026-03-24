@@ -108,6 +108,16 @@ function switchView(view) {
         if(btn) btn.classList.remove('nav-char-mp-unread');
         initCharMpView();
     }
+    if(view === 'partis') { loadPartis(); updatePartisAdminUI(); }
+    if(view === 'wiki') { loadWiki(); updateWikiAdminUI(); }
+    // Ferme le menu mobile si ouvert
+    const nav = document.getElementById('top-nav');
+    if(nav) nav.classList.remove('nav-open');
+}
+
+function toggleMobileNav() {
+    const nav = document.getElementById('top-nav');
+    if(nav) nav.classList.toggle('nav-open');
 }
 
 function previewImg(input, previewId) {
@@ -1799,15 +1809,6 @@ function createArticleElement(post) {
             ${headlineBtn}
             ${urgencyHTML}
             <h2 class="article-title">${escapeHtml(titleText)}</h2>
-            <div class="article-byline" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
-                <img src="${post.authorAvatar}" class="article-author-avatar">
-                <div>
-                    <span class="article-author-name">${post.authorName}</span>${partyHTML}
-                    <span class="article-author-role">${post.authorRole}</span>
-                </div>
-                <span class="article-date">${post.date}</span>
-            </div>
-            <div class="article-separator"></div>
             ${articleBodyHTML}
             <!-- [NOUVEAU] Signature rédacteur en pied d'article -->
             <div class="article-footer-signature" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
@@ -3007,3 +3008,285 @@ function adminDeleteStock(stockId) {
     socket.emit('admin_delete_stock', { stockId });
 }
 // ==================== [FIN BOURSE] ====================
+
+// ==================== [BOURSE — JOUR SUIVANT] ====================
+function adminBourseNextDay() {
+    if(!IS_ADMIN || !confirm('Passer au jour suivant ? Toutes les actions auront une nouvelle entrée d\'historique.')) return;
+    socket.emit('bourse_next_day');
+}
+
+socket.on('bourse_day_advanced', () => {
+    showToast('📅 Jour suivant — Bourse avancée d\'un jour !');
+});
+
+// ==================== [TOAST NOTIFICATION] ====================
+function showToast(msg, duration) {
+    const el = document.getElementById('cosmos-toast');
+    if(!el) return;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    el.classList.add('visible');
+    setTimeout(() => {
+        el.classList.remove('visible');
+        setTimeout(() => el.classList.add('hidden'), 400);
+    }, duration || 3000);
+}
+
+// ==================== [PARTIS POLITIQUES] ====================
+let partisData = [];
+let editingPartiId = null;
+
+function updatePartisAdminUI() {
+    const btn = document.getElementById('partis-admin-btn');
+    if(btn) { if(IS_ADMIN) btn.classList.remove('hidden'); else btn.classList.add('hidden'); }
+}
+
+function loadPartis() { socket.emit('request_partis'); }
+
+socket.on('partis_data', (partis) => {
+    partisData = partis;
+    renderPartis();
+});
+
+function renderPartis() {
+    const grid = document.getElementById('partis-grid');
+    if(!grid) return;
+    if(partisData.length === 0) {
+        grid.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px;">Aucun parti enregistré.</p>';
+        return;
+    }
+    grid.innerHTML = partisData.map(p => `
+        <div class="parti-card" style="--parti-color:${p.couleur || '#6c63ff'}">
+            ${IS_ADMIN ? `<div class="parti-admin-actions">
+                <button onclick="openPartiModal('${p._id}')" class="parti-action-btn" title="Modifier"><i class="fa-solid fa-pen"></i></button>
+                <button onclick="deleteParti('${p._id}')" class="parti-action-btn danger" title="Supprimer"><i class="fa-solid fa-trash"></i></button>
+            </div>` : ''}
+            <div class="parti-card-top">
+                ${p.logo ? `<img src="${p.logo}" class="parti-logo" alt="${escapeHtml(p.nom)}">` : `<div class="parti-logo-placeholder"><i class="fa-solid fa-flag"></i></div>`}
+                <div class="parti-name">${escapeHtml(p.nom)}</div>
+                ${p.slogan ? `<div class="parti-slogan">"${escapeHtml(p.slogan)}"</div>` : ''}
+                ${p.ideologie ? `<div class="parti-ideologie-tag">${escapeHtml(p.ideologie)}</div>` : ''}
+            </div>
+            <div class="parti-details">
+                ${p.dirigeant ? `<div class="parti-detail-item"><span class="parti-detail-label"><i class="fa-solid fa-user-tie"></i> Dirigeant</span><span>${escapeHtml(p.dirigeant)}</span></div>` : ''}
+                ${p.fondateur ? `<div class="parti-detail-item"><span class="parti-detail-label"><i class="fa-solid fa-star"></i> Fondateur</span><span>${escapeHtml(p.fondateur)}</span></div>` : ''}
+                ${p.cite ? `<div class="parti-detail-item"><span class="parti-detail-label"><i class="fa-solid fa-city"></i> Cité</span><span>${escapeHtml(p.cite)}</span></div>` : ''}
+                ${p.membres ? `<div class="parti-detail-item"><span class="parti-detail-label"><i class="fa-solid fa-users"></i> Membres</span><span>${Number(p.membres).toLocaleString('fr-FR')}</span></div>` : ''}
+                ${p.assemblee ? `<div class="parti-detail-item"><span class="parti-detail-label"><i class="fa-solid fa-landmark"></i> Assemblée</span><span>${p.assemblee} sièges</span></div>` : ''}
+                ${p.dateCreation ? `<div class="parti-detail-item"><span class="parti-detail-label"><i class="fa-solid fa-calendar"></i> Fondé</span><span>${escapeHtml(p.dateCreation)}</span></div>` : ''}
+            </div>
+            ${p.description ? `<div class="parti-desc">${escapeHtml(p.description)}</div>` : ''}
+        </div>
+    `).join('');
+}
+
+function openPartiModal(partiId) {
+    if(!IS_ADMIN) return;
+    editingPartiId = partiId || null;
+    const modal = document.getElementById('parti-modal');
+    if(!modal) return;
+    const form = document.getElementById('parti-modal-form');
+    if(form) form.reset();
+    document.getElementById('prev-parti-logo').classList.add('hidden');
+    document.getElementById('partiLogoUrl').value = '';
+    if(partiId) {
+        const p = partisData.find(x => x._id === partiId);
+        if(!p) return;
+        document.getElementById('partiNom').value = p.nom || '';
+        document.getElementById('partiSlogan').value = p.slogan || '';
+        document.getElementById('partiCouleur').value = p.couleur || '#6c63ff';
+        document.getElementById('partiIdeologie').value = p.ideologie || '';
+        document.getElementById('partiDirigeant').value = p.dirigeant || '';
+        document.getElementById('partiFondateur').value = p.fondateur || '';
+        document.getElementById('partiCite').value = p.cite || '';
+        document.getElementById('partiSiege').value = p.siege || '';
+        document.getElementById('partiMembres').value = p.membres || '';
+        document.getElementById('partiAssemblee').value = p.assemblee || '';
+        document.getElementById('partiDateCreation').value = p.dateCreation || '';
+        document.getElementById('partiDescription').value = p.description || '';
+        document.getElementById('partiLogoUrl').value = p.logo || '';
+        if(p.logo) {
+            const preview = document.getElementById('prev-parti-logo');
+            preview.src = p.logo;
+            preview.classList.remove('hidden');
+        }
+        document.getElementById('parti-modal-title').textContent = 'Modifier le parti';
+    } else {
+        document.getElementById('parti-modal-title').textContent = 'Ajouter un parti';
+    }
+    modal.classList.remove('hidden');
+}
+
+function closePartiModal() {
+    const modal = document.getElementById('parti-modal');
+    if(modal) modal.classList.add('hidden');
+    editingPartiId = null;
+}
+
+async function submitPartiAdmin() {
+    if(!IS_ADMIN) return;
+    const logoFile = document.getElementById('partiLogoFile').files[0];
+    let logoUrl = document.getElementById('partiLogoUrl').value;
+    if(logoFile) {
+        try { logoUrl = await uploadToCloudinary(logoFile); } catch(e) { console.error(e); }
+    }
+    const data = {
+        nom: document.getElementById('partiNom').value.trim(),
+        slogan: document.getElementById('partiSlogan').value.trim(),
+        couleur: document.getElementById('partiCouleur').value,
+        ideologie: document.getElementById('partiIdeologie').value.trim(),
+        dirigeant: document.getElementById('partiDirigeant').value.trim(),
+        fondateur: document.getElementById('partiFondateur').value.trim(),
+        cite: document.getElementById('partiCite').value.trim(),
+        siege: document.getElementById('partiSiege').value.trim(),
+        membres: parseInt(document.getElementById('partiMembres').value) || 0,
+        assemblee: parseInt(document.getElementById('partiAssemblee').value) || 0,
+        dateCreation: document.getElementById('partiDateCreation').value.trim(),
+        description: document.getElementById('partiDescription').value.trim(),
+        logo: logoUrl,
+    };
+    if(editingPartiId) data._id = editingPartiId;
+    if(!data.nom) { alert('Le nom du parti est requis.'); return; }
+    socket.emit('admin_save_parti', data);
+    closePartiModal();
+}
+
+function deleteParti(partiId) {
+    if(!IS_ADMIN || !confirm('Supprimer ce parti ?')) return;
+    socket.emit('admin_delete_parti', { partiId });
+}
+
+// ==================== [WIKI] ====================
+let wikiData = [];
+let currentWikiCategory = null;
+let currentOpenWikiId = null;
+
+function updateWikiAdminUI() {
+    const btn = document.getElementById('wiki-admin-btn');
+    if(btn) { if(IS_ADMIN) btn.classList.remove('hidden'); else btn.classList.add('hidden'); }
+    const adminModal = document.getElementById('wiki-page-modal-admin');
+    if(adminModal) { if(IS_ADMIN) adminModal.classList.remove('hidden'); else adminModal.classList.add('hidden'); }
+}
+
+function loadWiki() { socket.emit('request_wiki'); }
+
+socket.on('wiki_data', (pages) => {
+    wikiData = pages;
+    if(currentView === 'wiki') renderWikiCategories();
+});
+
+function renderWikiCategories() {
+    const sidebar = document.getElementById('wiki-sidebar');
+    const contentArea = document.getElementById('wiki-content-area');
+    if(!sidebar || !contentArea) return;
+    const categories = [...new Set(wikiData.map(p => p.category))].sort();
+    if(categories.length === 0) {
+        sidebar.innerHTML = '<p style="color:var(--text-muted);padding:14px;font-size:0.85rem;">Aucune catégorie.</p>';
+        contentArea.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:60px 20px;font-size:1rem;">Le wiki est vide pour l\'instant.</p>';
+        return;
+    }
+    sidebar.innerHTML = categories.map(cat => `
+        <div class="wiki-category-btn ${cat === currentWikiCategory ? 'active' : ''}" onclick="selectWikiCategory('${cat.replace(/'/g, "\\'")}')">
+            <i class="fa-solid fa-folder${cat === currentWikiCategory ? '-open' : ''}"></i>
+            <span>${escapeHtml(cat)}</span>
+            <span class="wiki-cat-count">${wikiData.filter(p => p.category === cat).length}</span>
+        </div>
+    `).join('');
+    if(!currentWikiCategory && categories.length > 0) {
+        selectWikiCategory(categories[0]);
+    } else if(currentWikiCategory) {
+        renderWikiPages(currentWikiCategory);
+    }
+}
+
+function selectWikiCategory(category) {
+    currentWikiCategory = category;
+    renderWikiCategories();
+}
+
+function renderWikiPages(category) {
+    const contentArea = document.getElementById('wiki-content-area');
+    if(!contentArea) return;
+    const pages = wikiData.filter(p => p.category === category);
+    contentArea.innerHTML = `
+        <div class="wiki-category-title"><i class="fa-solid fa-folder-open"></i> ${escapeHtml(category)}</div>
+        <div class="wiki-pages-list">
+            ${pages.length === 0 ? '<p style="color:var(--text-muted);padding:20px;font-size:0.9rem;">Aucune page dans cette catégorie.</p>' :
+            pages.map(p => `
+                <div class="wiki-page-item" onclick="openWikiPage('${p._id}')">
+                    <div class="wiki-page-item-left">
+                        <i class="fa-solid fa-file-lines"></i>
+                        <span class="wiki-page-title-text">${escapeHtml(p.title)}</span>
+                    </div>
+                    ${IS_ADMIN ? `<div class="wiki-page-item-actions">
+                        <button onclick="event.stopPropagation(); openWikiCreateModal('${p._id}')" class="wiki-action-btn" title="Modifier"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="event.stopPropagation(); deleteWikiPage('${p._id}')" class="wiki-action-btn danger" title="Supprimer"><i class="fa-solid fa-trash"></i></button>
+                    </div>` : ''}
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function openWikiPage(pageId) {
+    const page = wikiData.find(p => p._id === pageId);
+    if(!page) return;
+    currentOpenWikiId = pageId;
+    const modal = document.getElementById('wiki-page-modal');
+    if(!modal) return;
+    document.getElementById('wikiPageTitle').textContent = page.title;
+    document.getElementById('wikiPageCategory').textContent = page.category;
+    document.getElementById('wikiPageContent').innerHTML = formatText(page.content || '');
+    updateWikiAdminUI();
+    modal.classList.remove('hidden');
+}
+
+function closeWikiPageModal() {
+    const modal = document.getElementById('wiki-page-modal');
+    if(modal) modal.classList.add('hidden');
+    currentOpenWikiId = null;
+}
+
+function openWikiCreateModal(pageId) {
+    if(!IS_ADMIN) return;
+    const modal = document.getElementById('wiki-create-modal');
+    if(!modal) return;
+    if(pageId) {
+        const page = wikiData.find(p => p._id === pageId);
+        if(!page) return;
+        document.getElementById('wikiCreateId').value = page._id;
+        document.getElementById('wikiCreateTitle').value = page.title;
+        document.getElementById('wikiCreateCategory').value = page.category;
+        document.getElementById('wikiCreateContent').value = page.content || '';
+    } else {
+        document.getElementById('wikiCreateId').value = '';
+        document.getElementById('wikiCreateTitle').value = '';
+        document.getElementById('wikiCreateCategory').value = currentWikiCategory || '';
+        document.getElementById('wikiCreateContent').value = '';
+    }
+    // Fermer la page modale si ouverte
+    closeWikiPageModal();
+    modal.classList.remove('hidden');
+}
+
+function closeWikiCreateModal() {
+    const modal = document.getElementById('wiki-create-modal');
+    if(modal) modal.classList.add('hidden');
+}
+
+function submitWikiPage() {
+    if(!IS_ADMIN) return;
+    const title = document.getElementById('wikiCreateTitle').value.trim();
+    const category = document.getElementById('wikiCreateCategory').value.trim();
+    const content = document.getElementById('wikiCreateContent').value.trim();
+    const _id = document.getElementById('wikiCreateId').value;
+    if(!title || !category) { alert('Titre et catégorie requis.'); return; }
+    socket.emit('admin_save_wiki_page', { _id: _id || undefined, title, category, content });
+    closeWikiCreateModal();
+}
+
+function deleteWikiPage(pageId) {
+    if(!IS_ADMIN || !confirm('Supprimer cette page wiki ?')) return;
+    socket.emit('admin_delete_wiki_page', { pageId });
+}
+// ==================== [FIN WIKI] ====================

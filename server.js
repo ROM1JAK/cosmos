@@ -32,6 +32,9 @@ const City = require('./src/models/City');
 
 // ========== [BOURSE] ==========
 const Stock = require('./src/models/Stock');
+// ========== [PARTIS & WIKI] ==========
+const PartiPolitique = require('./src/models/PartiPolitique');
+const WikiPage       = require('./src/models/WikiPage');
 
 const CITIES_SEED = [
     { name: 'Aguerta',    archipel: 'Archipel Pacifique' },
@@ -814,6 +817,90 @@ io.on('connection', async (socket) => {
       io.emit('char_profile_data', charData);
   });
   // ========== [FIN BOURSE SOCKET] ==========
+
+  // ========== [PARTIS POLITIQUES] ==========
+  socket.on('request_partis', async () => {
+      const partis = await PartiPolitique.find().sort({ nom: 1 });
+      socket.emit('partis_data', partis);
+  });
+
+  socket.on('admin_save_parti', async (data) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      if(data._id) {
+          await PartiPolitique.findByIdAndUpdate(data._id, data);
+      } else {
+          const parti = new PartiPolitique(data);
+          await parti.save();
+      }
+      io.emit('partis_data', await PartiPolitique.find().sort({ nom: 1 }));
+  });
+
+  socket.on('admin_delete_parti', async ({ partiId }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      await PartiPolitique.findByIdAndDelete(partiId);
+      io.emit('partis_data', await PartiPolitique.find().sort({ nom: 1 }));
+  });
+
+  // ========== [WIKI] ==========
+  socket.on('request_wiki', async () => {
+      const pages = await WikiPage.find().sort({ category: 1, title: 1 });
+      socket.emit('wiki_data', pages);
+  });
+
+  socket.on('admin_save_wiki_page', async (data) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      if(data._id) {
+          await WikiPage.findByIdAndUpdate(data._id, { title: data.title, category: data.category, content: data.content });
+      } else {
+          await new WikiPage({ title: data.title, category: data.category, content: data.content, createdBy: username }).save();
+      }
+      io.emit('wiki_data', await WikiPage.find().sort({ category: 1, title: 1 }));
+  });
+
+  socket.on('admin_delete_wiki_page', async ({ pageId }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      await WikiPage.findByIdAndDelete(pageId);
+      io.emit('wiki_data', await WikiPage.find().sort({ category: 1, title: 1 }));
+  });
+
+  // ========== [BOURSE — JOUR SUIVANT] ==========
+  socket.on('bourse_next_day', async () => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      const stocks = await Stock.find();
+      for(const stock of stocks) {
+          const prevVal = stock.history.length > 0 ? stock.history[stock.history.length - 1].value : stock.currentValue;
+          // Snapshot journalier
+          stock.history.push({ value: stock.currentValue, date: new Date() });
+          if(stock.history.length > 60) stock.history.shift();
+          // Bonus de capital jour de cloture (x1.5 de l'impact incremental)
+          const pct = prevVal && prevVal !== stock.currentValue ? (stock.currentValue - prevVal) / prevVal : 0;
+          if(Math.abs(pct) > 0.00001 && stock.charId) {
+              try {
+                  const char = await Character.findById(stock.charId);
+                  if(char && (char.capital || 0) > 0) {
+                      char.capital = Math.round(char.capital * (1 + pct * 0.5) * 100) / 100;
+                      await char.save();
+                      io.emit('char_updated', char.toObject());
+                  }
+              } catch(e) { console.error('bourse_next_day capital bonus error:', e); }
+          }
+          stock.updatedAt = new Date();
+          await stock.save();
+      }
+      const updatedStocks = await Stock.find().sort({ companyName: 1 });
+      io.emit('stocks_updated', updatedStocks);
+      io.emit('bourse_day_advanced');
+  });
 });
 
 const port = process.env.PORT || 3000;

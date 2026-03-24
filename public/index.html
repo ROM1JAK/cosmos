@@ -19,30 +19,38 @@
 </div>
 
 <nav id="top-nav">
-        <button id="btn-nav-account" class="nav-profile-btn" onclick="openAccountUI()">
-            <i class="fa-solid fa-circle-user"></i>
-            <span id="nav-account-label">Connexion</span>
-        </button>
-        <button class="nav-btn" id="btn-view-accueil" onclick="switchView('accueil')"><i class="fa-solid fa-house"></i><span class="nav-label"> Accueil</span></button>
-        <button class="nav-btn" id="btn-view-chat" onclick="switchView('chat')"><i class="fa-solid fa-comments"></i><span class="nav-label"> Chat</span></button>
-        <button class="nav-btn" id="btn-view-feed" onclick="switchView('feed')"><i class="fa-solid fa-bullhorn"></i><span class="nav-label"> Feed</span></button>
-        <button class="nav-btn nav-char-mp" id="btn-view-char-mp" onclick="switchView('char-mp')" style="position:relative;">
-            <i class="fa-solid fa-user-group"></i><span class="nav-label"> MP Perso</span>
-            <span id="char-mp-badge" class="nav-unread-dot hidden"></span>
-        </button>
-        <button class="nav-btn" id="btn-view-presse" onclick="switchView('presse')"><i class="fa-solid fa-newspaper"></i><span class="nav-label"> Presse</span></button>
-        <button class="nav-btn" id="btn-view-actualites" onclick="switchView('actualites')">
-            <i class="fa-solid fa-calendar-days"></i><span class="nav-label"> Actualités</span>
-            <span id="actu-badge" class="nav-unread-dot hidden"></span>
-        </button>
-        <button class="nav-btn" id="btn-view-cites" onclick="switchView('cites')"><i class="fa-solid fa-city"></i><span class="nav-label"> Cités</span></button>
-        <button class="nav-btn" id="btn-view-bourse" onclick="switchView('bourse')"><i class="fa-solid fa-chart-line"></i><span class="nav-label"> Bourse</span></button>
-        <button class="nav-btn" id="btn-view-mes-persos" onclick="switchView('mes-persos')"><i class="fa-solid fa-id-card"></i><span class="nav-label"> Mes Persos</span></button>
-        <button class="nav-btn" id="btn-notifs" onclick="openNotifications()" style="position:relative;">
-            <i class="fa-solid fa-bell"></i>
-            <span id="notif-badge" class="hidden"></span>
-        </button>
-    </nav>
+        <div class="nav-bar-row">
+            <button id="btn-nav-account" class="nav-profile-btn" onclick="openAccountUI()">
+                <i class="fa-solid fa-circle-user"></i>
+                <span id="nav-account-label">Connexion</span>
+            </button>
+            <button id="nav-hamburger" class="nav-hamburger-btn" onclick="toggleMobileNav()" aria-label="Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
+        <div id="nav-links" class="nav-links">
+            <button class="nav-btn" id="btn-view-accueil" onclick="switchView('accueil')"><i class="fa-solid fa-house"></i><span class="nav-label"> Accueil</span></button>
+            <button class="nav-btn" id="btn-view-chat" onclick="switchView('chat')"><i class="fa-solid fa-comments"></i><span class="nav-label"> Chat</span></button>
+            <button class="nav-btn" id="btn-view-feed" onclick="switchView('feed')"><i class="fa-solid fa-bullhorn"></i><span class="nav-label"> Feed</span></button>
+            <button class="nav-btn nav-char-mp" id="btn-view-char-mp" onclick="switchView('char-mp')" style="position:relative;">
+                <i class="fa-solid fa-user-group"></i><span class="nav-label"> MP Perso</span>
+                <span id="char-mp-badge" class="nav-unread-dot hidden"></span>
+            </button>
+            <button class="nav-btn" id="btn-view-presse" onclick="switchView('presse')"><i class="fa-solid fa-newspaper"></i><span class="nav-label"> Presse</span></button>
+            <button class="nav-btn" id="btn-view-actualites" onclick="switchView('actualites')">
+                <i class="fa-solid fa-calendar-days"></i><span class="nav-label"> Actualités</span>
+                <span id="actu-badge" class="nav-unread-dot hidden"></span>
+            </button>
+            <button class="nav-btn" id="btn-view-cites" onclick="switchView('cites')"><i class="fa-solid fa-city"></i><span class="nav-label"> Cités</span></button>
+            <button class="nav-btn" id="btn-view-bourse" onclick="switchView('bourse')"><i class="fa-solid fa-chart-line"></i><span class="nav-label"> Bourse</span></button>
+            <button class="nav-btn" id="btn-view-mes-persos" onclick="switchView('mes-persos')"><i class="fa-solid fa-id-card"></i><span class="nav-label"> Mes Persos</span></button>
+            <button class="nav-btn" id="btn-view-partis" onclick="switchView('partis')"><i class="fa-solid fa-flag"></i><span class="nav-label"> Partis</span></button>
+            <button class="nav-btn" id="btn-view-wiki" onclick="switchView('wiki')"><i class="fa-solid fa-book-open"></i><span class="nav-label"> Wiki</span></button>
+            <button class="nav-btn" id="btn-notifs" onclick="openNotifications()" style="position:relative;">
+                <i class="fa-solid fa-bell"></i>
+                <span id="notif-badge" class="hidden"></span>
+            </button>
+        </div>
 
     <div id="mobile-overlay" onclick="toggleSidebar()"></div>
 
@@ -735,8 +743,9 @@
                         <h2 class="bourse-title"><i class="fa-solid fa-landmark"></i> Bourse de ConvSmos</h2>
                         <div class="bourse-subtitle">Marché financier fictif &middot; Mis à jour en direct</div>
                     </div>
-                    <div id="bourse-admin-header" class="hidden">
+                    <div id="bourse-admin-header" class="hidden" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                         <button class="btn-primary" onclick="openStockAddModal()"><i class="fa-solid fa-plus"></i> Coter une action</button>
+                        <button id="bourse-next-day-btn" class="btn-secondary" onclick="adminBourseNextDay()"><i class="fa-solid fa-forward-step"></i> Jour suivant</button>
                     </div>
                 </div>
 
@@ -778,6 +787,37 @@
             </div>
         </div>
         <!-- ===== [FIN MES PERSONNAGES] ===== -->
+
+        <!-- ===== [PARTIS POLITIQUES] VUE ===== -->
+        <div id="view-partis" class="view-section hidden">
+            <div class="feed-view-header">
+                <h3 style="margin:0;font-size:1.1rem;"><i class="fa-solid fa-flag"></i> Partis Politiques</h3>
+                <div id="partis-admin-btn" class="hidden">
+                    <button class="btn-primary" onclick="openPartiModal(null)" style="font-size:0.8rem;padding:6px 12px;"><i class="fa-solid fa-plus"></i> Ajouter un parti</button>
+                </div>
+            </div>
+            <div class="partis-container">
+                <div id="partis-grid" class="partis-grid">
+                    <p style="color:var(--text-muted);text-align:center;padding:40px;">Chargement...</p>
+                </div>
+            </div>
+        </div>
+        <!-- ===== [FIN PARTIS POLITIQUES] ===== -->
+
+        <!-- ===== [WIKI] VUE ===== -->
+        <div id="view-wiki" class="view-section hidden">
+            <div class="feed-view-header">
+                <h3 style="margin:0;font-size:1.1rem;"><i class="fa-solid fa-book-open"></i> Wiki</h3>
+                <div id="wiki-admin-btn" class="hidden">
+                    <button class="btn-primary" onclick="openWikiCreateModal(null)" style="font-size:0.8rem;padding:6px 12px;"><i class="fa-solid fa-plus"></i> Nouvelle page</button>
+                </div>
+            </div>
+            <div class="wiki-layout">
+                <div id="wiki-sidebar" class="wiki-sidebar"></div>
+                <div id="wiki-content-area" class="wiki-content-area"></div>
+            </div>
+        </div>
+        <!-- ===== [FIN WIKI] ===== -->
 
     </div>
 
@@ -1006,6 +1046,85 @@
             </div>
         </div>
     </div>
+
+    <!-- ==================== MODALE PARTI POLITIQUE ==================== -->
+    <div id="parti-modal" class="modal-overlay hidden" onclick="if(event.target===this)closePartiModal()">
+        <div class="modal-box" style="max-width:520px;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h3 id="parti-modal-title" style="color:white;margin:0;"><i class="fa-solid fa-flag"></i> Parti politique</h3>
+                <button onclick="closePartiModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
+            </div>
+            <form id="parti-modal-form" onsubmit="event.preventDefault()">
+                <input type="hidden" id="partiLogoUrl">
+                <div class="img-preview-row">
+                    <label class="file-upload-label" style="flex:1;"><span><i class="fa-solid fa-image"></i> Logo du parti</span><input type="file" id="partiLogoFile" accept="image/*" onchange="previewImg(this,'prev-parti-logo')"></label>
+                    <img id="prev-parti-logo" class="img-preview hidden" alt="preview">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+                    <div><label class="cfl">Nom *</label><input type="text" id="partiNom" class="char-input" placeholder="Nom du parti"></div>
+                    <div><label class="cfl">Couleur</label><input type="color" id="partiCouleur" value="#6c63ff" style="width:100%;height:38px;border:none;border-radius:var(--radius-sm);cursor:pointer;"></div>
+                    <div><label class="cfl">Slogan</label><input type="text" id="partiSlogan" class="char-input" placeholder="Slogan"></div>
+                    <div><label class="cfl">Idéologie</label><input type="text" id="partiIdeologie" class="char-input" placeholder="Ex: Centre gauche"></div>
+                    <div><label class="cfl">Dirigeant actuel</label><input type="text" id="partiDirigeant" class="char-input" placeholder="Nom du dirigeant"></div>
+                    <div><label class="cfl">Fondateur</label><input type="text" id="partiFondateur" class="char-input" placeholder="Fondateur"></div>
+                    <div><label class="cfl">Cité d'origine</label><input type="text" id="partiCite" class="char-input" placeholder="Ex: Pagoas"></div>
+                    <div><label class="cfl">Siège social</label><input type="text" id="partiSiege" class="char-input" placeholder="Adresse du siège"></div>
+                    <div><label class="cfl">Membres</label><input type="number" id="partiMembres" class="char-input" placeholder="0" min="0"></div>
+                    <div><label class="cfl">Sièges Assemblée</label><input type="number" id="partiAssemblee" class="char-input" placeholder="0" min="0"></div>
+                    <div style="grid-column:1/-1;"><label class="cfl">Date de création</label><input type="text" id="partiDateCreation" class="char-input" placeholder="Ex: 15 mars 2023"></div>
+                </div>
+                <label class="cfl" style="margin-top:10px;">Description</label>
+                <textarea id="partiDescription" class="char-input" rows="3" style="resize:vertical;" placeholder="Description du parti..."></textarea>
+                <div style="display:flex;gap:8px;margin-top:14px;">
+                    <button type="button" onclick="submitPartiAdmin()" class="btn-primary" style="flex:1;"><i class="fa-solid fa-floppy-disk"></i> Enregistrer</button>
+                    <button type="button" onclick="closePartiModal()" class="btn-secondary">Annuler</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==================== MODALE WIKI — CRÉER / MODIFIER PAGE ==================== -->
+    <div id="wiki-create-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeWikiCreateModal()">
+        <div class="modal-box" style="max-width:540px;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h3 style="color:white;margin:0;"><i class="fa-solid fa-file-circle-plus"></i> Page Wiki</h3>
+                <button onclick="closeWikiCreateModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
+            </div>
+            <input type="hidden" id="wikiCreateId">
+            <label class="cfl">Titre *</label>
+            <input type="text" id="wikiCreateTitle" class="modal-input" placeholder="Titre de la page">
+            <label class="cfl" style="margin-top:8px;">Catégorie *</label>
+            <input type="text" id="wikiCreateCategory" class="modal-input" placeholder="Ex: Géographie, Histoire, Politique...">
+            <label class="cfl" style="margin-top:8px;">Contenu</label>
+            <textarea id="wikiCreateContent" class="modal-input" rows="10" placeholder="Contenu de la page wiki..." style="resize:vertical;"></textarea>
+            <div style="display:flex;gap:8px;margin-top:14px;">
+                <button onclick="submitWikiPage()" class="btn-primary" style="flex:1;"><i class="fa-solid fa-floppy-disk"></i> Enregistrer</button>
+                <button onclick="closeWikiCreateModal()" class="btn-secondary">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== MODALE WIKI — LIRE UNE PAGE ==================== -->
+    <div id="wiki-page-modal" class="modal-overlay hidden" onclick="closeWikiPageModal()">
+        <div class="wiki-page-modal-box" onclick="event.stopPropagation()">
+            <div class="wiki-modal-header">
+                <div>
+                    <div id="wikiPageCategory" class="wiki-page-cat-tag"></div>
+                    <h2 id="wikiPageTitle" class="wiki-page-modal-title"></h2>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;">
+                    <div id="wiki-page-modal-admin" class="hidden">
+                        <button onclick="openWikiCreateModal(currentOpenWikiId)" class="btn-secondary" style="padding:6px 10px;font-size:0.8rem;"><i class="fa-solid fa-pen"></i></button>
+                    </div>
+                    <button onclick="closeWikiPageModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.2rem;">✕</button>
+                </div>
+            </div>
+            <div id="wikiPageContent" class="wiki-page-modal-content"></div>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div id="cosmos-toast" class="cosmos-toast hidden"></div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="assets/js/app.js"></script> 
