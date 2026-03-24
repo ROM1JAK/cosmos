@@ -24,7 +24,10 @@ let currentSelectedChar = null;
 let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
-let allOnlineUsers = []; 
+let allOnlineUsers = [];
+let feedPostsCache = [];
+let eventsCache = [];
+let presseArticlesCache = [];
 
 // FEED IDENTITY
 let currentFeedCharId = null;
@@ -73,6 +76,7 @@ async function uploadToCloudinary(file, resourceType) {
 function switchView(view) {
     currentView = view;
     localStorage.setItem('last_tab', view);
+    localStorage.setItem('last_tab_time', Date.now().toString());
     document.querySelectorAll('.view-section').forEach(el => { el.classList.remove('active'); el.classList.add('hidden'); });
     document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
     const viewEl = document.getElementById(`view-${view}`);
@@ -94,6 +98,7 @@ function switchView(view) {
     }
     if(view === 'cites') { loadCities(); } // [CITÉS]
     if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); }
+    if(view === 'accueil') { renderAccueil(); socket.emit('request_feed'); socket.emit('request_events'); if(!stocksData.length) socket.emit('request_stocks'); }
     if(view === 'mes-persos') { renderMesPersos(); }
     if(view === 'char-mp') {
         // Effacer le badge de notif
@@ -328,7 +333,10 @@ socket.on('login_success', (data) => {
     document.getElementById('btn-account-main').innerHTML = '<i class="fa-solid fa-user"></i> Mon Profil';
     closeLoginModal(); socket.emit('request_initial_data', PLAYER_ID); socket.emit('request_dm_contacts', USERNAME);
     const savedRoom = localStorage.getItem('saved_room_id'); joinRoom(savedRoom || 'global');
-    const lastTab = localStorage.getItem('last_tab'); if (lastTab) switchView(lastTab);
+    const lastTab = localStorage.getItem('last_tab');
+    const lastTabTime = parseInt(localStorage.getItem('last_tab_time') || '0');
+    const TAB_TIMEOUT = 6 * 60 * 60 * 1000;
+    if(lastTab && (Date.now() - lastTabTime < TAB_TIMEOUT)) { switchView(lastTab); } else { switchView('accueil'); }
 });
 socket.on('login_error', (msg) => { const el = document.getElementById('login-error-msg'); el.textContent = msg; el.style.display = 'block'; });
 socket.on('username_change_success', (newName) => { USERNAME = newName; localStorage.setItem('rp_username', newName); document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`; document.getElementById('settings-msg').textContent = "OK !"; });
@@ -553,6 +561,17 @@ socket.on('my_chars_data', (chars) => {
 socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(); closeCharModal(); });
 function deleteCharacter(id) { if(confirm('Supprimer ?')) socket.emit('delete_char', id); }
 socket.on('char_deleted_success', (id) => { myCharacters = myCharacters.filter(c => c._id !== id); updateUI(); });
+socket.on('char_updated', (char) => {
+    const idx = myCharacters.findIndex(c => String(c._id) === String(char._id));
+    if(idx >= 0) {
+        Object.assign(myCharacters[idx], char);
+        if(currentView === 'mes-persos') renderMesPersos();
+        if(currentView === 'accueil') renderAccueil();
+    }
+    if(currentProfileChar && String(currentProfileChar._id) === String(char._id)) {
+        Object.assign(currentProfileChar, char);
+    }
+});
 
 function selectCharacter(id) {
     const narrateur = { _id: 'narrateur', name: 'Narrateur', role: 'Omniscient', color: '#ffffff', avatar: 'https://cdn-icons-png.flaticon.com/512/1144/1144760.png' };
@@ -584,6 +603,7 @@ function updateUI() {
 
     updateFeedCharUI(); updatePresseCharUI(); updateBreakingNewsVisibility();
     if(currentView === 'mes-persos') renderMesPersos();
+    if(currentView === 'accueil') renderAccueil();
 }
 
 // FEED AVATAR SELECTOR
@@ -730,7 +750,7 @@ socket.on('char_profile_data', (char) => {
     document.getElementById('btn-view-followers').onclick = () => socket.emit('get_followers_list', char._id);
 
     // Bio
-    document.getElementById('profileDesc').textContent = char.description || "Aucune description.";
+    setBioWithVoirPlus('profileDesc', char.description || '');
     document.getElementById('profileOwner').textContent = `Joué par : ${char.ownerUsername || "Inconnu"}`;
     if(char.partyName && char.partyLogo) {
         document.getElementById('profileOwner').innerHTML += ` <span class="party-badge" style="display:inline-flex;"><img src="${char.partyLogo}" class="party-logo"> ${char.partyName}</span>`;
@@ -861,7 +881,7 @@ function saveBio() {
     if(!currentProfileChar) return;
     const bio = document.getElementById('bioEditInput').value.trim();
     socket.emit('update_char_bio', { charId: currentProfileChar._id, bio, ownerId: PLAYER_ID });
-    document.getElementById('profileDesc').textContent = bio;
+    setBioWithVoirPlus('profileDesc', bio);
     closeBioEdit();
 }
 
@@ -872,9 +892,13 @@ function openCompanyModal() {
     list.innerHTML = '';
     if(currentProfileChar.companies && currentProfileChar.companies.length > 0) {
         currentProfileChar.companies.forEach((co, idx) => {
+            const revenueHTML = IS_ADMIN
+                ? `<span style="font-size:0.7rem;color:var(--accent-soft);margin-right:4px;">${(co.revenue||0)>0 ? formatStockValue(co.revenue)+' CA' : 'CA: —'}</span><button onclick="adminSetCompanyRevenue('${currentProfileChar._id}','${co.name.replace(/'/g,"&apos;")}',${co.revenue||0})" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;" title="Modifier CA"><i class="fa-solid fa-coins"></i></button>`
+                : `${(co.revenue||0)>0 ? `<span style="font-size:0.7rem;color:var(--accent-soft);">${formatStockValue(co.revenue)} CA</span>` : ''}`;
             list.innerHTML += `<div style="display:flex; align-items:center; gap:8px; padding:8px; background:var(--bg-primary); border-radius:var(--radius-sm); margin-bottom:6px;">
                 ${co.logo ? `<img src="${co.logo}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">` : '<i class="fa-solid fa-building" style="color:var(--text-muted);"></i>'}
                 <span style="flex:1; font-weight:600;">${co.name}</span>
+                ${revenueHTML}
                 <span style="font-size:0.75rem; color:var(--text-muted);">${co.role}</span>
                 <button onclick="adminRemoveCompany('${currentProfileChar._id}', ${idx}); closeCompanyModal();" style="background:none;border:none;color:var(--danger);cursor:pointer;"><i class="fa-solid fa-trash"></i></button>
             </div>`;
@@ -892,15 +916,17 @@ async function submitAddCompany() {
     const role = document.getElementById('companyRole').value.trim();
     const desc = document.getElementById('companyDesc').value.trim();
     const hq   = document.getElementById('companyHQ')?.value.trim() || null;
+    const rev  = parseFloat(document.getElementById('companyRevenue')?.value) || 0;
     const logoFile = document.getElementById('companyLogoFile').files[0];
     if(!name) return alert("Nom de l'entreprise requis.");
     let logo = null;
     if(logoFile) logo = await uploadToCloudinary(logoFile);
-    socket.emit('admin_add_company', { charId: currentProfileChar._id, company: { name, logo, role, description: desc, headquarters: hq } });
+    socket.emit('admin_add_company', { charId: currentProfileChar._id, company: { name, logo, role, description: desc, headquarters: hq, revenue: rev } });
     document.getElementById('companyName').value = '';
     document.getElementById('companyRole').value = '';
     document.getElementById('companyDesc').value = '';
     if(document.getElementById('companyHQ')) document.getElementById('companyHQ').value = '';
+    if(document.getElementById('companyRevenue')) document.getElementById('companyRevenue').value = '';
     document.getElementById('companyLogoFile').value = '';
     closeCompanyModal();
 }
@@ -1514,7 +1540,11 @@ function stageCommentMedia(input, forcedType) {
 function clearCommentStaging() { pendingCommentAttachment = null; document.getElementById('comment-staging').classList.add('hidden'); document.getElementById('comment-file-input').value = ""; }
 function deleteComment(postId, commentId) { if(confirm("Supprimer ?")) socket.emit('delete_comment', { postId, commentId }); }
 
-socket.on('feed_data', (posts) => { const c = document.getElementById('feed-stream'); c.innerHTML = ""; posts.forEach(p => c.appendChild(createPostElement(p))); });
+socket.on('feed_data', (posts) => {
+    feedPostsCache = posts;
+    const c = document.getElementById('feed-stream'); c.innerHTML = ""; posts.forEach(p => c.appendChild(createPostElement(p)));
+    if(currentView === 'accueil') renderAccueil();
+});
 socket.on('new_post', (post) => { 
     if(currentView !== 'feed') document.getElementById('btn-view-feed').classList.add('nav-notify'); 
     document.getElementById('feed-stream').prepend(createPostElement(post)); 
@@ -1803,6 +1833,7 @@ function toggleHeadline(postId, value) {
 function loadPresse() { socket.emit('request_presse'); }
 
 socket.on('presse_data', (articles) => {
+    presseArticlesCache = articles;
     const c = document.getElementById('presse-stream'); 
     if(!c) return;
     c.innerHTML = '';
@@ -1866,19 +1897,23 @@ socket.on('events_data', (events) => {
         c.innerHTML = '<div class="actu-empty"><i class="fa-solid fa-calendar-xmark"></i><p>Aucun événement planifié.</p></div>';
         return;
     }
-    // Sort events oldest → newest (parse DD/MM/YYYY)
+    // Sort: futurs/aujourd'hui en premier (asc = le plus proche d'abord), puis passé (desc = le plus récent d'abord)
     const parseEventDate = (d) => {
         if(!d) return 0;
         const p = d.split('/');
         if(p.length === 3) return new Date(p[2]+'-'+p[1]+'-'+p[0]).getTime();
         return new Date(d).getTime() || 0;
     };
-    events.sort((a, b) => {
-        const diff = parseEventDate(a.date) - parseEventDate(b.date);
-        return diff !== 0 ? diff : (a.heure || '').localeCompare(b.heure || '');
-    });
+    const todayMs = new Date(new Date().toDateString()).getTime();
+    const futureEvts = events.filter(e => parseEventDate(e.date) >= todayMs);
+    const pastEvts   = events.filter(e => parseEventDate(e.date) <  todayMs);
+    futureEvts.sort((a, b) => { const d = parseEventDate(a.date)-parseEventDate(b.date); return d !== 0 ? d : (a.heure||'').localeCompare(b.heure||''); });
+    pastEvts.sort((a, b) => { const d = parseEventDate(b.date)-parseEventDate(a.date); return d !== 0 ? d : (b.heure||'').localeCompare(a.heure||''); });
+    const sortedEvents = [...futureEvts, ...pastEvts];
+    eventsCache = sortedEvents.slice(0, 10);
+    if(currentView === 'accueil') renderAccueil();
     let lastDate = null;
-    events.forEach(ev => {
+    sortedEvents.forEach(ev => {
         if(ev.date !== lastDate) {
             lastDate = ev.date;
             c.innerHTML += `<div class="actu-date-header"><span>${ev.jour ? ev.jour + ' · ' : ''}${ev.date}</span></div>`;
@@ -2076,15 +2111,20 @@ function renderMesPersos() {
         card.className = 'mp-char-card';
         card.style.borderLeft = `4px solid ${char.color || 'var(--accent)'}`;
         const companies = char.companies || [];
-        const compHTML = companies.map(co => `
-            <div class="mp-company-item">
-                <div class="mp-company-logo-wrap">${co.logo ? `<img src="${co.logo}" class="mp-company-logo">` : '<i class="fa-solid fa-building"></i>'}</div>
+        let compHTML = '';
+        if (companies.length > 0) {
+            const first = companies[0];
+            compHTML = `<div class="mp-company-item">
+                <div class="mp-company-logo-wrap">${first.logo ? `<img src="${first.logo}" class="mp-company-logo">` : '<i class="fa-solid fa-building"></i>'}</div>
                 <div>
-                    <div class="mp-company-name">${escapeHtml(co.name)}</div>
-                    <div class="mp-company-role">${escapeHtml(co.role || '')}</div>
-                    ${co.headquarters ? `<div class="mp-company-hq"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(co.headquarters)}</div>` : ''}
+                    <div class="mp-company-name">${escapeHtml(first.name)}</div>
+                    <div class="mp-company-role">${escapeHtml(first.role || '')}</div>
+                    ${first.headquarters ? `<div class="mp-company-hq"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(first.headquarters)}</div>` : ''}
+                    ${(first.revenue||0) > 0 ? `<div class="mp-company-revenue"><i class="fa-solid fa-coins"></i> CA : ${formatStockValue(first.revenue)}</div>` : ''}
                 </div>
-            </div>`).join('');
+            </div>`;
+            if (companies.length > 1) compHTML += `<div class="mp-companies-more">et ${companies.length - 1} autre${companies.length - 1 > 1 ? 's' : ''}</div>`;
+        }
         const partyHTML = char.partyName ? `<div class="mp-char-party">${char.partyLogo ? `<img src="${char.partyLogo}" class="party-logo" style="width:14px;height:14px;">` : ''} ${escapeHtml(char.partyName)}</div>` : '';
         card.innerHTML = `
             <div class="mp-char-header">
@@ -2093,7 +2133,7 @@ function renderMesPersos() {
                     <div class="mp-char-name" style="color:${char.color || 'white'}">${escapeHtml(char.name)}</div>
                     <div class="mp-char-role">${escapeHtml(char.role)}</div>
                     ${partyHTML}
-                    ${char.description ? `<div class="mp-char-desc">${escapeHtml(char.description.length > 110 ? char.description.slice(0,110)+'…' : char.description)}</div>` : ''}
+                    ${char.description ? `<div class="mp-char-desc">${escapeHtml(char.description)}</div>` : ''}
                 </div>
                 <div class="mp-char-actions">
                     <button onclick="openProfile('${char.name.replace(/'/g, "\\'")}');" class="btn-mini-action" title="Profil"><i class="fa-solid fa-user"></i></button>
@@ -2113,8 +2153,133 @@ function renderMesPersos() {
 }
 
 // ==================== [PUB BOOST] ====================
-function toggleFeedPubSelect() {
-    const cb = document.getElementById('postIsPub');
+// Voir plus pour les bios
+function setBioWithVoirPlus(elementId, text) {
+    const el = document.getElementById(elementId);
+    if(!el) return;
+    el.innerHTML = '';
+    if(!text) { el.textContent = 'Aucune description.'; return; }
+    const MAX_CHARS = 240;
+    if(text.length <= MAX_CHARS) { el.textContent = text; return; }
+    const shortSpan = document.createElement('span');
+    shortSpan.textContent = text.slice(0, MAX_CHARS);
+    const dotsSpan = document.createElement('span');
+    dotsSpan.textContent = '…';
+    const fullSpan = document.createElement('span');
+    fullSpan.style.display = 'none';
+    fullSpan.textContent = text;
+    const btn = document.createElement('button');
+    btn.className = 'bio-voir-plus-btn';
+    btn.textContent = 'Voir plus';
+    btn.onclick = () => {
+        const isExpanded = fullSpan.style.display !== 'none';
+        shortSpan.style.display = isExpanded ? 'inline' : 'none';
+        dotsSpan.style.display = isExpanded ? 'inline' : 'none';
+        fullSpan.style.display = isExpanded ? 'none' : 'inline';
+        btn.textContent = isExpanded ? 'Voir plus' : 'Voir moins';
+    };
+    el.appendChild(shortSpan);
+    el.appendChild(dotsSpan);
+    el.appendChild(fullSpan);
+    el.appendChild(document.createElement('br'));
+    el.appendChild(btn);
+}
+
+function adminSetCompanyRevenue(charId, companyName, currentRevenue) {
+    if(!IS_ADMIN) return;
+    const val = prompt(`Chiffre d'affaires — "${companyName}"\nActuel : ${Number(currentRevenue).toLocaleString('fr-FR')} cr\n\nNouveau CA :`, currentRevenue);
+    if(val !== null && !isNaN(parseFloat(val))) {
+        socket.emit('admin_set_company_revenue', { charId, companyName, revenue: parseFloat(val) });
+    }
+}
+
+// ==================== [ACCUEIL] ====================
+function renderAccueil() {
+    // Derniers posts
+    const feedPrev = document.getElementById('accueil-feed-preview');
+    if(feedPrev) {
+        if(feedPostsCache.length) {
+            feedPrev.innerHTML = feedPostsCache.slice(0, 6).map(p => {
+                const name = p.isAnonymous ? 'Anonyme' : escapeHtml(p.authorName);
+                const rawText = (p.content||'').replace(/\[TITRE\](.*?)\[\/TITRE\]\n?/, '$1 — ');
+                const text = rawText.slice(0, 90);
+                const avatarSrc = p.isAnonymous ? '' : p.authorAvatar;
+                return `<div class="accueil-post-item" onclick="switchView('feed')">
+                    ${avatarSrc ? `<img src="${avatarSrc}" class="accueil-post-avatar" onerror="this.style.opacity=0">` : `<span class="accueil-post-avatar" style="background:var(--bg-tertiary);display:inline-flex;align-items:center;justify-content:center;font-size:0.8rem;color:var(--text-dim);flex-shrink:0;border-radius:50%;">?</span>`}
+                    <div class="accueil-post-meta">
+                        <span class="accueil-post-author" style="color:${p.isAnonymous?'#888':p.authorColor||'white'}">${name}</span>
+                        <span class="accueil-post-content">${escapeHtml(text)}${rawText.length > 90 ? '…' : ''}</span>
+                    </div>
+                    <span class="accueil-post-date">${p.date}</span>
+                </div>`;
+            }).join('');
+        } else {
+            feedPrev.innerHTML = '<div class="accueil-widget-empty">Chargement…</div>';
+        }
+    }
+    // Prochains événements
+    const eventsPrev = document.getElementById('accueil-events-preview');
+    if(eventsPrev) {
+        if(eventsCache.length) {
+            eventsPrev.innerHTML = eventsCache.slice(0, 5).map(ev => `
+                <div class="accueil-event-item" onclick="switchView('actualites')">
+                    ${ev.date ? `<div class="accueil-event-date">${ev.jour ? ev.jour+' · ' : ''}${ev.date}</div>` : ''}
+                    <div class="accueil-event-main">
+                        <span class="accueil-event-time">${ev.heure || ''}</span>
+                        <span class="accueil-event-text">${escapeHtml(ev.evenement)}</span>
+                    </div>
+                </div>`).join('');
+        } else {
+            eventsPrev.innerHTML = '<div class="accueil-widget-empty">Aucun événement.</div>';
+        }
+    }
+    // Bourse Top 5
+    const stocksPrev = document.getElementById('accueil-stocks-preview');
+    if(stocksPrev) {
+        if(stocksData.length) {
+            const top5 = [...stocksData].sort((a,b) => b.currentValue - a.currentValue).slice(0, 5);
+            stocksPrev.innerHTML = top5.map(s => {
+                const hist = s.history || [];
+                const prev = hist.length >= 2 ? hist[hist.length-2].value : s.currentValue;
+                const pct = prev ? ((s.currentValue - prev)/prev*100) : 0;
+                const col = pct > 0 ? '#23a559' : pct < 0 ? '#da373c' : '#888';
+                return `<div class="accueil-stock-item" onclick="switchView('bourse')">
+                    ${s.companyLogo ? `<img src="${s.companyLogo}" class="accueil-stock-logo">` : `<span class="accueil-stock-icon"><i class="fa-solid fa-building"></i></span>`}
+                    <div class="accueil-stock-info">
+                        <span class="accueil-stock-name">${escapeHtml(s.companyName)}</span>
+                        <span class="accueil-stock-char">${escapeHtml(s.charName||'')}</span>
+                    </div>
+                    <div class="accueil-stock-val-wrap">
+                        <span class="accueil-stock-val">${formatStockValue(s.currentValue)}</span>
+                        <span class="accueil-stock-pct" style="color:${col}">${pct>=0?'▲':'▼'} ${Math.abs(pct).toFixed(2)}%</span>
+                    </div>
+                </div>`;
+            }).join('');
+        } else {
+            stocksPrev.innerHTML = '<div class="accueil-widget-empty">Aucune donnée bourse.</div>';
+        }
+    }
+    // Mes personnages
+    const charsPrev = document.getElementById('accueil-chars-preview');
+    if(charsPrev) {
+        if(myCharacters.length) {
+            charsPrev.innerHTML = myCharacters.map(c =>
+                `<div class="accueil-char-item" onclick="openProfile('${c.name.replace(/'/g,"\\'")}')">
+                    <img src="${c.avatar}" class="accueil-char-avatar" style="border-color:${c.color||'var(--accent)'}">
+                    <div class="accueil-char-info">
+                        <span class="accueil-char-name" style="color:${c.color||'white'}">${escapeHtml(c.name)}</span>
+                        <span class="accueil-char-role">${escapeHtml(c.role||'')}</span>
+                    </div>
+                    ${c.capital > 0 ? `<span class="accueil-char-capital">${formatStockValue(c.capital)}</span>` : ''}
+                </div>`
+            ).join('');
+        } else {
+            charsPrev.innerHTML = `<div class="accueil-widget-empty">Aucun personnage. <button class="btn-primary" onclick="openCharModal('create')" style="font-size:0.73rem;padding:4px 10px;margin-left:6px;"><i class="fa-solid fa-plus"></i> Créer</button></div>`;
+        }
+    }
+}
+
+function toggleFeedPubSelect() {    const cb = document.getElementById('postIsPub');
     const wrap = document.getElementById('feed-pub-stock-wrap');
     if(wrap) wrap.classList.toggle('hidden', !cb?.checked);
 }
@@ -2694,7 +2859,7 @@ function renderBourseCompChart(stocks) {
         container.innerHTML = '';
         return;
     }
-    const W = 600, H = 180, xPad = 44, yPad = 18;
+    const W = 600, H = 110, xPad = 44, yPad = 10;
     const chartW = W - xPad * 2, chartH = H - yPad * 2;
     const maxPts = 7;
     let allPcts = [];
