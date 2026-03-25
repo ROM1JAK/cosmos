@@ -257,8 +257,9 @@ io.on('connection', async (socket) => {
 
   // [NOUVEAU] Admin ajoute une entreprise à un personnage
   socket.on('admin_add_company', async ({ charId, company }) => {
-      const user = await User.findOne({ secretCode: Object.values(onlineUsers).find((v,i) => Object.keys(onlineUsers)[i] === socket.id) });
-      // On valide que c'est bien le socket admin connecté
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
       const char = await Character.findByIdAndUpdate(
           charId,
           { $push: { companies: company } },
@@ -274,14 +275,22 @@ io.on('connection', async (socket) => {
 
   // [NOUVEAU] Admin supprime une entreprise d'un personnage
   socket.on('admin_remove_company', async ({ charId, companyIndex }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
       const char = await Character.findById(charId);
       if(!char) return;
+      const removed = char.companies[companyIndex];
       char.companies.splice(companyIndex, 1);
       await char.save();
+      if(removed?.name) await Stock.deleteOne({ charId: String(char._id), companyName: removed.name });
       const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
       const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
       const charData = char.toObject(); charData.postCount = postCount; charData.lastPosts = lastPosts;
       io.emit('char_profile_data', charData);
+      io.emit('char_updated', char.toObject());
+      io.emit('stocks_updated', await getEnrichedStocks());
+      socket.emit('admin_action_result', { success: true, msg: 'Entreprise supprimée.' });
   });
 
   // [NOUVEAU] Joueur modifie sa propre bio
@@ -843,6 +852,42 @@ io.on('connection', async (socket) => {
       socket.emit('all_chars_companies', result);
   });
 
+  socket.on('request_admin_companies', async () => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      const [chars, stocks] = await Promise.all([
+          Character.find({ 'companies.0': { $exists: true } }).select('_id name color companies ownerUsername'),
+          Stock.find().select('_id charId companyName currentValue stockColor updatedAt')
+      ]);
+      const stockMap = new Map(stocks.map(s => [`${String(s.charId)}::${s.companyName}`, s]));
+      const result = chars.flatMap(char => (char.companies || []).map((company, index) => {
+          const stock = stockMap.get(`${String(char._id)}::${company.name}`);
+          return {
+              charId: String(char._id),
+              charName: char.name,
+              charColor: char.color,
+              ownerUsername: char.ownerUsername || '',
+              companyIndex: index,
+              company: {
+                  name: company.name || '',
+                  logo: company.logo || '',
+                  role: company.role || '',
+                  description: company.description || '',
+                  headquarters: company.headquarters || '',
+                  revenue: Number(company.revenue) || 0
+              },
+              stock: stock ? {
+                  stockId: String(stock._id),
+                  currentValue: Number(stock.currentValue) || 0,
+                  stockColor: stock.stockColor || '#6c63ff',
+                  updatedAt: stock.updatedAt || null
+              } : null
+          };
+      }));
+      socket.emit('admin_companies_data', result);
+  });
+
   socket.on('admin_save_stock', async ({ stockId, companyName, companyLogo, charId, charName, charColor, stockColor, currentValue, description, headquarters }) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
@@ -995,6 +1040,52 @@ io.on('connection', async (socket) => {
       io.emit('char_profile_data', charData);
       const stocksRefresh = await getEnrichedStocks();
       io.emit('stocks_updated', stocksRefresh);
+  });
+
+  socket.on('admin_update_company', async ({ charId, companyIndex, company, oldCompanyName }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      const char = await Character.findById(charId);
+      if(!char || !Array.isArray(char.companies) || companyIndex < 0 || companyIndex >= char.companies.length) {
+          socket.emit('admin_action_result', { success: false, error: 'Entreprise introuvable.' });
+          return;
+      }
+      const nextCompany = {
+          name: (company?.name || '').trim(),
+          logo: company?.logo || '',
+          role: company?.role || '',
+          description: company?.description || '',
+          headquarters: company?.headquarters || '',
+          revenue: Math.max(0, Number(company?.revenue) || 0)
+      };
+      if(!nextCompany.name) {
+          socket.emit('admin_action_result', { success: false, error: 'Nom de l\'entreprise requis.' });
+          return;
+      }
+      const previousName = oldCompanyName || char.companies[companyIndex].name;
+      char.companies[companyIndex] = nextCompany;
+      char.markModified('companies');
+      await char.save();
+
+      const stock = await Stock.findOne({ charId: String(char._id), companyName: previousName });
+      if(stock) {
+          stock.companyName = nextCompany.name;
+          stock.companyLogo = nextCompany.logo || '';
+          stock.headquarters = nextCompany.headquarters || null;
+          stock.updatedAt = new Date();
+          await stock.save();
+      }
+
+      io.emit('char_updated', char.toObject());
+      const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
+      const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
+      const charData = char.toObject();
+      charData.postCount = postCount;
+      charData.lastPosts = lastPosts;
+      io.emit('char_profile_data', charData);
+      io.emit('stocks_updated', await getEnrichedStocks());
+      socket.emit('admin_action_result', { success: true, msg: 'Entreprise mise à jour.' });
   });
   // ========== [FIN BOURSE SOCKET] ==========
   // ========== [WIKI] SOCKET EVENTS ==========

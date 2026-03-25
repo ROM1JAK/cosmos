@@ -553,7 +553,7 @@ function updateDmListUI() {
         list.innerHTML += `<div class="dm-item ${isActive} ${isUnread}" onclick="openDm('${contact}')"><img src="${avatarUrl}" class="dm-avatar"><span>${contact}</span></div>`;
     });
 }
-socket.on('dm_history_data', (data) => { if (currentDmTarget === data.target) { document.getElementById('messages').innerHTML=""; lastMessageData={author:null, time:0}; data.history.forEach(msg => displayMessage(msg, true)); scrollToBottom(true); } });
+socket.on('dm_history_data', (data) => { if (currentDmTarget === data.target) { document.getElementById('messages').innerHTML=""; lastMessageData={author:null, time:0}; data.history.forEach(msg => displayMessage(msg, true)); scrollToBottom(true); scheduleScrollToBottom(true); } });
 socket.on('receive_dm', (msg) => {
     const other = (msg.sender === USERNAME) ? msg.target : msg.sender;
     if (!dmContacts.includes(other)) { dmContacts.push(other); updateDmListUI(); }
@@ -1443,6 +1443,7 @@ socket.on('history_data', (msgs) => {
     msgs.forEach(msg => { if(splitId && msg._id === splitId) container.innerHTML += `<div class="new-msg-separator">-- Nouveaux --</div>`; displayMessage(msg); });
     if(firstUnreadMap[currentRoomId]) delete firstUnreadMap[currentRoomId];
     scrollToBottom(true); 
+    scheduleScrollToBottom(true);
 });
 socket.on('message_rp', (msg) => { 
     if (msg.ownerId !== PLAYER_ID && notificationsEnabled) notifSound.play().catch(e => {});
@@ -1523,6 +1524,13 @@ function scrollToBottom(force = false) {
     if (!d) return;
     const nearBottom = d.scrollHeight - d.scrollTop - d.clientHeight < 120;
     if (force || nearBottom) d.scrollTop = d.scrollHeight;
+}
+function scheduleScrollToBottom(force = false) {
+    requestAnimationFrame(() => {
+        scrollToBottom(force);
+        setTimeout(() => scrollToBottom(force), 0);
+        setTimeout(() => scrollToBottom(force), 120);
+    });
 }
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
 
@@ -3306,6 +3314,7 @@ socket.on('stocks_updated', (stocks) => {
     updateBourseCustomSelect(stocks);
     populatePubStockSelects();
     renderBourseRanking(stocks);
+    if(currentView === 'admin') loadAdminCompanies();
 });
 
 function renderStockTicker(stocks) {
@@ -3635,7 +3644,18 @@ socket.on('all_chars_companies', (data) => {
             select.appendChild(og);
         }
     });
-    if(prevVal) select.value = prevVal;
+    if(pendingAdminStockSelection) {
+        const wanted = JSON.stringify(pendingAdminStockSelection);
+        const wantedOption = [...select.options].find(opt => opt.value === wanted);
+        if(wantedOption) select.value = wanted;
+        pendingAdminStockSelection = null;
+    } else if(currentStockEdit) {
+        const targetVal = JSON.stringify({ charId: currentStockEdit.charId, charName: currentStockEdit.charName, charColor: currentStockEdit.charColor, companyName: currentStockEdit.companyName, companyLogo: currentStockEdit.companyLogo || '' });
+        const option = [...select.options].find(o => o.value === targetVal);
+        if(option) select.value = targetVal;
+    } else if(prevVal) {
+        select.value = prevVal;
+    }
 });
 
 async function submitStockAdmin() {
@@ -4065,9 +4085,26 @@ function renderWikiMarkdown(md) {
 
 // ==================== [ADMIN PANEL] ====================
 let adminUsersCache = [];
+let adminCompaniesCache = [];
+let pendingAdminStockSelection = null;
+let currentAdminTab = 'overview';
+function switchAdminTab(tab) {
+    currentAdminTab = tab;
+    ['overview', 'users', 'companies', 'site'].forEach(name => {
+        const panel = document.getElementById(`admin-panel-${name}`);
+        const btn = document.getElementById(`admin-tab-${name}`);
+        if(panel) panel.classList.toggle('hidden', name !== tab);
+        if(btn) btn.classList.toggle('active', name === tab);
+    });
+    if(tab === 'companies' && !adminCompaniesCache.length) loadAdminCompanies();
+}
 function loadAdminData() {
     socket.emit('request_admin_stats');
     socket.emit('admin_get_users');
+    loadAdminCompanies();
+}
+function loadAdminCompanies() {
+    socket.emit('request_admin_companies');
 }
 socket.on('admin_stats_data', (data) => {
     const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
@@ -4088,6 +4125,10 @@ socket.on('admin_stats_data', (data) => {
 socket.on('admin_users_data', (users) => {
     adminUsersCache = users;
     renderAdminUsers(users);
+});
+socket.on('admin_companies_data', (companies) => {
+    adminCompaniesCache = companies;
+    renderAdminCompanies(companies);
 });
 socket.on('admin_action_result', (data) => {
     if(data.success || data.ok) {
@@ -4123,6 +4164,118 @@ function renderAdminUsers(users) {
 function filterAdminUsers(query) {
     const q = (query||'').toLowerCase();
     renderAdminUsers(q ? adminUsersCache.filter(u => u.username.toLowerCase().includes(q)) : adminUsersCache);
+}
+function resetAdminCompanyEditor() {
+    ['admin-company-char-id', 'admin-company-index', 'admin-company-old-name', 'admin-company-name', 'admin-company-role', 'admin-company-hq', 'admin-company-revenue', 'admin-company-logo', 'admin-company-description'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.value = '';
+    });
+    const hint = document.getElementById('admin-company-editor-hint');
+    if(hint) hint.textContent = 'Sélectionne une entreprise dans la liste pour la modifier.';
+}
+function renderAdminCompanies(companies) {
+    const list = document.getElementById('admin-companies-list');
+    const meta = document.getElementById('admin-companies-meta');
+    if(!list) return;
+    if(meta) {
+        const withStock = companies.filter(c => c.stock).length;
+        meta.textContent = `${companies.length} entreprise(s) • ${withStock} cotée(s)`;
+    }
+    if(!companies.length) {
+        list.innerHTML = '<div class="admin-empty-state">Aucune entreprise enregistrée.</div>';
+        return;
+    }
+    list.innerHTML = companies.map(item => {
+        const company = item.company || {};
+        const revenue = Number(company.revenue || 0).toLocaleString('fr-FR');
+        const stockBlock = item.stock
+            ? `<span class="admin-company-pill"><i class="fa-solid fa-chart-line"></i> Action : ${Number(item.stock.currentValue || 0).toLocaleString('fr-FR')}</span>`
+            : '<span class="admin-company-pill muted"><i class="fa-solid fa-chart-line"></i> Non cotée</span>';
+        const logo = company.logo
+            ? `<img src="${escapeHtml(company.logo)}" class="admin-company-logo" alt="">`
+            : '<div class="admin-company-logo admin-company-logo-fallback"><i class="fa-solid fa-building"></i></div>';
+        const safeName = String(company.name || '').replace(/'/g, '&#39;');
+        return `<div class="admin-company-card">
+            <div class="admin-company-head">
+                ${logo}
+                <div class="admin-company-head-text">
+                    <div class="admin-company-name">${escapeHtml(company.name || 'Entreprise sans nom')}</div>
+                    <div class="admin-company-owner">${escapeHtml(item.charName)} • ${escapeHtml(item.ownerUsername || 'n/a')}</div>
+                </div>
+            </div>
+            <div class="admin-company-tags">
+                <span class="admin-company-pill"><i class="fa-solid fa-coins"></i> CA : ${revenue}</span>
+                ${company.headquarters ? `<span class="admin-company-pill"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(company.headquarters)}</span>` : ''}
+                ${stockBlock}
+            </div>
+            ${company.role ? `<div class="admin-company-role">${escapeHtml(company.role)}</div>` : ''}
+            ${company.description ? `<div class="admin-company-desc">${escapeHtml(company.description)}</div>` : ''}
+            <div class="admin-company-actions">
+                <button class="btn-secondary" onclick="editAdminCompany('${item.charId}', ${item.companyIndex})"><i class="fa-solid fa-pen"></i> Modifier</button>
+                <button class="btn-secondary" onclick="adminSetCompanyRevenue('${item.charId}', '${safeName}', ${Number(company.revenue || 0)})"><i class="fa-solid fa-sack-dollar"></i> CA</button>
+                ${item.stock ? `<button class="btn-secondary" onclick="openStockEditModal('${item.stock.stockId}')"><i class="fa-solid fa-chart-line"></i> Action</button>` : `<button class="btn-secondary" onclick="openStockAddModalForCompany('${item.charId}', '${String(item.charName || '').replace(/'/g, '&#39;')}', '${String(item.charColor || '').replace(/'/g, '&#39;')}', '${safeName}', '${String(company.logo || '').replace(/'/g, '&#39;')}')"><i class="fa-solid fa-plus"></i> Coter</button>`}
+                <button class="admin-danger-btn" onclick="adminRemoveCompany('${item.charId}', ${item.companyIndex})"><i class="fa-solid fa-trash"></i> Supprimer</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+function filterAdminCompanies(query) {
+    const q = (query || '').trim().toLowerCase();
+    if(!q) return renderAdminCompanies(adminCompaniesCache);
+    renderAdminCompanies(adminCompaniesCache.filter(item => {
+        const company = item.company || {};
+        return [company.name, company.role, company.headquarters, company.description, item.charName, item.ownerUsername]
+            .filter(Boolean)
+            .some(value => String(value).toLowerCase().includes(q));
+    }));
+}
+function editAdminCompany(charId, companyIndex) {
+    const item = adminCompaniesCache.find(entry => String(entry.charId) === String(charId) && Number(entry.companyIndex) === Number(companyIndex));
+    if(!item) return;
+    document.getElementById('admin-company-char-id').value = item.charId;
+    document.getElementById('admin-company-index').value = item.companyIndex;
+    document.getElementById('admin-company-old-name').value = item.company.name || '';
+    document.getElementById('admin-company-name').value = item.company.name || '';
+    document.getElementById('admin-company-role').value = item.company.role || '';
+    document.getElementById('admin-company-hq').value = item.company.headquarters || '';
+    document.getElementById('admin-company-revenue').value = item.company.revenue || 0;
+    document.getElementById('admin-company-logo').value = item.company.logo || '';
+    document.getElementById('admin-company-description').value = item.company.description || '';
+    const hint = document.getElementById('admin-company-editor-hint');
+    if(hint) hint.textContent = `Édition de ${item.company.name} rattachée à ${item.charName}.`;
+    switchAdminTab('companies');
+}
+function saveAdminCompanyEdit() {
+    const charId = document.getElementById('admin-company-char-id')?.value;
+    const companyIndex = Number(document.getElementById('admin-company-index')?.value);
+    const company = {
+        name: document.getElementById('admin-company-name')?.value?.trim() || '',
+        role: document.getElementById('admin-company-role')?.value?.trim() || '',
+        headquarters: document.getElementById('admin-company-hq')?.value?.trim() || '',
+        revenue: Number(document.getElementById('admin-company-revenue')?.value) || 0,
+        logo: document.getElementById('admin-company-logo')?.value?.trim() || '',
+        description: document.getElementById('admin-company-description')?.value?.trim() || ''
+    };
+    if(!charId || Number.isNaN(companyIndex)) return alert('Sélectionne une entreprise à modifier.');
+    if(!company.name) return alert('Nom de l\'entreprise requis.');
+    socket.emit('admin_update_company', {
+        charId,
+        companyIndex,
+        oldCompanyName: document.getElementById('admin-company-old-name')?.value || company.name,
+        company
+    });
+}
+function openStockAddModalForCompany(charId, charName, charColor, companyName, companyLogo) {
+    pendingAdminStockSelection = { charId, charName, charColor, companyName, companyLogo };
+    openStockAddModal();
+}
+function openStockAddModalForAdminCompany() {
+    const charId = document.getElementById('admin-company-char-id')?.value;
+    const companyIndex = Number(document.getElementById('admin-company-index')?.value);
+    if(!charId || Number.isNaN(companyIndex)) return alert('Sélectionne une entreprise à coter.');
+    const item = adminCompaniesCache.find(entry => String(entry.charId) === String(charId) && Number(entry.companyIndex) === companyIndex);
+    if(!item) return;
+    openStockAddModalForCompany(item.charId, item.charName, item.charColor || '', item.company.name || '', item.company.logo || '');
 }
 function adminToggleAdmin(userId, makeAdmin) {
     if(!confirm(`${makeAdmin ? 'Rendre admin' : 'Retirer admin'} cet utilisateur ?`)) return;

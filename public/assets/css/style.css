@@ -2126,6 +2126,13 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .admin-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 4px; }
 .admin-title { font-size: 1.5rem; font-weight: 700; color: white; margin: 0; }
 .admin-subtitle { font-size: 0.82rem; color: var(--text-muted); margin-top: 4px; }
+.admin-tabbar { display: flex; gap: 8px; flex-wrap: wrap; }
+.admin-tab {
+    border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-muted);
+    border-radius: 999px; padding: 10px 16px; cursor: pointer; font-weight: 700; font-family: var(--font-main);
+}
+.admin-tab.active { background: rgba(108,99,255,0.18); color: white; border-color: rgba(108,99,255,0.4); }
+.admin-panel.hidden { display: none !important; }
 .admin-section {
     background: var(--bg-secondary); border: 1px solid var(--border);
     border-radius: var(--radius-md); padding: 18px 20px;
@@ -2171,3 +2178,37 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .admin-user-since { font-size: 0.72rem; color: var(--text-muted); }
 .admin-user-actions { display: flex; gap: 6px; align-items: center; }
 .admin-actions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.admin-companies-layout { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 18px; align-items: start; }
+.admin-company-editor-wrap { position: sticky; top: 18px; }
+.admin-company-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.admin-company-form-span { grid-column: 1 / -1; }
+.admin-company-editor-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.admin-editor-hint { margin-top: 12px; color: var(--text-muted); font-size: 0.8rem; line-height: 1.5; }
+.admin-companies-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.admin-companies-meta { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 12px; }
+.admin-companies-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; max-height: 70vh; overflow-y: auto; }
+.admin-company-card { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.admin-company-head { display: flex; gap: 10px; align-items: center; }
+.admin-company-logo { width: 46px; height: 46px; border-radius: 12px; object-fit: cover; border: 1px solid var(--border); flex-shrink: 0; }
+.admin-company-logo-fallback { background: rgba(108,99,255,0.12); color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.admin-company-head-text { min-width: 0; }
+.admin-company-name { color: white; font-weight: 800; font-size: 0.95rem; }
+.admin-company-owner { color: var(--text-muted); font-size: 0.74rem; margin-top: 2px; }
+.admin-company-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.admin-company-pill { background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 999px; padding: 4px 9px; font-size: 0.72rem; color: #d7dbf3; display: inline-flex; gap: 6px; align-items: center; }
+.admin-company-pill.muted { color: var(--text-muted); }
+.admin-company-role { color: white; font-size: 0.82rem; font-weight: 600; }
+.admin-company-desc { color: var(--text-muted); font-size: 0.8rem; line-height: 1.55; }
+.admin-company-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+.admin-danger-btn {
+    background: rgba(218,55,60,0.15); color: #da373c; border: 1px solid rgba(218,55,60,0.25);
+    border-radius: var(--radius-sm); padding: 8px 10px; cursor: pointer; font-family: var(--font-main); font-weight: 700;
+}
+.admin-empty-state { color: var(--text-muted); font-size: 0.82rem; padding: 20px 8px; }
+@media (max-width: 900px) {
+    .admin-companies-layout { grid-template-columns: 1fr; }
+    .admin-company-editor-wrap { position: static; }
+}
+@media (max-width: 640px) {
+    .admin-company-form-grid { grid-template-columns: 1fr; }
+}

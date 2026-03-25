@@ -979,55 +979,103 @@
                     <button class="btn-primary" onclick="loadAdminData()"><i class="fa-solid fa-rotate"></i> Actualiser</button>
                 </div>
 
-                <div class="admin-section">
-                    <div class="admin-section-title"><i class="fa-solid fa-chart-bar"></i> Statistiques</div>
-                    <div class="admin-stats-grid">
-                        <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-users"></i></div><div class="admin-stat-value" id="stat-users">—</div><div class="admin-stat-label">Utilisateurs</div></div>
-                        <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-id-card"></i></div><div class="admin-stat-value" id="stat-chars">—</div><div class="admin-stat-label">Personnages</div></div>
-                        <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-message"></i></div><div class="admin-stat-value" id="stat-posts">—</div><div class="admin-stat-label">Posts Feed</div></div>
-                        <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-newspaper"></i></div><div class="admin-stat-value" id="stat-articles">—</div><div class="admin-stat-label">Articles Presse</div></div>
-                        <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-comments"></i></div><div class="admin-stat-value" id="stat-msgs">—</div><div class="admin-stat-label">Messages Chat</div></div>
-                        <div class="admin-stat-card admin-stat-online-card"><div class="admin-stat-icon online-icon"><i class="fa-solid fa-circle"></i></div><div class="admin-stat-value admin-stat-online-val" id="stat-online">—</div><div class="admin-stat-label">En ligne</div></div>
+                <div class="admin-tabbar">
+                    <button class="admin-tab active" id="admin-tab-overview" onclick="switchAdminTab('overview')"><i class="fa-solid fa-chart-pie"></i> Vue d'ensemble</button>
+                    <button class="admin-tab" id="admin-tab-users" onclick="switchAdminTab('users')"><i class="fa-solid fa-users-gear"></i> Utilisateurs</button>
+                    <button class="admin-tab" id="admin-tab-companies" onclick="switchAdminTab('companies')"><i class="fa-solid fa-building"></i> Entreprises</button>
+                    <button class="admin-tab" id="admin-tab-site" onclick="switchAdminTab('site')"><i class="fa-solid fa-screwdriver-wrench"></i> Site</button>
+                </div>
+
+                <div id="admin-panel-overview" class="admin-panel">
+                    <div class="admin-section">
+                        <div class="admin-section-title"><i class="fa-solid fa-chart-bar"></i> Statistiques</div>
+                        <div class="admin-stats-grid">
+                            <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-users"></i></div><div class="admin-stat-value" id="stat-users">—</div><div class="admin-stat-label">Utilisateurs</div></div>
+                            <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-id-card"></i></div><div class="admin-stat-value" id="stat-chars">—</div><div class="admin-stat-label">Personnages</div></div>
+                            <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-message"></i></div><div class="admin-stat-value" id="stat-posts">—</div><div class="admin-stat-label">Posts Feed</div></div>
+                            <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-newspaper"></i></div><div class="admin-stat-value" id="stat-articles">—</div><div class="admin-stat-label">Articles Presse</div></div>
+                            <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-comments"></i></div><div class="admin-stat-value" id="stat-msgs">—</div><div class="admin-stat-label">Messages Chat</div></div>
+                            <div class="admin-stat-card admin-stat-online-card"><div class="admin-stat-icon online-icon"><i class="fa-solid fa-circle"></i></div><div class="admin-stat-value admin-stat-online-val" id="stat-online">—</div><div class="admin-stat-label">En ligne</div></div>
+                        </div>
+                    </div>
+
+                    <div class="admin-section">
+                        <div class="admin-section-title"><i class="fa-solid fa-circle-dot" style="color:#23a559;"></i> Connectés maintenant</div>
+                        <div id="admin-online-list" class="admin-online-list"></div>
                     </div>
                 </div>
 
-                <div class="admin-section">
-                    <div class="admin-section-title"><i class="fa-solid fa-circle-dot" style="color:#23a559;"></i> Connectés maintenant</div>
-                    <div id="admin-online-list" class="admin-online-list"></div>
-                </div>
-
-                <div class="admin-section">
-                    <div class="admin-section-title"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Bandeau d'Alerte Global</div>
-                    <div class="admin-alert-quick">
-                        <input type="text" id="adminAlertMsgQuick" class="modal-input" placeholder="Message du bandeau d'alerte…" style="flex:1;margin:0;">
-                        <select id="adminAlertColorQuick" class="modal-input" style="width:auto;margin:0;">
-                            <option value="red">🔴 Rouge</option>
-                            <option value="orange">🟠 Orange</option>
-                            <option value="yellow">🟡 Jaune</option>
-                            <option value="blue">🔵 Bleu</option>
-                            <option value="green">🟢 Vert</option>
-                        </select>
-                        <button class="btn-primary" onclick="adminSetAlertQuick(true)"><i class="fa-solid fa-check"></i> Activer</button>
-                        <button class="btn-secondary" onclick="adminSetAlertQuick(false)"><i class="fa-solid fa-xmark"></i> Désactiver</button>
+                <div id="admin-panel-users" class="admin-panel hidden">
+                    <div class="admin-section">
+                        <div class="admin-section-title"><i class="fa-solid fa-users-gear"></i> Gestion des Utilisateurs</div>
+                        <input type="text" id="admin-user-search" class="modal-input" placeholder="Filtrer par pseudo…" oninput="filterAdminUsers(this.value)" style="margin-bottom:10px;">
+                        <div id="admin-users-list" class="admin-users-list"></div>
                     </div>
                 </div>
 
-                <div class="admin-section">
-                    <div class="admin-section-title"><i class="fa-solid fa-users-gear"></i> Gestion des Utilisateurs</div>
-                    <input type="text" id="admin-user-search" class="modal-input" placeholder="Filtrer par pseudo…" oninput="filterAdminUsers(this.value)" style="margin-bottom:10px;">
-                    <div id="admin-users-list" class="admin-users-list"></div>
+                <div id="admin-panel-companies" class="admin-panel hidden">
+                    <div class="admin-companies-layout">
+                        <div class="admin-section admin-company-editor-wrap">
+                            <div class="admin-section-title"><i class="fa-solid fa-pen-to-square"></i> Éditeur Entreprise</div>
+                            <input type="hidden" id="admin-company-char-id">
+                            <input type="hidden" id="admin-company-index">
+                            <input type="hidden" id="admin-company-old-name">
+                            <div class="admin-company-form-grid">
+                                <input type="text" id="admin-company-name" class="modal-input" placeholder="Nom de l'entreprise">
+                                <input type="text" id="admin-company-role" class="modal-input" placeholder="Rôle / fonction">
+                                <input type="text" id="admin-company-hq" class="modal-input" placeholder="Siège / localisation">
+                                <input type="number" id="admin-company-revenue" class="modal-input" placeholder="Chiffre d'affaires" min="0">
+                                <input type="text" id="admin-company-logo" class="modal-input admin-company-form-span" placeholder="URL du logo">
+                                <textarea id="admin-company-description" class="modal-input admin-company-form-span" rows="5" placeholder="Description / notes internes" style="resize:vertical;"></textarea>
+                            </div>
+                            <div class="admin-company-editor-actions">
+                                <button class="btn-primary" onclick="saveAdminCompanyEdit()"><i class="fa-solid fa-floppy-disk"></i> Enregistrer</button>
+                                <button class="btn-secondary" onclick="resetAdminCompanyEditor()"><i class="fa-solid fa-rotate-left"></i> Réinitialiser</button>
+                                <button class="btn-secondary" onclick="openStockAddModalForAdminCompany()"><i class="fa-solid fa-chart-line"></i> Coter une action</button>
+                            </div>
+                            <div id="admin-company-editor-hint" class="admin-editor-hint">Sélectionne une entreprise dans la liste pour la modifier.</div>
+                        </div>
+
+                        <div class="admin-section admin-company-list-wrap">
+                            <div class="admin-section-title"><i class="fa-solid fa-building"></i> Toutes les entreprises</div>
+                            <div class="admin-companies-toolbar">
+                                <input type="text" id="admin-company-search" class="modal-input" placeholder="Rechercher une entreprise, un personnage, un siège…" oninput="filterAdminCompanies(this.value)">
+                                <button class="btn-secondary" onclick="loadAdminCompanies()"><i class="fa-solid fa-rotate"></i> Rafraîchir</button>
+                            </div>
+                            <div id="admin-companies-meta" class="admin-companies-meta">Chargement…</div>
+                            <div id="admin-companies-list" class="admin-companies-list"></div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="admin-section">
-                    <div class="admin-section-title"><i class="fa-solid fa-bolt"></i> Actions Rapides</div>
-                    <div class="admin-actions-grid">
-                        <button class="btn-primary" onclick="adminNextTradingDay()"><i class="fa-solid fa-forward-step"></i> Avancer Bourse</button>
-                        <button class="btn-secondary" onclick="loadAdminData()"><i class="fa-solid fa-rotate"></i> Rafraîchir</button>
-                        <button class="btn-secondary" onclick="switchView('bourse')"><i class="fa-solid fa-chart-line"></i> Bourse</button>
-                        <button class="btn-secondary" onclick="switchView('wiki')"><i class="fa-solid fa-book-open"></i> Wiki</button>
-                        <button class="btn-secondary" onclick="switchView('presse')"><i class="fa-solid fa-newspaper"></i> Presse</button>
-                        <button class="btn-secondary" onclick="switchView('cites')"><i class="fa-solid fa-city"></i> Cités</button>
-                        <button style="background:rgba(218,55,60,0.15);color:#da373c;border:1px solid rgba(218,55,60,0.3);padding:9px 14px;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;font-family:var(--font-main);" onclick="if(confirm('Supprimer TOUS les posts du feed ?')) adminClearAllPosts()"><i class="fa-solid fa-trash"></i> Vider les posts</button>
+                <div id="admin-panel-site" class="admin-panel hidden">
+                    <div class="admin-section">
+                        <div class="admin-section-title"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Bandeau d'Alerte Global</div>
+                        <div class="admin-alert-quick">
+                            <input type="text" id="adminAlertMsgQuick" class="modal-input" placeholder="Message du bandeau d'alerte…" style="flex:1;margin:0;">
+                            <select id="adminAlertColorQuick" class="modal-input" style="width:auto;margin:0;">
+                                <option value="red">🔴 Rouge</option>
+                                <option value="orange">🟠 Orange</option>
+                                <option value="yellow">🟡 Jaune</option>
+                                <option value="blue">🔵 Bleu</option>
+                                <option value="green">🟢 Vert</option>
+                            </select>
+                            <button class="btn-primary" onclick="adminSetAlertQuick(true)"><i class="fa-solid fa-check"></i> Activer</button>
+                            <button class="btn-secondary" onclick="adminSetAlertQuick(false)"><i class="fa-solid fa-xmark"></i> Désactiver</button>
+                        </div>
+                    </div>
+
+                    <div class="admin-section">
+                        <div class="admin-section-title"><i class="fa-solid fa-bolt"></i> Actions Rapides</div>
+                        <div class="admin-actions-grid">
+                            <button class="btn-primary" onclick="adminNextTradingDay()"><i class="fa-solid fa-forward-step"></i> Avancer Bourse</button>
+                            <button class="btn-secondary" onclick="loadAdminData()"><i class="fa-solid fa-rotate"></i> Rafraîchir</button>
+                            <button class="btn-secondary" onclick="switchView('bourse')"><i class="fa-solid fa-chart-line"></i> Bourse</button>
+                            <button class="btn-secondary" onclick="switchView('wiki')"><i class="fa-solid fa-book-open"></i> Wiki</button>
+                            <button class="btn-secondary" onclick="switchView('presse')"><i class="fa-solid fa-newspaper"></i> Presse</button>
+                            <button class="btn-secondary" onclick="switchView('cites')"><i class="fa-solid fa-city"></i> Cités</button>
+                            <button style="background:rgba(218,55,60,0.15);color:#da373c;border:1px solid rgba(218,55,60,0.3);padding:9px 14px;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;font-family:var(--font-main);" onclick="if(confirm('Supprimer TOUS les posts du feed ?')) adminClearAllPosts()"><i class="fa-solid fa-trash"></i> Vider les posts</button>
+                        </div>
                     </div>
                 </div>
             </div>
