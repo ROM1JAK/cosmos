@@ -1348,6 +1348,16 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .accueil-nav-card i { font-size: 1.3rem; color: var(--accent); transition: transform 0.18s; }
 .accueil-nav-card:hover i { transform: scale(1.2); }
 .accueil-nav-card span { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.accueil-headline-wrap { margin: 12px 24px 0; border: 1px solid rgba(192,151,59,0.35); border-radius: var(--radius-xl); overflow: hidden; background: linear-gradient(135deg, rgba(192,151,59,0.12) 0%, rgba(28,29,36,0.85) 70%); box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
+.accueil-headline-title { font-size: 0.72rem; font-weight: 800; color: #d4b261; text-transform: uppercase; letter-spacing: 0.11em; padding: 10px 14px 8px; border-bottom: 1px solid rgba(192,151,59,0.28); display: flex; align-items: center; gap: 8px; }
+.accueil-headline-preview { padding: 14px; cursor: pointer; transition: background 0.16s; }
+.accueil-headline-preview:hover { background: rgba(255,255,255,0.03); }
+.accueil-headline-empty { font-size: 0.82rem; color: var(--text-muted); text-align: center; padding: 10px 0; }
+.accueil-headline-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.09em; color: #2a1f0e; background: #d4b261; border-radius: 999px; padding: 3px 9px; margin-bottom: 8px; }
+.accueil-headline-item-title { margin: 0 0 8px; font-family: 'Playfair Display', Georgia, serif; font-size: 1.22rem; line-height: 1.2; color: #f8ecd3; font-weight: 800; }
+.accueil-headline-item-excerpt { margin: 0; color: #d7d3c7; font-size: 0.9rem; line-height: 1.55; }
+.accueil-headline-item-meta { margin-top: 10px; display: flex; gap: 10px; align-items: center; color: var(--text-muted); font-size: 0.7rem; }
+.accueil-headline-item-author { color: #e9d7a3; font-weight: 700; }
 .accueil-content-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; padding: 20px 24px 0; }
 .accueil-widget { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
 .accueil-widget-title { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; padding: 11px 14px 9px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); background: var(--bg-tertiary); }

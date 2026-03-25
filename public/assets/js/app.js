@@ -99,7 +99,7 @@ function switchView(view) {
     if(view === 'cites') { loadCities(); loadCityRelations(); } // [CITÉS]
     if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); }
     if(view === 'wiki') { loadWiki(); }
-    if(view === 'accueil') { renderAccueil(); socket.emit('request_feed'); socket.emit('request_events'); if(!stocksData.length) socket.emit('request_stocks'); }
+    if(view === 'accueil') { renderAccueil(); socket.emit('request_feed'); socket.emit('request_events'); socket.emit('request_presse'); if(!stocksData.length) socket.emit('request_stocks'); }
     if(view === 'mes-persos') { renderMesPersos(); }
     if(view === 'char-mp') {
         // Effacer le badge de notif
@@ -1948,6 +1948,7 @@ function loadPresse() { socket.emit('request_presse'); }
 
 socket.on('presse_data', (articles) => {
     presseArticlesCache = articles;
+    if(currentView === 'accueil') renderAccueil();
     const c = document.getElementById('presse-stream'); 
     if(!c) return;
     c.innerHTML = '';
@@ -2315,6 +2316,30 @@ function adminSetCompanyRevenue(charId, companyName, currentRevenue) {
 
 // ==================== [ACCUEIL] ====================
 function renderAccueil() {
+    // Article a la une
+    const headlinePrev = document.getElementById('accueil-headline-preview');
+    if(headlinePrev) {
+        if(presseArticlesCache.length) {
+            const headline = presseArticlesCache.find(a => a.isHeadline) || presseArticlesCache[0];
+            const titleMatch = headline.content && headline.content.match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
+            const titleText = titleMatch ? titleMatch[1] : ((headline.content || '').split(/\s+/).slice(0, 10).join(' ') + (((headline.content || '').split(/\s+/).length > 10) ? '...' : ''));
+            const bodyText = titleMatch ? (titleMatch[2] || '') : (headline.content || '');
+            const excerpt = bodyText.trim().slice(0, 180);
+            headlinePrev.innerHTML = `
+                <div onclick="switchView('presse')">
+                    <span class="accueil-headline-tag"><i class="fa-solid fa-star"></i> La Une</span>
+                    <h3 class="accueil-headline-item-title">${escapeHtml(titleText)}</h3>
+                    <p class="accueil-headline-item-excerpt">${escapeHtml(excerpt)}${bodyText.length > 180 ? '…' : ''}</p>
+                    <div class="accueil-headline-item-meta">
+                        <span class="accueil-headline-item-author"><i class="fa-solid fa-feather-pointed"></i> ${escapeHtml(headline.authorName || 'Redaction')}</span>
+                        <span>${escapeHtml(headline.date || '')}</span>
+                    </div>
+                </div>`;
+        } else {
+            headlinePrev.innerHTML = '<div class="accueil-headline-empty">Aucun article pour le moment.</div>';
+        }
+    }
+
     // Derniers posts
     const feedPrev = document.getElementById('accueil-feed-preview');
     if(feedPrev) {
