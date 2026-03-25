@@ -1050,9 +1050,11 @@ io.on('connection', async (socket) => {
           Message.countDocuments({ roomId: { $nin: ['dm'] }, isCharDm: { $ne: true } }),
           Room.countDocuments()
       ]);
+      const onlineUsersList = [...new Set(Object.values(onlineUsers))].sort((a, b) => a.localeCompare(b, 'fr'));
       socket.emit('admin_stats_data', {
           userCount, charCount, postCount, articleCount, msgCount, roomCount,
-          onlineCount: Object.keys(onlineUsers).length
+          onlineCount: Object.keys(onlineUsers).length,
+          onlineUsers: onlineUsersList
       });
   });
 
@@ -1064,27 +1066,47 @@ io.on('connection', async (socket) => {
       socket.emit('admin_users_data', users);
   });
 
-  socket.on('admin_set_admin', async ({ targetUsername, value }) => {
+  socket.on('admin_set_admin', async ({ targetUsername, targetUserId, value, makeAdmin }) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
-      if(targetUsername === username) return; // Cannot change own role
-      await User.findOneAndUpdate({ username: targetUsername }, { isAdmin: !!value });
+      const target = targetUserId
+          ? await User.findById(targetUserId)
+          : await User.findOne({ username: targetUsername });
+      if(!target) {
+          socket.emit('admin_action_result', { success: false, error: 'Utilisateur introuvable.' });
+          return;
+      }
+      if(target.username === username) {
+          socket.emit('admin_action_result', { success: false, error: 'Impossible de modifier votre propre rôle admin.' });
+          return;
+      }
+      target.isAdmin = typeof makeAdmin === 'boolean' ? makeAdmin : !!value;
+      await target.save();
+      socket.emit('admin_action_result', { success: true });
       const users = await User.find({}, 'username isAdmin createdAt').sort({ username: 1 });
       socket.emit('admin_users_data', users);
   });
 
-  socket.on('admin_delete_user', async ({ targetUsername }) => {
+  socket.on('admin_delete_user', async ({ targetUsername, targetUserId }) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
-      if(targetUsername === username) return;
-      const target = await User.findOne({ username: targetUsername });
-      if(!target) return;
+      const target = targetUserId
+          ? await User.findById(targetUserId)
+          : await User.findOne({ username: targetUsername });
+      if(!target) {
+          socket.emit('admin_action_result', { success: false, error: 'Utilisateur introuvable.' });
+          return;
+      }
+      if(target.username === username) {
+          socket.emit('admin_action_result', { success: false, error: 'Impossible de supprimer votre propre compte.' });
+          return;
+      }
       // Remove user's characters
       await Character.deleteMany({ ownerId: target.secretCode });
-      await User.deleteOne({ username: targetUsername });
-      socket.emit('admin_action_result', { ok: true, msg: `Utilisateur "${targetUsername}" supprimé.` });
+      await User.deleteOne({ _id: target._id });
+      socket.emit('admin_action_result', { success: true, msg: `Utilisateur "${target.username}" supprimé.` });
       const users = await User.find({}, 'username isAdmin createdAt').sort({ username: 1 });
       socket.emit('admin_users_data', users);
   });
@@ -1095,7 +1117,7 @@ io.on('connection', async (socket) => {
       if(!user || !user.isAdmin) return;
       await Post.deleteMany({ isArticle: { $ne: true } });
       io.emit('reload_posts');
-      socket.emit('admin_action_result', { ok: true, msg: 'Tous les posts supprimés.' });
+      socket.emit('admin_action_result', { success: true, msg: 'Tous les posts supprimés.' });
   });
   // ========== [FIN ADMIN PANEL SOCKET] ==========
 });

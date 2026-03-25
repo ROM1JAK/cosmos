@@ -76,6 +76,10 @@ async function uploadToCloudinary(file, resourceType) {
 }
 
 function switchView(view) {
+    if(view === 'admin' && !IS_ADMIN) {
+        switchView('accueil');
+        return;
+    }
     currentView = view;
     localStorage.setItem('last_tab', view);
     localStorage.setItem('last_tab_time', Date.now().toString());
@@ -392,6 +396,12 @@ function deleteOmbraMsg(id) {
 }
 function escapeHtml(text) { const d = document.createElement('div'); d.appendChild(document.createTextNode(text)); return d.innerHTML; }
 
+function syncAdminNavVisibility() {
+    const adminBtn = document.getElementById('btn-view-admin');
+    if(!adminBtn) return;
+    adminBtn.classList.toggle('hidden', !IS_ADMIN);
+}
+
 socket.on('ombra_message', (data) => { appendOmbraMessage(data._id, data.alias, data.content, data.date, data.alias === ombraAlias); });
 socket.on('ombra_history', (history) => {
     const messages = document.getElementById('ombra-messages');
@@ -415,6 +425,7 @@ socket.on('login_success', (data) => {
     document.getElementById('btn-account-main').innerHTML = '<i class="fa-solid fa-user"></i> Mon Profil';
     const navAccBtn = document.getElementById('btn-nav-account');
     if(navAccBtn) { navAccBtn.classList.add('logged-in'); document.getElementById('nav-account-label').textContent = USERNAME; }
+    syncAdminNavVisibility();
     closeLoginModal(); socket.emit('request_initial_data', PLAYER_ID); socket.emit('request_dm_contacts', USERNAME);
     const savedRoom = localStorage.getItem('saved_room_id'); joinRoom(savedRoom || 'global');
     switchView('accueil');
@@ -4079,7 +4090,10 @@ socket.on('admin_users_data', (users) => {
     renderAdminUsers(users);
 });
 socket.on('admin_action_result', (data) => {
-    if(data.success) { loadAdminData(); }
+    if(data.success || data.ok) {
+        if(data.msg) alert(data.msg);
+        loadAdminData();
+    }
     else { alert('Erreur : ' + (data.error || 'inconnue')); }
 });
 function renderAdminUsers(users) {
