@@ -448,12 +448,53 @@
                 <div id="presse-char-avatar-wrapper" style="position:relative;"></div>
             </div>
             <div class="presse-container">
+                <div class="presse-toolbar">
+                    <div class="presse-search-wrap">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="presseJournalSearch" list="presse-journal-list" placeholder="Rechercher un journal..." oninput="onPresseJournalSearch(this.value)">
+                        <datalist id="presse-journal-list"></datalist>
+                    </div>
+                    <button class="btn-secondary" style="padding:7px 11px;" onclick="clearPresseJournalSearch()"><i class="fa-solid fa-eraser"></i> Reset</button>
+                </div>
                 <div id="presse-write-box" class="presse-write-box hidden">
                     <div class="presse-write-header">
                         <i class="fa-solid fa-feather-pointed"></i>
                         <span>Rédiger un article</span>
                     </div>
+                    <div class="presse-journal-row">
+                        <div class="presse-journal-logo-preview" id="presseJournalLogoPreview"><i class="fa-solid fa-newspaper"></i></div>
+                        <div style="flex:1; min-width:0;">
+                            <input type="text" id="presseJournalName" placeholder="Nom du journal (ex: Le Courrier d'Aguerta)" class="presse-title-input" style="margin-bottom:8px; font-size:0.95rem;">
+                            <label class="file-upload-label" style="margin:0;"><span><i class="fa-solid fa-image"></i> Logo du journal</span><input type="file" id="presseJournalLogoFile" accept="image/*" onchange="previewPresseJournalLogo()"></label>
+                        </div>
+                    </div>
                     <input type="text" id="presseTitle" placeholder="Titre de l'article..." class="presse-title-input">
+                    <div class="presse-ux-row">
+                        <div class="presse-preset-wrap">
+                            <label for="pressePreset">Preset mise en page</label>
+                            <div class="presse-preset-controls">
+                                <select id="pressePreset" class="presse-urgency-select">
+                                    <option value="">— Choisir —</option>
+                                    <option value="flash">Flash info</option>
+                                    <option value="chronique">Chronique</option>
+                                    <option value="interview">Interview</option>
+                                    <option value="enquete">Dossier enquête</option>
+                                </select>
+                                <button class="btn-secondary" onclick="applyPressePreset()"><i class="fa-solid fa-wand-magic-sparkles"></i> Appliquer</button>
+                            </div>
+                        </div>
+                        <div class="presse-reading-stats" id="presseReadingStats">
+                            <span id="presseWordCount">0 mots</span>
+                            <span id="presseReadTime">0 min de lecture</span>
+                        </div>
+                    </div>
+                    <div class="presse-format-toolbar">
+                        <button class="btn-secondary" onclick="applyPresseFormat('H1')">Grand titre</button>
+                        <button class="btn-secondary" onclick="applyPresseFormat('H2')">Sous-titre</button>
+                        <button class="btn-secondary" onclick="applyPresseFormat('SMALL')">Texte discret</button>
+                        <button class="btn-secondary" onclick="applyPresseFormat('QUOTE')">Citation</button>
+                        <button class="btn-secondary" onclick="applyPresseFormat('B')">Gras</button>
+                    </div>
                     <textarea id="presseContent" placeholder="Contenu de l'article..." rows="6"></textarea>
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; flex-wrap:wrap; gap:8px;">
                         <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-image"></i><input type="file" id="presseMediaFile" accept="image/*,video/*" class="hidden" onchange="previewPresseFile()"></label>
@@ -473,7 +514,9 @@
                         <select id="pressePubStockId" class="char-input" style="width:100%;margin-bottom:3px;"><option value="">— Entreprise concernée —</option></select>
                         <div style="font-size:0.65rem;color:var(--accent-soft);"><i class="fa-solid fa-chart-line"></i> Boost bourse +0.10 – +0.50%</div>
                     </div>
+                    <div class="presse-live-preview" id="presseLivePreview"></div>
                     <input type="hidden" id="presseMediaUrl">
+                    <input type="hidden" id="presseJournalLogo">
                 </div>
                 <div id="presse-no-journalist" class="presse-notice hidden">
                     <i class="fa-solid fa-id-card" style="font-size:2rem; color:var(--text-dim); margin-bottom:12px;"></i>
@@ -847,6 +890,18 @@
                 <button class="btn-primary" onclick="openCharModal('create')" style="font-size:0.8rem;padding:6px 12px;"><i class="fa-solid fa-plus"></i> Nouveau personnage</button>
             </div>
             <div class="mes-persos-container">
+                <div id="mes-persos-admin-panel" class="mp-admin-panel hidden">
+                    <div class="mp-admin-header"><i class="fa-solid fa-shield-halved"></i> Console Admin</div>
+                    <div class="mp-admin-stats" id="mp-admin-stats"></div>
+                    <div class="mp-admin-actions">
+                        <button class="btn-secondary" onclick="openAdminFromMesPersos('alert')"><i class="fa-solid fa-triangle-exclamation"></i> Alerte</button>
+                        <button class="btn-secondary" onclick="openAdminFromMesPersos('presse')"><i class="fa-solid fa-newspaper"></i> Presse</button>
+                        <button class="btn-secondary" onclick="openAdminFromMesPersos('cites')"><i class="fa-solid fa-city"></i> Cités</button>
+                        <button class="btn-secondary" onclick="openAdminFromMesPersos('bourse')"><i class="fa-solid fa-chart-line"></i> Bourse</button>
+                        <button class="btn-secondary" onclick="openAdminFromMesPersos('wiki')"><i class="fa-solid fa-book-open"></i> Wiki</button>
+                        <button class="btn-secondary" onclick="refreshAdminQuickData()"><i class="fa-solid fa-rotate"></i> Rafraîchir</button>
+                    </div>
+                </div>
                 <div id="mes-persos-list" class="mes-persos-grid"></div>
             </div>
         </div>

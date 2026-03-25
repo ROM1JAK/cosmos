@@ -11,6 +11,8 @@ const PostSchema = new mongoose.Schema({
     isBreakingNews: { type: Boolean, default: false },
     isArticle: { type: Boolean, default: false },
     isHeadline: { type: Boolean, default: false },
+    journalName: { type: String, default: '' },
+    journalLogo: { type: String, default: '' },
     urgencyLevel: { type: String, default: null },
     poll: { question: String, options: [{ text: String, voters: [String] }] }
 });

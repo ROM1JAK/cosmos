@@ -28,6 +28,8 @@ let allOnlineUsers = [];
 let feedPostsCache = [];
 let eventsCache = [];
 let presseArticlesCache = [];
+let presseJournalFilter = '';
+let presseUxBound = false;
 
 // FEED IDENTITY
 let currentFeedCharId = null;
@@ -1823,11 +1825,190 @@ const URGENCY_CONFIG = {
     economie: { label: '📉 ÉCONOMIE',             cls: 'urgency-economie' }
 };
 
+function parseArticleContent(content) {
+    let titleText = '';
+    let bodyText = content || '';
+    const titleMatch = content && content.match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
+    if(titleMatch) {
+        titleText = titleMatch[1];
+        bodyText = titleMatch[2] || '';
+    } else {
+        const words = (content || '').split(/\s+/);
+        titleText = words.slice(0, 8).join(' ') + (words.length > 8 ? '...' : '');
+    }
+    return { titleText, bodyText };
+}
+
+function formatArticleDateTime(post) {
+    const source = post.timestamp || post.date;
+    const d = source ? new Date(source) : new Date();
+    if(isNaN(d.getTime())) return post.date || '';
+    return d.toLocaleString('fr-FR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    });
+}
+
+function formatArticleRichText(text) {
+    let html = escapeHtml(text || '');
+    html = html
+        .replace(/\[H1\]([\s\S]*?)\[\/H1\]/g, '<h3 class="article-inline-h1">$1</h3>')
+        .replace(/\[H2\]([\s\S]*?)\[\/H2\]/g, '<h4 class="article-inline-h2">$1</h4>')
+        .replace(/\[SMALL\]([\s\S]*?)\[\/SMALL\]/g, '<p class="article-inline-small">$1</p>')
+        .replace(/\[QUOTE\]([\s\S]*?)\[\/QUOTE\]/g, '<blockquote class="article-inline-quote">$1</blockquote>')
+        .replace(/\[B\]([\s\S]*?)\[\/B\]/g, '<strong>$1</strong>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
+    return html;
+}
+
+function applyPresseFormat(tag) {
+    const input = document.getElementById('presseContent');
+    if(!input) return;
+    input.focus();
+    const start = input.selectionStart || 0;
+    const end = input.selectionEnd || 0;
+    const selected = input.value.slice(start, end);
+    const open = `[${tag}]`;
+    const close = `[/${tag}]`;
+    const content = selected || (tag === 'H1' ? 'Titre' : tag === 'H2' ? 'Sous-titre' : tag === 'SMALL' ? 'Texte court' : tag === 'QUOTE' ? 'Citation' : 'Texte');
+    const insert = `${open}${content}${close}`;
+    input.value = input.value.slice(0, start) + insert + input.value.slice(end);
+    const cursor = start + insert.length;
+    input.setSelectionRange(cursor, cursor);
+    updatePresseComposerUX();
+}
+
+function applyPressePreset() {
+    const preset = document.getElementById('pressePreset')?.value;
+    const titleInput = document.getElementById('presseTitle');
+    const contentInput = document.getElementById('presseContent');
+    if(!preset || !titleInput || !contentInput) return;
+    const templates = {
+        flash: {
+            title: 'Flash info — ',
+            content: '[H1]Information principale[/H1]\n[SMALL]Date, lieu, contexte[/SMALL]\n[QUOTE]Déclaration courte[/QUOTE]\n\nDétails factuels...'
+        },
+        chronique: {
+            title: 'Chronique — ',
+            content: '[H2]Contexte[/H2]\n\nAnalyse de la situation...\n\n[H2]Conséquences[/H2]\n\nLecture politique et sociale...'
+        },
+        interview: {
+            title: 'Interview — ',
+            content: '[H1]Entretien exclusif[/H1]\n[SMALL]Journaliste : ...[/SMALL]\n\n[QUOTE]Question 1[/QUOTE]\nRéponse...\n\n[QUOTE]Question 2[/QUOTE]\nRéponse...'
+        },
+        enquete: {
+            title: 'Dossier enquête — ',
+            content: '[H1]Ce que nous avons découvert[/H1]\n[H2]Pièce 1[/H2]\nFaits vérifiés...\n\n[H2]Pièce 2[/H2]\nÉléments complémentaires...\n\n[SMALL]Sources recoupées.[/SMALL]'
+        }
+    };
+    const tpl = templates[preset];
+    if(!tpl) return;
+    if(!titleInput.value.trim()) titleInput.value = tpl.title;
+    contentInput.value = tpl.content;
+    updatePresseComposerUX();
+}
+
+function countWords(text) {
+    const cleaned = (text || '').replace(/\[(?:\/?)(?:H1|H2|SMALL|QUOTE|B)\]/g, ' ').trim();
+    if(!cleaned) return 0;
+    return cleaned.split(/\s+/).filter(Boolean).length;
+}
+
+function initPresseComposerUX() {
+    if(presseUxBound) return;
+    const ids = ['presseTitle', 'presseContent', 'presseJournalName', 'presseUrgency'];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.addEventListener('input', updatePresseComposerUX);
+        if(el && el.tagName === 'SELECT') el.addEventListener('change', updatePresseComposerUX);
+    });
+    presseUxBound = true;
+    updatePresseComposerUX();
+}
+
+function updatePresseComposerUX() {
+    const title = document.getElementById('presseTitle')?.value?.trim() || '';
+    const body = document.getElementById('presseContent')?.value || '';
+    const journal = document.getElementById('presseJournalName')?.value?.trim() || 'Journal non défini';
+    const urgency = document.getElementById('presseUrgency')?.value || '';
+    const mediaUrl = document.getElementById('presseMediaUrl')?.value || '';
+    const wc = countWords(body);
+    const readMin = Math.max(1, Math.ceil(wc / 220));
+
+    const wcEl = document.getElementById('presseWordCount');
+    const rtEl = document.getElementById('presseReadTime');
+    if(wcEl) wcEl.textContent = `${wc} mot${wc > 1 ? 's' : ''}`;
+    if(rtEl) rtEl.textContent = `${readMin} min de lecture`;
+
+    const preview = document.getElementById('presseLivePreview');
+    if(!preview) return;
+    if(!title && !body) {
+        preview.innerHTML = '<div class="presse-live-label">Aperçu live</div><div class="presse-live-empty">Commence à écrire pour voir le rendu de ton article.</div>';
+        return;
+    }
+    const urgencyLabel = urgency && URGENCY_CONFIG[urgency] ? URGENCY_CONFIG[urgency].label : 'Normal';
+    const bodyHtml = formatArticleRichText(body);
+    const mediaHtml = mediaUrl
+        ? (mediaUrl.match(/\.(mp4|webm|ogg)$/i) || mediaUrl.includes('/video/upload')
+            ? `<video src="${mediaUrl}" controls style="width:100%; border-radius:8px; margin:8px 0;"></video>`
+            : `<img src="${mediaUrl}" alt="preview" style="width:100%; border-radius:8px; margin:8px 0; max-height:220px; object-fit:cover;">`)
+        : '';
+
+    preview.innerHTML = `
+        <div class="presse-live-label">Aperçu live</div>
+        <h4 class="presse-live-title">${escapeHtml(title || 'Titre de l\'article')}</h4>
+        <div class="presse-live-meta">
+            <span><i class="fa-solid fa-newspaper"></i> ${escapeHtml(journal)}</span>
+            <span><i class="fa-regular fa-clock"></i> ${new Date().toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
+            <span><i class="fa-solid fa-bolt"></i> ${escapeHtml(urgencyLabel)}</span>
+        </div>
+        ${mediaHtml}
+        <div class="presse-live-body">${bodyHtml || '<span class="presse-live-empty">Ajoute du contenu...</span>'}</div>`;
+}
+
+async function previewPresseJournalLogo() {
+    const file = document.getElementById('presseJournalLogoFile')?.files?.[0];
+    if(!file) return;
+    const preview = document.getElementById('presseJournalLogoPreview');
+    if(preview) preview.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    const url = await uploadToCloudinary(file);
+    if(url) {
+        const hidden = document.getElementById('presseJournalLogo');
+        if(hidden) hidden.value = url;
+        if(preview) preview.innerHTML = `<img src="${url}" alt="logo journal">`;
+    } else if(preview) {
+        preview.innerHTML = '<i class="fa-solid fa-newspaper"></i>';
+    }
+    updatePresseComposerUX();
+}
+
+function onPresseJournalSearch(value) {
+    presseJournalFilter = (value || '').trim().toLowerCase();
+    renderPresseStream();
+}
+
+function clearPresseJournalSearch() {
+    const input = document.getElementById('presseJournalSearch');
+    if(input) input.value = '';
+    presseJournalFilter = '';
+    renderPresseStream();
+}
+
+function refreshPresseJournalDatalist() {
+    const datalist = document.getElementById('presse-journal-list');
+    if(!datalist) return;
+    const journals = [...new Set(presseArticlesCache.map(a => (a.journalName || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
+    datalist.innerHTML = journals.map(j => `<option value="${escapeHtml(j)}"></option>`).join('');
+}
+
 async function previewPresseFile() {
     const file = document.getElementById('presseMediaFile').files[0];
     if(file) {
         const url = await uploadToCloudinary(file);
         if(url) document.getElementById('presseMediaUrl').value = url;
+        updatePresseComposerUX();
     }
 }
 
@@ -1835,6 +2016,8 @@ function submitArticle() {
     const title = document.getElementById('presseTitle').value.trim();
     const content = document.getElementById('presseContent').value.trim();
     const mediaUrl = document.getElementById('presseMediaUrl').value.trim();
+    const journalName = document.getElementById('presseJournalName').value.trim();
+    const journalLogo = document.getElementById('presseJournalLogo').value.trim();
     const urgencyLevel = document.getElementById('presseUrgency').value || null;
     if(!title && !content) return alert("Article vide.");
     if(!currentPresseCharId) return alert("Aucun journaliste sélectionné.");
@@ -1853,7 +2036,8 @@ function submitArticle() {
         partyName: char.partyName, partyLogo: char.partyLogo,
         content: `[TITRE]${title}[/TITRE]\n${content}`,
         mediaUrl, mediaType,
-        date: new Date().toLocaleDateString(), ownerId: PLAYER_ID,
+        date: new Date().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }), ownerId: PLAYER_ID,
+        journalName, journalLogo,
         isAnonymous: false, isBreakingNews: urgencyLevel === 'urgent',
         urgencyLevel,
         isArticle: true, poll: null
@@ -1872,6 +2056,7 @@ function submitArticle() {
     document.getElementById('presseMediaFile').value = '';
     document.getElementById('presseUrgency').value = '';
     const presseP = document.getElementById('presseIsPub'); if(presseP) { presseP.checked = false; togglePressePubSelect(); }
+    updatePresseComposerUX();
 }
 
 function createArticleElement(post) {
@@ -1885,13 +2070,7 @@ function createArticleElement(post) {
     const editBtn = (post.ownerId === PLAYER_ID || IS_ADMIN) ? `<button class="article-edit-btn" onclick="event.stopPropagation(); openArticleEditModal('${post._id}')"><i class="fa-solid fa-pen"></i></button>` : '';
     const headlineBtn = IS_ADMIN ? `<button class="article-headline-btn" onclick="event.stopPropagation(); toggleHeadline('${post._id}', ${!post.isHeadline})" title="${post.isHeadline ? 'Retirer de la Une' : 'Mettre à la Une'}"><i class="fa-solid fa-star"></i> ${post.isHeadline ? 'Retirer la Une' : 'La Une'}</button>` : '';
 
-    let titleText = '', bodyText = post.content || '';
-    const titleMatch = post.content && post.content.match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
-    if(titleMatch) { titleText = titleMatch[1]; bodyText = titleMatch[2]; }
-    else {
-        const words = (post.content || '').split(/\s+/);
-        titleText = words.slice(0, 8).join(' ') + (words.length > 8 ? '...' : '');
-    }
+    const { titleText, bodyText } = parseArticleContent(post.content || '');
 
     let bannerHTML = '';
     if(post.mediaUrl && post.mediaType === 'image') bannerHTML = `<img src="${post.mediaUrl}" class="article-banner">`;
@@ -1904,12 +2083,17 @@ function createArticleElement(post) {
         urgencyHTML = `<span class="article-urgency-tag ${uc.cls}">${uc.label}</span>`;
     }
 
-    // Lettrine : première lettre du corps en grand
+    const journalBlock = post.journalName
+        ? `<div class="article-journal-chip">${post.journalLogo ? `<img src="${post.journalLogo}" class="article-journal-logo" alt="logo">` : '<i class="fa-solid fa-newspaper"></i>'}<span>${escapeHtml(post.journalName)}</span></div>`
+        : '';
+    const publishedAt = formatArticleDateTime(post);
+
+    // Lettrine : premiere lettre du corps en grand
     let articleBodyHTML = '';
     if(bodyText && bodyText.trim().length > 0) {
         const firstChar = bodyText.trim().charAt(0);
         const rest = bodyText.trim().slice(1);
-        articleBodyHTML = `<div class="article-content"><span class="article-dropcap">${escapeHtml(firstChar)}</span>${formatText(rest)}</div>`;
+        articleBodyHTML = `<div class="article-content"><span class="article-dropcap">${escapeHtml(firstChar)}</span>${formatArticleRichText(rest)}</div>`;
     } else {
         articleBodyHTML = `<div class="article-content"></div>`;
     }
@@ -1921,7 +2105,9 @@ function createArticleElement(post) {
             ${editBtn}
             ${headlineBtn}
             ${urgencyHTML}
+            ${journalBlock}
             <h2 class="article-title">${escapeHtml(titleText)}</h2>
+            <div class="article-published-at"><i class="fa-regular fa-clock"></i> ${escapeHtml(publishedAt)}</div>
             <div class="article-separator"></div>
             ${articleBodyHTML}
             <div class="article-footer-signature" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
@@ -1946,17 +2132,29 @@ function toggleHeadline(postId, value) {
 
 function loadPresse() { socket.emit('request_presse'); }
 
-socket.on('presse_data', (articles) => {
-    presseArticlesCache = articles;
-    if(currentView === 'accueil') renderAccueil();
-    const c = document.getElementById('presse-stream'); 
+function renderPresseStream() {
+    const c = document.getElementById('presse-stream');
     if(!c) return;
     c.innerHTML = '';
+    let articles = [...presseArticlesCache];
+    if(presseJournalFilter) {
+        articles = articles.filter(a => (a.journalName || '').toLowerCase().includes(presseJournalFilter));
+    }
     if(articles.length === 0) {
-        c.innerHTML = '<div style="text-align:center; padding:40px; color:#555;"><i class="fa-solid fa-newspaper" style="font-size:2.5rem; margin-bottom:12px; display:block;"></i>Aucun article publié.</div>';
+        c.innerHTML = presseJournalFilter
+            ? '<div style="text-align:center; padding:40px; color:#555;"><i class="fa-solid fa-filter-circle-xmark" style="font-size:2rem; margin-bottom:12px; display:block;"></i>Aucun article pour ce journal.</div>'
+            : '<div style="text-align:center; padding:40px; color:#555;"><i class="fa-solid fa-newspaper" style="font-size:2.5rem; margin-bottom:12px; display:block;"></i>Aucun article publié.</div>';
         return;
     }
     articles.forEach(p => c.appendChild(createArticleElement(p)));
+}
+
+socket.on('presse_data', (articles) => {
+    presseArticlesCache = articles;
+    if(currentView === 'accueil') renderAccueil();
+    refreshPresseJournalDatalist();
+    initPresseComposerUX();
+    renderPresseStream();
 });
 
 socket.on('new_article', (post) => {
@@ -2219,7 +2417,41 @@ function renderEditCharCompanies() {
 function removeEditCharCompany(i) { editCharCompanies.splice(i, 1); renderEditCharCompanies(); }
 
 // ==================== [MES PERSONNAGES] ====================
+function openAdminFromMesPersos(target) {
+    if(!IS_ADMIN) return;
+    if(target === 'alert') {
+        document.getElementById('admin-alert-modal')?.classList.remove('hidden');
+        return;
+    }
+    switchView(target);
+}
+
+function refreshAdminQuickData() {
+    if(!IS_ADMIN) return;
+    socket.emit('request_feed');
+    socket.emit('request_presse');
+    socket.emit('request_events');
+    socket.emit('request_stocks');
+}
+
 function renderMesPersos() {
+    const adminPanel = document.getElementById('mes-persos-admin-panel');
+    const adminStats = document.getElementById('mp-admin-stats');
+    if(adminPanel) {
+        if(IS_ADMIN) {
+            adminPanel.classList.remove('hidden');
+            if(adminStats) {
+                adminStats.innerHTML = `
+                    <span><i class="fa-solid fa-people-group"></i> ${myCharacters.length} persos</span>
+                    <span><i class="fa-solid fa-newspaper"></i> ${presseArticlesCache.length} articles</span>
+                    <span><i class="fa-solid fa-chart-line"></i> ${stocksData.length} actions</span>
+                    <span><i class="fa-solid fa-calendar-days"></i> ${eventsCache.length} actus</span>`;
+            }
+        } else {
+            adminPanel.classList.add('hidden');
+        }
+    }
+
     const container = document.getElementById('mes-persos-list');
     if(!container) return;
     if(!myCharacters.length) {
@@ -2324,7 +2556,8 @@ function renderAccueil() {
             const titleMatch = headline.content && headline.content.match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
             const titleText = titleMatch ? titleMatch[1] : ((headline.content || '').split(/\s+/).slice(0, 10).join(' ') + (((headline.content || '').split(/\s+/).length > 10) ? '...' : ''));
             const bodyText = titleMatch ? (titleMatch[2] || '') : (headline.content || '');
-            const excerpt = bodyText.trim().slice(0, 180);
+            const cleanBodyText = bodyText.replace(/\[(?:\/?)(?:H1|H2|SMALL|QUOTE|B)\]/g, '');
+            const excerpt = cleanBodyText.trim().slice(0, 180);
             headlinePrev.innerHTML = `
                 <div onclick="switchView('presse')">
                     <span class="accueil-headline-tag"><i class="fa-solid fa-star"></i> La Une</span>
