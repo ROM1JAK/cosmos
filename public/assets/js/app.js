@@ -30,7 +30,7 @@ let eventsCache = [];
 let presseArticlesCache = [];
 let presseJournalFilter = '';
 let presseUxBound = false;
-let expandedAdminUsers = new Set();
+let expandedAdminUserId = null;
 let isBourseRankingCollapsed = localStorage.getItem('bourse_ranking_collapsed') === '1';
 
 // FEED IDENTITY
@@ -4247,8 +4247,7 @@ function getFilteredAdminUsers(query) {
     });
 }
 function toggleAdminUserExpand(userId) {
-    if(expandedAdminUsers.has(userId)) expandedAdminUsers.delete(userId);
-    else expandedAdminUsers.add(userId);
+    expandedAdminUserId = expandedAdminUserId === userId ? null : userId;
     renderAdminUsers(getFilteredAdminUsers(document.getElementById('admin-user-search')?.value || ''));
 }
 function switchAdminTab(tab) {
@@ -4287,6 +4286,7 @@ socket.on('admin_stats_data', (data) => {
 });
 socket.on('admin_users_data', (users) => {
     adminUsersCache = users;
+    if(expandedAdminUserId && !users.some(u => u._id === expandedAdminUserId)) expandedAdminUserId = null;
     renderAdminUsers(users);
 });
 socket.on('admin_companies_data', (companies) => {
@@ -4308,12 +4308,12 @@ function renderAdminUsers(users) {
         const since = u.createdAt ? new Date(u.createdAt).toLocaleDateString('fr-FR') : '?';
         const adminBadge = u.isAdmin ? '<span class="admin-user-badge admin-badge-admin">admin</span>' : '<span class="admin-user-badge">user</span>';
         const chars = Array.isArray(u.characters) ? u.characters : [];
-        const isExpanded = expandedAdminUsers.has(u._id);
+        const isExpanded = expandedAdminUserId === u._id;
         const charsHtml = chars.length
             ? `<div class="admin-user-characters">${chars.map(char => `<span class="admin-char-chip"><img src="${char.avatar || ''}" class="admin-char-chip-avatar" alt=""><button class="admin-char-chip-main" onclick="openProfileById('${char._id}')"><span class="admin-char-chip-name" style="color:${char.color || 'white'}">${escapeHtml(char.name || '')}</span><span class="admin-char-chip-role">${escapeHtml(char.role || '')}</span></button><button class="admin-char-chip-action" onclick="event.stopPropagation(); openProfileById('${char._id}')" title="Profil"><i class="fa-solid fa-user"></i></button><button class="admin-char-chip-action" onclick="event.stopPropagation(); prepareEditAnyCharacter('${char._id}')" title="Modifier"><i class="fa-solid fa-pen"></i></button></span>`).join('')}</div>`
             : '<div class="admin-user-nochars">Aucun personnage</div>';
-        return `<div class="admin-user-row">
-            <div class="admin-user-summary ${isExpanded ? 'is-open' : ''}" role="button" tabindex="0" onclick="toggleAdminUserExpand('${u._id}')" onkeydown="if(event.key==='Enter' || event.key===' '){ event.preventDefault(); toggleAdminUserExpand('${u._id}'); }">
+        return `<div class="admin-user-row ${isExpanded ? 'is-open' : ''}">
+            <div class="admin-user-summary ${isExpanded ? 'is-open' : ''}" role="button" tabindex="0" aria-expanded="${isExpanded ? 'true' : 'false'}" onclick="toggleAdminUserExpand('${u._id}')" onkeydown="if(event.key==='Enter' || event.key===' '){ event.preventDefault(); toggleAdminUserExpand('${u._id}'); }">
                 <div class="admin-user-info">
                     <span class="admin-user-name">${escapeHtml(u.username)}</span>
                     ${adminBadge}
@@ -4330,25 +4330,22 @@ function renderAdminUsers(users) {
                     <span class="admin-user-chevron"><i class="fa-solid fa-chevron-${isExpanded ? 'up' : 'down'}"></i></span>
                 </div>
             </div>
-            <div class="admin-user-details ${isExpanded ? '' : 'hidden'}">
-                ${charsHtml}
+            <div class="admin-user-details" aria-hidden="${isExpanded ? 'false' : 'true'}">
+                <div class="admin-user-details-inner">
+                    ${charsHtml}
+                </div>
             </div>
         </div>`;
     }).join('');
 }
 function filterAdminUsers(query) {
-    const q = (query||'').toLowerCase();
-    if(q) {
-        adminUsersCache.forEach(u => {
-            if((u.username || '').toLowerCase().includes(q) || (u.characters || []).some(char =>
-                (char.name || '').toLowerCase().includes(q) ||
-                (char.role || '').toLowerCase().includes(q)
-            )) {
-                expandedAdminUsers.add(u._id);
-            }
-        });
+    const filtered = getFilteredAdminUsers(query);
+    if(filtered.length) {
+        if(!filtered.some(u => u._id === expandedAdminUserId)) expandedAdminUserId = filtered[0]._id;
+    } else if(query) {
+        expandedAdminUserId = null;
     }
-    renderAdminUsers(getFilteredAdminUsers(query));
+    renderAdminUsers(filtered);
 }
 function resetAdminCompanyEditor() {
     ['admin-company-char-id', 'admin-company-index', 'admin-company-old-name', 'admin-company-name', 'admin-company-role', 'admin-company-hq', 'admin-company-revenue', 'admin-company-logo', 'admin-company-description'].forEach(id => {

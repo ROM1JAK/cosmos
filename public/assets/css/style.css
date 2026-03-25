@@ -2093,31 +2093,105 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
     align-items: stretch;
     overflow-y: auto;
     overflow-x: hidden;
+    background:
+        radial-gradient(circle at top left, rgba(108,99,255,0.12), transparent 26%),
+        radial-gradient(circle at top right, rgba(34,197,94,0.08), transparent 24%),
+        linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0));
 }
 #reseau-panel-flux .feed-view-header {
     width: 100%;
     flex-shrink: 0;
+    padding: 14px 24px;
+    background: rgba(10, 12, 18, 0.86);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
 }
 #reseau-panel-flux .feed-container {
-    width: min(100%, 780px);
-    max-width: 780px;
-    gap: 28px !important;
-    margin: 28px auto 56px;
-    padding: 0 24px 12px;
+    width: min(100%, 840px);
+    max-width: 840px;
+    gap: 32px !important;
+    margin: 34px auto 72px;
+    padding: 0 28px 18px;
 }
 #reseau-panel-flux #feed-stream {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 28px;
 }
 #reseau-panel-flux .post-create-box {
-    padding: 22px;
+    padding: 24px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 22px 50px rgba(0,0,0,0.18);
+    backdrop-filter: blur(8px);
 }
 #reseau-panel-flux .post-card {
     padding: 24px !important;
+    border-radius: 22px;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.018)),
+        var(--bg-secondary);
+    border: 1px solid rgba(255,255,255,0.075);
+    box-shadow: 0 22px 48px rgba(0,0,0,0.16);
 }
 #reseau-panel-flux .post-content {
-    font-size: 0.98rem;
+    font-size: 1rem;
+    line-height: 1.75;
+}
+#reseau-panel-flux .post-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255,255,255,0.14);
+    box-shadow: 0 26px 60px rgba(0,0,0,0.22);
+}
+#reseau-panel-flux .post-header {
+    margin-bottom: 16px;
+}
+#reseau-panel-flux .post-avatar {
+    width: 52px;
+    height: 52px;
+    margin-right: 14px;
+}
+#reseau-panel-flux .post-role {
+    margin-top: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+}
+#reseau-panel-flux .post-actions {
+    gap: 8px;
+    padding-top: 14px;
+    flex-wrap: wrap;
+}
+#reseau-panel-flux .action-item {
+    padding: 7px 14px;
+    background: rgba(255,255,255,0.045);
+    border-color: rgba(255,255,255,0.035);
+}
+#reseau-panel-flux .comments-section {
+    margin-top: 16px;
+    padding: 14px;
+    border-radius: 16px;
+}
+#reseau-panel-flux #postContent {
+    min-height: 124px;
+    border-radius: 16px;
+}
+@media (max-width: 768px) {
+    #reseau-panel-flux .feed-view-header {
+        padding: 12px 16px;
+    }
+    #reseau-panel-flux .feed-container {
+        width: 100%;
+        margin: 18px auto 40px;
+        padding: 0 14px 12px;
+        gap: 22px !important;
+    }
+    #reseau-panel-flux #feed-stream {
+        gap: 20px;
+    }
+    #reseau-panel-flux .post-create-box,
+    #reseau-panel-flux .post-card {
+        padding: 18px !important;
+    }
 }
 
 /* ==================== [WIKI SCROLL FIX + SEARCH] ==================== */
@@ -2229,13 +2303,21 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
     display: flex; flex-direction: column; gap: 10px;
     background: var(--bg-tertiary); border-radius: var(--radius-md); padding: 10px 12px;
     border: 1px solid rgba(255,255,255,0.05);
+    transition: border-color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
+}
+.admin-user-row.is-open {
+    border-color: rgba(108,99,255,0.26);
+    background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015));
+    box-shadow: 0 14px 30px rgba(0,0,0,0.14);
 }
 .admin-user-summary {
     width: 100%; background: none; border: none; padding: 0;
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     cursor: pointer; text-align: left; font-family: var(--font-main);
 }
-.admin-user-summary.is-open .admin-user-chevron { color: white; }
+.admin-user-summary:hover .admin-user-name,
+.admin-user-summary:hover .admin-user-chevron { color: white; }
+.admin-user-summary.is-open .admin-user-chevron { color: white; transform: rotate(0deg); }
 .admin-user-info { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .admin-user-name { font-weight: 700; font-size: 0.88rem; color: white; }
 .admin-user-badge {
@@ -2248,8 +2330,24 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
     font-size: 0.72rem; color: #d7dbf3; background: rgba(255,255,255,0.05);
     border: 1px solid var(--border); border-radius: 999px; padding: 3px 8px;
 }
-.admin-user-details.hidden { display: none !important; }
-.admin-user-details { width: 100%; padding-top: 2px; }
+.admin-user-details {
+    width: 100%;
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: grid-template-rows 0.26s ease, opacity 0.2s ease, transform 0.22s ease;
+}
+.admin-user-row.is-open .admin-user-details {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    transform: translateY(0);
+}
+.admin-user-details-inner {
+    overflow: hidden;
+    min-height: 0;
+    padding-top: 2px;
+}
 .admin-user-characters { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 220px; }
 .admin-char-chip {
     display: inline-flex; align-items: center; gap: 7px; padding: 4px 8px;
@@ -2275,6 +2373,11 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
     width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border);
     display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted);
     flex-shrink: 0;
+    transition: transform 0.22s ease, color 0.18s ease, border-color 0.18s ease;
+}
+.admin-user-row.is-open .admin-user-chevron {
+    transform: rotate(180deg);
+    border-color: rgba(108,99,255,0.24);
 }
 .admin-actions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .admin-companies-layout { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 18px; align-items: start; }
