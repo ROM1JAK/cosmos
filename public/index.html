@@ -978,6 +978,7 @@
                         <button class="char-tab" onclick="switchCharTab('create','parti')">Parti</button>
                         <button class="char-tab" onclick="switchCharTab('create','entreprises')">Entreprises</button>
                         <button class="char-tab" onclick="switchCharTab('create','capital')">Capital</button>
+                        <button class="char-tab" onclick="switchCharTab('create','politique')">Politique</button>
                     </div>
                     <div id="create-tab-identite" class="char-tab-content active-tab">
                         <div class="char-form-row">
@@ -1034,6 +1035,19 @@
                             <span style="color:var(--text-muted);font-size:0.88rem;white-space:nowrap;">crédits</span>
                         </div>
                     </div>
+                    <div id="create-tab-politique" class="char-tab-content">
+                        <label class="cfl">🏛️ Grade politique</label>
+                        <select id="newCharPoliticalRole" class="char-input" style="margin-top:8px;">
+                            <option value="">— Aucun —</option>
+                            <option value="Citoyen">🗳️ Citoyen</option>
+                            <option value="Représentant">🏛️ Représentant</option>
+                            <option value="Sénateur">⚖️ Sénateur</option>
+                            <option value="Ministre">📋 Ministre</option>
+                            <option value="Premier Ministre">🎖️ Premier Ministre</option>
+                            <option value="Chef d'État">👑 Chef d'État</option>
+                        </select>
+                        <p style="font-size:0.75rem;color:var(--text-muted);margin-top:10px;">Ce grade détermine les permissions d'accès à l'onglet Politique.</p>
+                    </div>
                     <div class="char-modal-footer">
                         <button onclick="closeCharModal()" class="btn-secondary">Annuler</button>
                         <button onclick="createCharacter()" class="btn-primary"><i class="fa-solid fa-plus"></i> Créer le personnage</button>
@@ -1049,6 +1063,7 @@
                         <button class="char-tab" onclick="switchCharTab('edit','parti')">Parti</button>
                         <button class="char-tab" onclick="switchCharTab('edit','entreprises')">Entreprises</button>
                         <button class="char-tab" onclick="switchCharTab('edit','capital')">Capital</button>
+                        <button class="char-tab" onclick="switchCharTab('edit','politique')">Politique</button>
                     </div>
                     <div id="edit-tab-identite" class="char-tab-content active-tab">
                         <div class="char-form-row">
@@ -1102,6 +1117,19 @@
                             <input type="number" id="editCharCapital" class="char-input" placeholder="0" min="0" style="flex:1;">
                             <span style="color:var(--text-muted);font-size:0.88rem;white-space:nowrap;">crédits</span>
                         </div>
+                    </div>
+                    <div id="edit-tab-politique" class="char-tab-content">
+                        <label class="cfl">🏛️ Grade politique</label>
+                        <select id="editCharPoliticalRole" class="char-input" style="margin-top:8px;">
+                            <option value="">— Aucun —</option>
+                            <option value="Citoyen">🗳️ Citoyen</option>
+                            <option value="Représentant">🏛️ Représentant</option>
+                            <option value="Sénateur">⚖️ Sénateur</option>
+                            <option value="Ministre">📋 Ministre</option>
+                            <option value="Premier Ministre">🎖️ Premier Ministre</option>
+                            <option value="Chef d'État">👑 Chef d'État</option>
+                        </select>
+                        <p style="font-size:0.75rem;color:var(--text-muted);margin-top:10px;">Ce grade détermine les permissions d'accès à l'onglet Politique.</p>
                     </div>
                     <div class="char-modal-footer">
                         <button onclick="cancelEditCharacter()" class="btn-secondary">Annuler</button>

@@ -235,7 +235,7 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 #messages { flex: 1; overflow-y: auto; padding: 20px 20px 10px; display: flex; flex-direction: column; }
 
 /* MESSAGES */
-.message-container { position: relative; margin-top: 16px; padding: 3px 12px 3px 62px; animation: fade 0.2s; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; border: 1px solid transparent; transition: background 0.1s; }
+.message-container { position: relative; margin-top: 16px; padding: 4px 12px 4px 74px; animation: fade 0.2s; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; border: 1px solid transparent; transition: background 0.1s; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .message-container:hover { background: rgba(255,255,255,0.022); }
 .message-container.dm-message { background: var(--dm-muted); border-left: 3px solid var(--dm-color); }
@@ -249,15 +249,15 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .message-container:hover .msg-actions { display: flex; }
 .action-btn { background: transparent; border: none; padding: 5px 8px; cursor: pointer; font-size: 0.95rem; color: var(--text-muted); border-radius: 4px; transition: all 0.15s; }
 .action-btn:hover { background: var(--bg-hover); color: var(--text-normal); }
-.avatar-img { position: absolute; left: 12px; top: 5px; width: 38px; height: 38px; border-radius: 50%; object-fit: cover; cursor: pointer; transition: all 0.2s; }
+.avatar-img { position: absolute; left: 12px; top: 4px; width: 48px; height: 48px; border-radius: 50%; object-fit: cover; cursor: pointer; transition: all 0.2s; }
 .avatar-img:hover { transform: scale(1.08); box-shadow: 0 0 0 3px var(--accent-muted); }
 .char-header { display: flex; align-items: baseline; gap: 8px; }
-.char-name { font-weight: 700; font-size: 0.95rem; color: white; cursor: pointer; font-family: var(--font-display); }
+.char-name { font-weight: 700; font-size: 1.0rem; color: white; cursor: pointer; font-family: var(--font-display); }
 .char-name:hover { text-decoration: underline; color: var(--accent-soft); }
 .char-role { font-size: 0.68rem; color: var(--text-muted); background: var(--bg-tertiary); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border); }
 .timestamp { font-size: 0.68rem; color: var(--text-muted); margin-left: auto; }
 .edited-tag { font-size: 0.62rem; color: var(--text-muted); margin-left: 4px; font-style: italic; }
-.text-body { font-size: 0.92rem; line-height: 1.5; color: var(--text-normal); white-space: pre-wrap; margin-top: 2px; word-wrap: break-word; }
+.text-body { font-size: 0.98rem; line-height: 1.55; color: var(--text-normal); white-space: pre-wrap; margin-top: 2px; word-wrap: break-word; }
 .chat-image { max-width: 100%; max-height: 280px; border-radius: var(--radius); margin-top: 8px; cursor: pointer; display: block; transition: opacity 0.2s; }
 .chat-image:hover { opacity: 0.9; }
 .video-frame { width: 100%; max-width: 480px; height: 270px; border-radius: var(--radius); margin-top: 8px; border: none; background: #000; }
@@ -732,15 +732,15 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .char-mp-input-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border); flex-shrink: 0; }
 
 /* ── Bulles de messages (partagées avec modale profil) ── */
-.cmp-msg { display: flex; align-items: flex-end; gap: 8px; max-width: 78%; }
+.cmp-msg { display: flex; align-items: flex-end; gap: 10px; max-width: 78%; }
 .cmp-msg-other { align-self: flex-start; }
 .cmp-msg-self  { align-self: flex-end; flex-direction: row-reverse; }
-.cmp-msg-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid var(--border); }
+.cmp-msg-avatar { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid var(--border); }
 .cmp-msg-bubble { display: flex; flex-direction: column; gap: 2px; }
-.cmp-msg-name  { font-size: 0.7rem; font-weight: 700; color: var(--sender-color, var(--accent)); }
-.cmp-msg-text  { background: var(--bg-secondary); border: 1px solid var(--border); padding: 8px 12px; border-radius: 12px; font-size: 0.88rem; color: var(--text-normal); line-height: 1.4; word-break: break-word; }
+.cmp-msg-name  { font-size: 0.75rem; font-weight: 700; color: var(--sender-color, var(--accent)); }
+.cmp-msg-text  { background: var(--bg-secondary); border: 1px solid var(--border); padding: 10px 14px; border-radius: 14px; font-size: 0.95rem; color: var(--text-normal); line-height: 1.45; word-break: break-word; }
 .cmp-msg-self .cmp-msg-text { background: var(--accent-muted); border-color: rgba(108,99,255,0.3); }
-.cmp-msg-time  { font-size: 0.6rem; color: var(--text-dim); align-self: flex-end; padding: 0 2px; }
+.cmp-msg-time  { font-size: 0.62rem; color: var(--text-dim); align-self: flex-end; padding: 0 2px; }
 
 /* Recherche */
 .char-mp-select { background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-normal); padding: 5px 8px; border-radius: var(--radius-sm); font-family: var(--font-main); font-size: 0.82rem; width: 100%; }
@@ -1744,7 +1744,10 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
     .wiki-page-modal-box { padding: 18px 16px; }
 }
 
-/* ==================== TOAST ==================== */
+/* MENTION @ */
+.mention { color: var(--accent-soft); font-weight: 700; background: rgba(108,99,255,0.15); border-radius: 4px; padding: 0 3px; cursor: default; }
+
+/* TOAST ==================== */
 .stock-chart-tooltip {
     position: fixed; display: none;
     background: var(--bg-tertiary); border: 1px solid var(--border);

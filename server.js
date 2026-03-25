@@ -240,9 +240,10 @@ io.on('connection', async (socket) => {
           partyDescription: data.partyDescription || null,
           isOfficial: data.isOfficial
       };
-      // [NOUVEAU] Sauvegarder capital et entreprises si fournis
+      // Sauvegarder capital, entreprises, et grade politique si fournis
       if(data.capital !== undefined) updateData.capital = Number(data.capital) || 0;
       if(data.companies !== undefined) updateData.companies = data.companies;
+      if(data.politicalRole !== undefined) updateData.politicalRole = data.politicalRole;
       await Character.findByIdAndUpdate(data.charId, updateData);
       await Message.updateMany({ senderName: data.originalName, ownerId: data.ownerId }, { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }});
       await Post.updateMany({ authorName: data.originalName, ownerId: data.ownerId }, { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor }});
@@ -466,6 +467,29 @@ io.on('connection', async (socket) => {
         const originalMsg = await Message.findById(msgData.replyTo.id);
         if (originalMsg && originalMsg.ownerId !== msgData.ownerId) await createNotification(originalMsg.ownerId, 'reply', `a répondu à votre message`, msgData.senderName);
     }
+    // Détection des mentions @
+    if (msgData.content && msgData.content.includes('@')) {
+        const words = msgData.content.split(/\s+/);
+        const notifiedOwners = new Set();
+        let i = 0;
+        while (i < words.length) {
+            if (words[i].startsWith('@')) {
+                for (let len = 3; len >= 1; len--) {
+                    if (i + len > words.length) continue;
+                    const potentialName = words.slice(i, i + len).join(' ').replace(/^@/, '').replace(/[^\wÀ-ÿ\s]/g, '').trim();
+                    if (!potentialName) continue;
+                    const mc = await Character.findOne({ name: new RegExp(`^${potentialName}$`, 'i') });
+                    if (mc && mc.ownerId !== msgData.ownerId && !notifiedOwners.has(mc.ownerId)) {
+                        await createNotification(mc.ownerId, 'mention', `(${msgData.senderName}) vous a mentionné dans le chat`, msgData.senderName);
+                        notifiedOwners.add(mc.ownerId);
+                        i += len - 1;
+                        break;
+                    }
+                }
+            }
+            i++;
+        }
+    }
   });
   socket.on('delete_message', async (msgId) => { await Message.findByIdAndDelete(msgId); io.emit('message_deleted', msgId); });
   socket.on('edit_message', async (data) => { await Message.findByIdAndUpdate(data.id, { content: data.newContent, edited: true }); io.emit('message_updated', { id: data.id, newContent: data.newContent }); });
@@ -494,6 +518,29 @@ io.on('connection', async (socket) => {
                   await createNotification(f.ownerId, 'follow', `(${postData.authorName}) a publié un post`, "Feed");
                   notifiedOwners.add(f.ownerId);
               }
+          }
+      }
+      // Détection des mentions @ dans les posts
+      if (postData.content && postData.content.includes('@') && !postData.isAnonymous) {
+          const words = postData.content.split(/\s+/);
+          const notifiedOwners = new Set();
+          let i = 0;
+          while (i < words.length) {
+              if (words[i].startsWith('@')) {
+                  for (let len = 3; len >= 1; len--) {
+                      if (i + len > words.length) continue;
+                      const potentialName = words.slice(i, i + len).join(' ').replace(/^@/, '').replace(/[^\wÀ-ÿ\s]/g, '').trim();
+                      if (!potentialName) continue;
+                      const mc = await Character.findOne({ name: new RegExp(`^${potentialName}$`, 'i') });
+                      if (mc && mc.ownerId !== postData.ownerId && !notifiedOwners.has(mc.ownerId)) {
+                          await createNotification(mc.ownerId, 'mention', `(${postData.authorName}) vous a mentionné dans un post`, postData.authorName);
+                          notifiedOwners.add(mc.ownerId);
+                          i += len - 1;
+                          break;
+                      }
+                  }
+              }
+              i++;
           }
       }
   });

@@ -461,7 +461,7 @@ function updateDmListUI() {
         list.innerHTML += `<div class="dm-item ${isActive} ${isUnread}" onclick="openDm('${contact}')"><img src="${avatarUrl}" class="dm-avatar"><span>${contact}</span></div>`;
     });
 }
-socket.on('dm_history_data', (data) => { if (currentDmTarget === data.target) { document.getElementById('messages').innerHTML=""; lastMessageData={author:null, time:0}; data.history.forEach(msg => displayMessage(msg, true)); scrollToBottom(); } });
+socket.on('dm_history_data', (data) => { if (currentDmTarget === data.target) { document.getElementById('messages').innerHTML=""; lastMessageData={author:null, time:0}; data.history.forEach(msg => displayMessage(msg, true)); scrollToBottom(true); } });
 socket.on('receive_dm', (msg) => {
     const other = (msg.sender === USERNAME) ? msg.target : msg.sender;
     if (!dmContacts.includes(other)) { dmContacts.push(other); updateDmListUI(); }
@@ -479,6 +479,7 @@ async function createCharacter() {
     const partyFileInput = document.getElementById('newCharPartyFile');
     const capitalEl = document.getElementById('newCharCapital');
     const capital = capitalEl ? (parseFloat(capitalEl.value) || 0) : 0;
+    const politicalRole = document.getElementById('newCharPoliticalRole')?.value || '';
     const partyFounder = document.getElementById('newCharPartyFounder')?.value.trim() || '';
     const partyCreationDate = document.getElementById('newCharPartyCreationDate')?.value.trim() || '';
     const partyMotto = document.getElementById('newCharPartyMotto')?.value.trim() || '';
@@ -503,7 +504,8 @@ async function createCharacter() {
         partyDescription: partyDescription || null,
         isOfficial,
         companies: newCharCompanies || [],
-        capital
+        capital,
+        politicalRole
     });
     toggleCreateForm();
     fileInput.value = ""; partyFileInput.value = "";
@@ -532,6 +534,8 @@ function prepareEditCharacter(id) {
     if(document.getElementById('editCharPartyCreationDate')) document.getElementById('editCharPartyCreationDate').value = char.partyCreationDate || '';
     if(document.getElementById('editCharPartyMotto')) document.getElementById('editCharPartyMotto').value = char.partyMotto || '';
     if(document.getElementById('editCharPartyDescription')) document.getElementById('editCharPartyDescription').value = char.partyDescription || '';
+    const prEl = document.getElementById('editCharPoliticalRole');
+    if(prEl) prEl.value = char.politicalRole || '';
     // Charger les entreprises existantes
     editCharCompanies = (char.companies || []).map(c => ({...c}));
     renderEditCharCompanies();
@@ -565,7 +569,8 @@ async function submitEditCharacter() {
         partyDescription: document.getElementById('editCharPartyDescription')?.value.trim() || null,
         isOfficial,
         capital: newCapital,
-        companies: editCharCompanies
+        companies: editCharCompanies,
+        politicalRole: document.getElementById('editCharPoliticalRole')?.value || ''
     });
     closeCharModal();
     document.getElementById('editCharFile').value = '';
@@ -1339,7 +1344,7 @@ socket.on('history_data', (msgs) => {
     const splitId = firstUnreadMap[currentRoomId];
     msgs.forEach(msg => { if(splitId && msg._id === splitId) container.innerHTML += `<div class="new-msg-separator">-- Nouveaux --</div>`; displayMessage(msg); });
     if(firstUnreadMap[currentRoomId]) delete firstUnreadMap[currentRoomId];
-    scrollToBottom(); 
+    scrollToBottom(true); 
 });
 socket.on('message_rp', (msg) => { 
     if (msg.ownerId !== PLAYER_ID && notificationsEnabled) notifSound.play().catch(e => {});
@@ -1351,14 +1356,18 @@ socket.on('message_updated', (data) => { const el = document.getElementById(`con
 
 function formatText(text) { 
     if(!text) return ""; 
-    // [NOUVEAU] Détecter les messages cryptés AVANT tout autre traitement
+    // Détecter les messages cryptés AVANT tout autre traitement
     if(text.includes('[CRYPTO]')) {
         return text.replace(/\[CRYPTO\](.*?)\|(.*?)\[\/CRYPTO\]/g, (match, enc, glitch) => {
             const safeEnc = enc.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             return `<div class="crypto-message"><span class="crypto-icon"><i class="fa-solid fa-lock"></i></span><span class="crypto-glitch">${glitch}…</span><button class="crypto-unlock-btn" onclick="openDecryptModal(null,'${safeEnc}')"><i class="fa-solid fa-key"></i> Déchiffrer</button></div>`;
         });
     }
-    return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\*(.*?)\*/g, '<i>$1</i>').replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>'); 
+    return text
+        .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+        .replace(/\*(.*?)\*/g, '<i>$1</i>')
+        .replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>')
+        .replace(/@([\wÀ-ÿ][\wÀ-ÿ]*(?: [\wÀ-ÿ][\wÀ-ÿ]*)*)/g, '<span class="mention">@$1</span>');
 }
 function getYoutubeId(url) { const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/); return (match && match[2].length === 11) ? match[2] : null; }
 
@@ -1411,7 +1420,12 @@ function displayMessage(msg, isDm = false) {
     if (msg.type === 'audio') { const placeholder = document.getElementById(`audio-placeholder-${msg._id}`); if(placeholder) placeholder.replaceWith(createCustomAudioPlayer(msg.content)); }
 }
 
-function scrollToBottom() { const d = document.getElementById('messages'); d.scrollTop = d.scrollHeight; }
+function scrollToBottom(force = false) {
+    const d = document.getElementById('messages');
+    if (!d) return;
+    const nearBottom = d.scrollHeight - d.scrollTop - d.clientHeight < 120;
+    if (force || nearBottom) d.scrollTop = d.scrollHeight;
+}
 document.getElementById('txtInput').addEventListener('keyup', (e) => { if(e.key === 'Enter') sendMessage(); });
 
 // --- FEED LOGIC & TYPING ---
