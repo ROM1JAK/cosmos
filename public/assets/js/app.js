@@ -28,6 +28,8 @@ let allOnlineUsers = [];
 let feedPostsCache = [];
 let eventsCache = [];
 let presseArticlesCache = [];
+let worldTimelineCache = [];
+let adminLogsCache = [];
 let presseJournalFilter = '';
 let presseUxBound = false;
 let expandedAdminUserId = localStorage.getItem('admin_expanded_user_id') || null;
@@ -35,6 +37,21 @@ let isBourseRankingCollapsed = localStorage.getItem('bourse_ranking_collapsed') 
 let currentAdminTab = localStorage.getItem('admin_current_tab') || 'overview';
 let bourseFilter = localStorage.getItem('bourse_filter') || 'all';
 let boursePulseTimeout = null;
+let feedFilters = (() => {
+    try {
+        return {
+            official: false,
+            following: false,
+            anonymous: false,
+            breaking: false,
+            sponsored: false,
+            companies: false,
+            ...JSON.parse(localStorage.getItem('feed_filters') || '{}')
+        };
+    } catch (error) {
+        return { official: false, following: false, anonymous: false, breaking: false, sponsored: false, companies: false };
+    }
+})();
 
 // FEED IDENTITY
 let currentFeedCharId = null;
@@ -115,7 +132,7 @@ function switchView(view) {
     if(view === 'cites') { loadCities(); loadCityRelations(); }
     if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); syncBourseRankingState(); syncBourseFilterUI(); restorePersistentScroll('bourse-scroll'); }
     if(view === 'wiki') { loadWiki(); }
-    if(view === 'accueil') { renderAccueil(); socket.emit('request_feed'); socket.emit('request_events'); socket.emit('request_presse'); if(!stocksData.length) socket.emit('request_stocks'); }
+    if(view === 'accueil') { renderAccueil(); socket.emit('request_feed'); socket.emit('request_events'); socket.emit('request_presse'); socket.emit('request_world_timeline'); if(!stocksData.length) socket.emit('request_stocks'); }
     if(view === 'mes-persos') { renderMesPersos(); }
 }
 
@@ -182,6 +199,16 @@ function objectIdToDate(id) {
     return new Date(timestamp * 1000);
 }
 
+function extractArticleTitle(content = '') {
+    const match = String(content).match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
+    if(match) return match[1].trim();
+    return String(content).split(/\s+/).slice(0, 10).join(' ').trim();
+}
+
+function extractTextPreview(text = '', length = 120) {
+    return String(text).replace(/\[TITRE\].*?\[\/TITRE\]\n?/g, '').replace(/\s+/g, ' ').trim().slice(0, length);
+}
+
 function formatRelativeDate(date) {
     if(!date) return 'date inconnue';
     const diffMs = Date.now() - date.getTime();
@@ -202,6 +229,126 @@ function renderConsoleList(targetId, items, emptyText) {
         return;
     }
     target.innerHTML = items.join('');
+}
+
+function saveFeedFilters() {
+    localStorage.setItem('feed_filters', JSON.stringify(feedFilters));
+}
+
+function knownCompanyNames() {
+    return [...new Set(stocksData.map(stock => stock.companyName).filter(Boolean))];
+}
+
+function isCompanyRelatedPost(post) {
+    if(post.linkedCompanyName || (post.authorCompanyNames || []).length) return true;
+    const haystack = [post.content, post.journalName].filter(Boolean).join(' ').toLowerCase();
+    return knownCompanyNames().some(name => haystack.includes(String(name).toLowerCase()));
+}
+
+function getFilteredFeedPosts() {
+    return feedPostsCache.filter(post => {
+        if(feedFilters.official && !post.authorIsOfficial) return false;
+        if(feedFilters.following && !(post.authorFollowers || []).includes(currentFeedCharId)) return false;
+        if(feedFilters.anonymous && !post.isAnonymous) return false;
+        if(feedFilters.breaking && !post.isBreakingNews) return false;
+        if(feedFilters.sponsored && !(post.isSponsored || post.linkedCompanyName)) return false;
+        if(feedFilters.companies && !isCompanyRelatedPost(post)) return false;
+        return true;
+    });
+}
+
+function syncFeedFiltersUI() {
+    document.querySelectorAll('.feed-filter-btn').forEach(button => {
+        button.classList.toggle('active', !!feedFilters[button.dataset.filter]);
+    });
+    const filteredCount = getFilteredFeedPosts().length;
+    const meta = document.getElementById('feed-filter-meta');
+    if(meta) {
+        const active = Object.entries(feedFilters).filter(([, enabled]) => enabled).map(([name]) => name);
+        const labels = {
+            official: 'officiels',
+            following: 'persos suivis',
+            anonymous: 'anonymes',
+            breaking: 'breaking news',
+            sponsored: 'publicitaires',
+            companies: 'liés aux entreprises'
+        };
+        meta.textContent = active.length
+            ? `${filteredCount} post(s) • filtres: ${active.map(name => labels[name]).join(', ')}`
+            : 'Tous les posts du réseau';
+    }
+}
+
+function renderFeedStream() {
+    const container = document.getElementById('feed-stream');
+    if(!container) return;
+    const posts = getFilteredFeedPosts();
+    syncFeedFiltersUI();
+    if(!posts.length) {
+        container.innerHTML = '<div class="accueil-widget-empty" style="margin-top:6px;">Aucun post ne correspond aux filtres actifs.</div>';
+        return;
+    }
+    container.innerHTML = '';
+    posts.forEach(post => container.appendChild(createPostElement(post)));
+}
+
+function toggleFeedFilter(filterName) {
+    if(!(filterName in feedFilters)) return;
+    feedFilters[filterName] = !feedFilters[filterName];
+    saveFeedFilters();
+    renderFeedStream();
+}
+
+function resetFeedFilters() {
+    Object.keys(feedFilters).forEach(key => { feedFilters[key] = false; });
+    saveFeedFilters();
+    renderFeedStream();
+}
+
+function openTimelineTarget(view, data = {}) {
+    if(!view) return;
+    if(view === 'feed' && data.postId && getFilteredFeedPosts().every(post => String(post._id) !== String(data.postId))) {
+        Object.keys(feedFilters).forEach(key => { feedFilters[key] = false; });
+        saveFeedFilters();
+        renderFeedStream();
+    }
+    switchView(view);
+    if(view === 'bourse' && data.stockId) {
+        setTimeout(() => openStockDetail(String(data.stockId)), 80);
+    }
+    if(view === 'feed' && data.postId) {
+        setTimeout(() => openPostDetail(String(data.postId)), 120);
+    }
+}
+
+function renderWorldTimeline() {
+    const container = document.getElementById('accueil-world-timeline');
+    if(!container) return;
+    if(!worldTimelineCache.length) {
+        container.innerHTML = '<div class="accueil-widget-empty">Aucun signal récent du monde.</div>';
+        return;
+    }
+    container.innerHTML = worldTimelineCache.map(item => {
+        const when = formatRelativeDate(new Date(item.timestamp || Date.now()));
+        const icon = {
+            post: 'fa-bullhorn',
+            article: 'fa-newspaper',
+            event: 'fa-calendar-days',
+            alert: 'fa-triangle-exclamation',
+            market: 'fa-chart-line'
+        }[item.type] || 'fa-wave-square';
+        const clickable = item.relatedView ? ' timeline-clickable' : '';
+        const action = item.relatedView
+            ? `onclick="openTimelineTarget('${item.relatedView}', ${JSON.stringify(item.relatedData || {}).replace(/"/g, '&quot;')})"`
+            : '';
+        return `<div class="accueil-timeline-item accueil-timeline-${item.tone || 'post'}${clickable}" ${action}>
+            <div class="accueil-timeline-icon"><i class="fa-solid ${icon}"></i></div>
+            <div class="accueil-timeline-body">
+                <div class="accueil-timeline-head"><span class="accueil-timeline-name">${escapeHtml(item.title || 'Événement')}</span><span class="accueil-timeline-time">${when}</span></div>
+                <div class="accueil-timeline-text">${escapeHtml(item.summary || '')}</div>
+            </div>
+        </div>`;
+    }).join('');
 }
 
 function previewImg(input, previewId) {
@@ -738,6 +885,8 @@ socket.on('my_chars_data', (chars) => {
     const saved = localStorage.getItem('saved_char_id');
     if (saved && myCharacters.find(c => c._id === saved)) selectCharacter(saved);
     else if (IS_ADMIN && saved === 'narrateur') selectCharacter('narrateur');
+    renderFeedStream();
+    if(currentView === 'accueil') renderAccueil();
 });
 socket.on('char_created_success', (char) => { myCharacters.push(char); updateUI(); closeCharModal(); });
 function deleteCharacter(id) { if(confirm('Supprimer ?')) socket.emit('delete_char', id); }
@@ -811,7 +960,7 @@ function toggleFeedCharDropdown() { const dd = document.getElementById('feed-cha
 function selectFeedChar(charId) {
     currentFeedCharId = charId;
     const dd = document.getElementById('feed-char-dropdown'); if(dd) dd.classList.add('hidden');
-    updateFeedCharUI(); updateBreakingNewsVisibility(); loadFeed();
+    updateFeedCharUI(); updateBreakingNewsVisibility(); renderFeedStream(); loadFeed();
 }
 
 // PRESSE CHAR SELECTOR
@@ -1667,6 +1816,9 @@ function submitPost() {
     const mediaUrl = document.getElementById('postMediaUrl').value.trim();
     const isAnonymous = document.getElementById('postAnonymous').checked;
     const isBreakingNews = document.getElementById('postBreakingNews').checked;
+    const isPub = document.getElementById('postIsPub')?.checked;
+    const pubStockId = isPub ? document.getElementById('postPubStockId')?.value : null;
+    const linkedStock = pubStockId ? stocksData.find(stock => String(stock._id) === String(pubStockId)) : null;
     
     if(!content && !mediaUrl) return alert("Contenu vide.");
     if(!currentFeedCharId) return alert("Aucun perso sélectionné pour le Feed.");
@@ -1690,15 +1842,16 @@ function submitPost() {
     const postData = { 
         authorCharId: char._id, authorName: char.name, authorAvatar: char.avatar, authorRole: char.role, authorColor: char.color,
         partyName: char.partyName, partyLogo: char.partyLogo, content, mediaUrl, mediaType, 
-        date: new Date().toLocaleDateString(), ownerId: PLAYER_ID, isAnonymous, isBreakingNews, poll
+        date: new Date().toLocaleDateString(), ownerId: PLAYER_ID, isAnonymous, isBreakingNews, poll,
+        isSponsored: !!isPub,
+        linkedStockId: pubStockId || '',
+        linkedCompanyName: linkedStock?.companyName || ''
     };
     
     socket.emit('create_post', postData);
     socket.emit('typing_feed_stop', { charName: char.name });
     
     // Pub boost bourse
-    const isPub = document.getElementById('postIsPub')?.checked;
-    const pubStockId = isPub ? document.getElementById('postPubStockId')?.value : null;
     if(isPub && pubStockId) socket.emit('pub_boost_stock', { stockId: pubStockId });
     
     document.getElementById('postContent').value = ""; document.getElementById('postMediaUrl').value = ""; document.getElementById('postMediaFile').value = ""; 
@@ -1748,7 +1901,7 @@ function submitArticleEdit() {
     closeArticleEditModal();
 }
 
-function deletePost(id) { if(confirm("Supprimer ?")) socket.emit('delete_post', id); }
+function deletePost(id) { if(confirm("Supprimer ?")) socket.emit('delete_post', { postId: id, ownerId: PLAYER_ID }); }
 
 let currentDetailPostId = null;
 function openPostDetail(id) {
@@ -1787,12 +1940,13 @@ function stageCommentMedia(input, forcedType) {
     document.getElementById('comment-staging').innerHTML = `<span class="staging-info">${type} prêt</span> <button class="btn-clear-stage" onclick="clearCommentStaging()">X</button>`;
 }
 function clearCommentStaging() { pendingCommentAttachment = null; document.getElementById('comment-staging').classList.add('hidden'); document.getElementById('comment-file-input').value = ""; }
-function deleteComment(postId, commentId) { if(confirm("Supprimer ?")) socket.emit('delete_comment', { postId, commentId }); }
+function deleteComment(postId, commentId) { if(confirm("Supprimer ?")) socket.emit('delete_comment', { postId, commentId, ownerId: PLAYER_ID }); }
 
 socket.on('feed_data', (posts) => {
     feedPostsCache = posts;
-    const c = document.getElementById('feed-stream'); c.innerHTML = ""; posts.forEach(p => c.appendChild(createPostElement(p)));
+    renderFeedStream();
     if(currentView === 'accueil') renderAccueil();
+    buildAdminConsoleOverview();
 });
 socket.on('new_post', (post) => { 
     const isOnFlux = (currentView === 'reseau' && localStorage.getItem('last_reseau_tab') === 'flux');
@@ -1802,16 +1956,28 @@ socket.on('new_post', (post) => {
         const btn = document.getElementById('btn-view-reseau');
         if(btn) btn.classList.add('nav-notify');
     }
-    document.getElementById('feed-stream').prepend(createPostElement(post)); 
+    feedPostsCache = [post, ...feedPostsCache.filter(item => String(item._id) !== String(post._id))].slice(0, 50);
+    renderFeedStream();
+    if(currentView === 'accueil') renderAccueil();
+    buildAdminConsoleOverview();
 });
 socket.on('post_updated', (post) => {
-    const el = document.getElementById(`post-${post._id}`); if(el) el.replaceWith(createPostElement(post));
+    feedPostsCache = feedPostsCache.map(item => String(item._id) === String(post._id) ? post : item);
+    renderFeedStream();
     if(currentDetailPostId === post._id) {
         document.getElementById('post-detail-comments-list').innerHTML = generateCommentsHTML(post.comments, post._id);
         const likeBtn = document.querySelector('#post-detail-content .action-item'); if(likeBtn) likeBtn.innerHTML = `<i class="fa-solid fa-heart"></i> ${post.likes.length}`;
     }
+    if(currentView === 'accueil') renderAccueil();
+    buildAdminConsoleOverview();
 });
-socket.on('post_deleted', (id) => { const el = document.getElementById(`post-${id}`); if(el) el.remove(); if(currentDetailPostId === id) closePostDetail(); });
+socket.on('post_deleted', (id) => {
+    feedPostsCache = feedPostsCache.filter(post => String(post._id) !== String(id));
+    renderFeedStream();
+    if(currentView === 'accueil') renderAccueil();
+    if(currentDetailPostId === id) closePostDetail();
+    buildAdminConsoleOverview();
+});
 socket.on('reload_posts', () => loadFeed());
 
 function generateCommentsHTML(comments, postId) {
@@ -1845,6 +2011,11 @@ function createPostElement(post) {
     
     const isLiked = post.likes.includes(currentFeedCharId); 
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
+    const badges = [
+        post.authorIsOfficial ? '<span class="post-smart-badge official"><i class="fa-solid fa-building-columns"></i> Officiel</span>' : '',
+        post.isSponsored ? `<span class="post-smart-badge sponsored"><i class="fa-solid fa-badge-dollar"></i> ${escapeHtml(post.linkedCompanyName || 'Pub')}</span>` : '',
+        isCompanyRelatedPost(post) && !post.isSponsored ? '<span class="post-smart-badge company"><i class="fa-solid fa-building"></i> Entreprise</span>' : ''
+    ].filter(Boolean).join('');
     
     // GESTION MÉDIAS ET BANNIÈRE JOURNALISTE
     let mediaHTML = "";
@@ -1905,6 +2076,7 @@ function createPostElement(post) {
                 </div>
                 <span class="post-date">${post.date}</span>
             </div>
+            ${badges ? `<div class="post-smart-badges">${badges}</div>` : ''}
             ${articleTitleHTML}
             <div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
             ${mediaHTML}
@@ -2275,6 +2447,9 @@ function submitArticle() {
     const journalName = document.getElementById('presseJournalName').value.trim();
     const journalLogo = document.getElementById('presseJournalLogo').value.trim();
     const urgencyLevel = document.getElementById('presseUrgency').value || null;
+    const isPresseP = document.getElementById('presseIsPub')?.checked;
+    const pressePubId = isPresseP ? document.getElementById('pressePubStockId')?.value : null;
+    const linkedStock = pressePubId ? stocksData.find(stock => String(stock._id) === String(pressePubId)) : null;
     if(!title && !content) return alert("Article vide.");
     if(!currentPresseCharId) return alert("Aucun journaliste sélectionné.");
     const char = myCharacters.find(c => c._id === currentPresseCharId);
@@ -2296,14 +2471,15 @@ function submitArticle() {
         journalName, journalLogo,
         isAnonymous: false, isBreakingNews: urgencyLevel === 'urgent',
         urgencyLevel,
-        isArticle: true, poll: null
+        isArticle: true, poll: null,
+        isSponsored: !!isPresseP,
+        linkedStockId: pressePubId || '',
+        linkedCompanyName: linkedStock?.companyName || ''
     };
 
     socket.emit('create_post', articleData);
     
     // Pub boost bourse
-    const isPresseP = document.getElementById('presseIsPub')?.checked;
-    const pressePubId = isPresseP ? document.getElementById('pressePubStockId')?.value : null;
     if(isPresseP && pressePubId) socket.emit('pub_boost_stock', { stockId: pressePubId });
 
     document.getElementById('presseTitle').value = '';
@@ -2411,6 +2587,12 @@ socket.on('presse_data', (articles) => {
     refreshPresseJournalDatalist();
     initPresseComposerUX();
     renderPresseStream();
+    buildAdminConsoleOverview();
+});
+
+socket.on('world_timeline_data', (items) => {
+    worldTimelineCache = Array.isArray(items) ? items : [];
+    if(currentView === 'accueil') renderAccueil();
 });
 
 socket.on('new_article', (post) => {
@@ -2487,6 +2669,7 @@ socket.on('events_data', (events) => {
     const sortedEvents = [...futureEvts, ...pastEvts];
     eventsCache = sortedEvents.slice(0, 10);
     if(currentView === 'accueil') renderAccueil();
+    buildAdminConsoleOverview();
     let lastDate = null;
     sortedEvents.forEach(ev => {
         if(ev.date !== lastDate) {
@@ -2514,11 +2697,13 @@ socket.on('alert_data', (alert) => {
     banner.className = `global-alert-banner alert-${alert.color}`;
     banner.classList.remove('hidden');
     document.body.setAttribute('data-alert', alert.color);
+    buildAdminConsoleOverview();
 });
 socket.on('alert_cleared', () => {
     const banner = document.getElementById('global-alert-banner');
     if(banner) banner.classList.add('hidden');
     document.body.removeAttribute('data-alert');
+    buildAdminConsoleOverview();
 });
 function dismissAlert() { document.getElementById('global-alert-banner').classList.add('hidden'); }
 
@@ -2828,6 +3013,8 @@ function renderAccueil() {
             headlinePrev.innerHTML = '<div class="accueil-headline-empty">Aucun article pour le moment.</div>';
         }
     }
+
+    renderWorldTimeline();
 
     // Derniers posts
     const feedPrev = document.getElementById('accueil-feed-preview');
@@ -4018,6 +4205,26 @@ function applyCustomPctCard(stockId) {
     input.value = '';
 }
 
+function getCompanyRelatedEntries(stock) {
+    const companyName = String(stock.companyName || '').toLowerCase();
+    const authorCharId = String(stock.charId || '');
+    const relatedPosts = feedPostsCache.filter(post => {
+        const text = [post.content, post.linkedCompanyName].filter(Boolean).join(' ').toLowerCase();
+        return String(post.linkedStockId || '') === String(stock._id)
+            || String(post.authorCharId || '') === authorCharId
+            || text.includes(companyName);
+    }).slice(0, 4);
+    const relatedArticles = presseArticlesCache.filter(article => {
+        const text = [article.content, article.linkedCompanyName, article.journalName].filter(Boolean).join(' ').toLowerCase();
+        return String(article.linkedStockId || '') === String(stock._id) || text.includes(companyName);
+    }).slice(0, 4);
+    const relatedTimeline = worldTimelineCache.filter(item => {
+        const summary = [item.title, item.summary].filter(Boolean).join(' ').toLowerCase();
+        return summary.includes(companyName) || String(item.relatedData?.stockId || '') === String(stock._id);
+    }).slice(0, 5);
+    return { relatedPosts, relatedArticles, relatedTimeline };
+}
+
 function openStockDetail(stockId) {
     const stock = stocksData.find(s => String(s._id) === stockId);
     if(!stock) return;
@@ -4026,6 +4233,9 @@ function openStockDetail(stockId) {
     const pct = prev ? ((stock.currentValue - prev) / prev * 100) : 0;
     const isUp = pct > 0, isDown = pct < 0;
     const revenue = stock.revenue || 0;
+    const hi14 = hist.length ? Math.max(...hist.slice(-14).map(point => point.value)) : stock.currentValue;
+    const lo14 = hist.length ? Math.min(...hist.slice(-14).map(point => point.value)) : stock.currentValue;
+    const { relatedPosts, relatedArticles, relatedTimeline } = getCompanyRelatedEntries(stock);
     document.getElementById('stock-detail-content').innerHTML = `
         <div class="stock-detail-hero">
             ${stock.companyLogo ? `<img src="${escapeHtml(stock.companyLogo)}" class="stock-detail-logo" alt="">` : `<div class="stock-detail-logo-placeholder"><i class="fa-solid fa-building"></i></div>`}
@@ -4033,15 +4243,35 @@ function openStockDetail(stockId) {
                 <div class="stock-detail-name">${escapeHtml(stock.companyName)}</div>
                 <div class="stock-detail-char" style="color:${stock.charColor||'var(--text-muted)'}"><i class="fa-solid fa-user"></i> ${escapeHtml(stock.charName||'')}</div>
                 ${stock.headquarters ? `<div class="stock-detail-meta"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(stock.headquarters)}</div>` : ''}
+                ${stock.charId ? `<div class="stock-detail-links"><button class="btn-secondary" onclick="openProfile('${String(stock.charName || '').replace(/'/g, "\\'")}')"><i class="fa-solid fa-user"></i> Ouvrir le profil</button></div>` : ''}
             </div>
         </div>
         <div class="stock-detail-value-row">
             <span class="stock-detail-value" style="color:${isUp?'#23a559':isDown?'#da373c':'white'}">${formatStockValue(stock.currentValue)}</span>
             <span class="stock-badge ${isUp?'badge-up':isDown?'badge-down':'badge-neutral'}">${isUp?'▲':isDown?'▼':'—'} ${Math.abs(pct).toFixed(2)}%</span>
         </div>
-        ${revenue > 0 ? `<div class="stock-detail-stat"><i class="fa-solid fa-chart-bar" style="color:var(--accent)"></i> CA : <strong>${formatStockValue(revenue)}</strong></div>` : ''}
+        <div class="stock-detail-metrics">
+            ${revenue > 0 ? `<div class="stock-detail-stat-card"><span class="stock-detail-stat-label">CA</span><strong>${formatStockValue(revenue)}</strong></div>` : ''}
+            <div class="stock-detail-stat-card"><span class="stock-detail-stat-label">14j haut</span><strong>${formatStockValue(hi14)}</strong></div>
+            <div class="stock-detail-stat-card"><span class="stock-detail-stat-label">14j bas</span><strong>${formatStockValue(lo14)}</strong></div>
+            ${stock.capital ? `<div class="stock-detail-stat-card"><span class="stock-detail-stat-label">Capital perso</span><strong>${formatStockValue(stock.capital)}</strong></div>` : ''}
+        </div>
         ${stock.description ? `<div class="stock-detail-desc">${escapeHtml(stock.description)}</div>` : ''}
         <div class="stock-detail-chart-wrap" id="stock-detail-chart"></div>
+        <div class="stock-detail-sections">
+            <div class="stock-detail-section">
+                <div class="stock-detail-section-title"><i class="fa-solid fa-bullhorn"></i> Réseau lié</div>
+                ${relatedPosts.length ? relatedPosts.map(post => `<button class="stock-detail-related-item" onclick="openTimelineTarget('feed', { postId: '${post._id}' })"><span>${escapeHtml(post.authorName || 'Source')}</span><strong>${escapeHtml(extractTextPreview(post.content || '', 96))}</strong></button>`).join('') : '<div class="stock-detail-empty">Aucun post lié récemment.</div>'}
+            </div>
+            <div class="stock-detail-section">
+                <div class="stock-detail-section-title"><i class="fa-solid fa-newspaper"></i> Couverture presse</div>
+                ${relatedArticles.length ? relatedArticles.map(article => `<button class="stock-detail-related-item" onclick="switchView('presse')"><span>${escapeHtml(article.journalName || 'Presse')}</span><strong>${escapeHtml(extractArticleTitle(article.content || ''))}</strong></button>`).join('') : '<div class="stock-detail-empty">Aucun article presse lié.</div>'}
+            </div>
+            <div class="stock-detail-section">
+                <div class="stock-detail-section-title"><i class="fa-solid fa-wave-square"></i> Impact monde</div>
+                ${relatedTimeline.length ? relatedTimeline.map(item => `<button class="stock-detail-related-item" onclick="openTimelineTarget('${item.relatedView || 'bourse'}', ${JSON.stringify(item.relatedData || { stockId }).replace(/"/g, '&quot;')})"><span>${escapeHtml(item.title || 'Signal')}</span><strong>${escapeHtml(item.summary || '')}</strong></button>`).join('') : '<div class="stock-detail-empty">Aucun signal récent lié à cette entreprise.</div>'}
+            </div>
+        </div>
     `;
     renderStockMiniChart(hist.slice(-14), stock.currentValue, 'stock-detail-chart', stock.stockColor || '#6c63ff', pct >= 0);
     const adminEl = document.getElementById('stock-detail-admin');
@@ -4447,6 +4677,15 @@ function buildAdminConsoleOverview() {
                 <div class="admin-console-meta">${escapeHtml(event.date || 'date inconnue')}${event.heure ? ` • ${escapeHtml(event.heure)}` : ''}</div>
             </div>
         </div>`), 'Aucun événement récent.');
+
+    renderConsoleList('admin-console-audit', adminLogsCache.map(log => `
+        <div class="admin-console-item admin-console-${log.timelineTone || 'admin'}">
+            <div class="admin-console-icon"><i class="fa-solid fa-scroll"></i></div>
+            <div class="admin-console-body">
+                <div class="admin-console-text">${escapeHtml(log.message || 'Action admin')}</div>
+                <div class="admin-console-meta">${escapeHtml(log.actorUsername || 'admin')} • ${formatRelativeDate(new Date(log.createdAt || Date.now()))}</div>
+            </div>
+        </div>`), 'Aucune entrée dans le journal admin.');
 }
 
 // ==================== [ADMIN PANEL] ====================
@@ -4486,6 +4725,7 @@ function switchAdminTab(tab) {
 function loadAdminData() {
     socket.emit('request_admin_stats');
     socket.emit('admin_get_users');
+    socket.emit('request_admin_logs');
     loadAdminCompanies();
 }
 function loadAdminCompanies() {
@@ -4512,6 +4752,10 @@ socket.on('admin_users_data', (users) => {
     adminUsersCache = users;
     if(expandedAdminUserId && !users.some(u => u._id === expandedAdminUserId)) expandedAdminUserId = null;
     renderAdminUsers(users);
+    buildAdminConsoleOverview();
+});
+socket.on('admin_logs_data', (logs) => {
+    adminLogsCache = Array.isArray(logs) ? logs : [];
     buildAdminConsoleOverview();
 });
 socket.on('admin_companies_data', (companies) => {

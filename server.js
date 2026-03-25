@@ -26,6 +26,7 @@ const Post =         require('./src/models/Post');
 const OmbraMessage = require('./src/models/OmbraMessage');
 const Event =        require('./src/models/Event');
 const Notification = require('./src/models/Notification');
+const AdminLog =     require('./src/models/AdminLog');
 
 // ========== [CITÉS] ==========
 const City = require('./src/models/City');
@@ -142,6 +143,161 @@ async function createNotification(targetId, type, content, fromName, redirectVie
     io.emit('notification_dispatch', notif); 
 }
 
+async function getSocketUser(socket) {
+    const username = onlineUsers[socket.id];
+    if(!username) return null;
+    return User.findOne({ username });
+}
+
+async function emitToAdmins(eventName, payload) {
+    const onlineNames = [...new Set(Object.values(onlineUsers).filter(Boolean))];
+    if(!onlineNames.length) return;
+    const admins = await User.find({ username: { $in: onlineNames }, isAdmin: true }).select('username');
+    const adminNames = new Set(admins.map(user => user.username));
+    Object.entries(onlineUsers).forEach(([socketId, username]) => {
+        if(adminNames.has(username)) io.to(socketId).emit(eventName, payload);
+    });
+}
+
+function extractArticleTitle(content = '') {
+    const titleMatch = content.match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
+    if(titleMatch) return titleMatch[1].trim();
+    return content.split(/\s+/).slice(0, 10).join(' ').trim();
+}
+
+function extractTextPreview(text = '', length = 120) {
+    return String(text).replace(/\[TITRE\].*?\[\/TITRE\]\n?/g, '').replace(/\s+/g, ' ').trim().slice(0, length);
+}
+
+function getObjectDate(value) {
+    if(value instanceof Date && !Number.isNaN(value.getTime())) return value;
+    if(typeof value === 'string' && value.length >= 8) {
+        const timestamp = parseInt(value.slice(0, 8), 16);
+        if(!Number.isNaN(timestamp)) return new Date(timestamp * 1000);
+    }
+    return new Date();
+}
+
+function buildDisplayPost(post, authorChar = null) {
+    const displayPost = post.toObject ? post.toObject() : { ...post };
+    if(displayPost.isAnonymous) {
+        displayPost.authorName = 'Source Anonyme';
+        displayPost.authorAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E";
+        displayPost.authorRole = 'Leak';
+    }
+    displayPost.authorIsOfficial = !!authorChar?.isOfficial;
+    displayPost.authorFollowers = Array.isArray(authorChar?.followers) ? authorChar.followers : [];
+    displayPost.authorCompanyNames = Array.isArray(authorChar?.companies) ? authorChar.companies.map(company => company.name).filter(Boolean) : [];
+    return displayPost;
+}
+
+async function enrichPostsForDisplay(posts) {
+    const authorIds = [...new Set(posts.map(post => String(post.authorCharId || '')).filter(Boolean))];
+    const authorMap = new Map();
+    if(authorIds.length) {
+        const authors = await Character.find({ _id: { $in: authorIds } }).select('_id isOfficial followers companies');
+        authors.forEach(author => authorMap.set(String(author._id), author));
+    }
+    return posts.map(post => buildDisplayPost(post, authorMap.get(String(post.authorCharId || ''))));
+}
+
+async function getFeedPosts(limit = 50) {
+    const posts = await Post.find({ isArticle: { $ne: true } }).sort({ timestamp: -1 }).limit(limit);
+    return enrichPostsForDisplay(posts);
+}
+
+async function getRecentAdminLogs(limit = 18) {
+    return AdminLog.find().sort({ createdAt: -1 }).limit(limit);
+}
+
+async function broadcastAdminLogs() {
+    await emitToAdmins('admin_logs_data', await getRecentAdminLogs());
+}
+
+async function buildWorldTimeline(limit = 28) {
+    const [posts, articles, events, logs] = await Promise.all([
+        Post.find({ isArticle: { $ne: true } }).sort({ timestamp: -1 }).limit(12),
+        Post.find({ isArticle: true }).sort({ isHeadline: -1, timestamp: -1 }).limit(10),
+        Event.find().sort({ timestamp: -1, _id: -1 }).limit(10),
+        AdminLog.find({ includeInTimeline: true }).sort({ createdAt: -1 }).limit(12)
+    ]);
+
+    const items = [
+        ...posts.map(post => ({
+            id: `post:${post._id}`,
+            type: 'post',
+            tone: post.isBreakingNews ? 'alert' : post.isAnonymous ? 'leak' : 'post',
+            timestamp: post.timestamp || getObjectDate(String(post._id)),
+            title: post.isBreakingNews
+                ? `${post.authorName || 'Un personnage'} publie une breaking news`
+                : `${post.authorName || 'Un personnage'} publie sur le réseau`,
+            summary: extractTextPreview(post.content || '', 140) || 'Nouveau message sur le flux social.',
+            relatedView: 'feed',
+            relatedData: { postId: String(post._id) }
+        })),
+        ...articles.map(article => ({
+            id: `article:${article._id}`,
+            type: 'article',
+            tone: article.urgencyLevel === 'urgent' ? 'alert' : article.isSponsored ? 'market' : 'article',
+            timestamp: article.timestamp || getObjectDate(String(article._id)),
+            title: extractArticleTitle(article.content || '') || 'Nouvel article de presse',
+            summary: article.journalName
+                ? `${article.journalName} · ${extractTextPreview(article.content || '', 140)}`
+                : extractTextPreview(article.content || '', 140),
+            relatedView: 'presse',
+            relatedData: { articleId: String(article._id) }
+        })),
+        ...events.map(event => ({
+            id: `event:${event._id}`,
+            type: 'event',
+            tone: 'event',
+            timestamp: event.timestamp || getObjectDate(String(event._id)),
+            title: event.evenement || 'Nouvel événement',
+            summary: [event.date, event.heure].filter(Boolean).join(' · ') || 'Actualité publiée',
+            relatedView: 'actualites',
+            relatedData: { eventId: String(event._id) }
+        })),
+        ...logs.map(log => ({
+            id: `log:${log._id}`,
+            type: log.timelineType || 'admin',
+            tone: log.timelineTone || 'admin',
+            timestamp: log.createdAt || getObjectDate(String(log._id)),
+            title: log.targetLabel ? `${log.targetLabel}` : log.message,
+            summary: log.message,
+            relatedView: log.meta?.redirectView || (log.timelineType === 'market' ? 'bourse' : null),
+            relatedData: log.meta?.redirectData || (log.targetType === 'stock' && log.targetId ? { stockId: log.targetId } : null)
+        }))
+    ];
+
+    return items
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, limit);
+}
+
+async function broadcastWorldTimeline() {
+    io.emit('world_timeline_data', await buildWorldTimeline());
+}
+
+async function logAdminAction({ actorUser, actionType, targetType, targetId = '', targetLabel = '', message, meta = {}, includeInTimeline = false, timelineType = '', timelineTone = '' }) {
+    if(!actorUser || !message) return null;
+    const log = await new AdminLog({
+        actorUsername: actorUser.username || '',
+        actorUserId: actorUser.secretCode || '',
+        actionType,
+        targetType,
+        targetId: targetId ? String(targetId) : '',
+        targetLabel,
+        message,
+        meta,
+        includeInTimeline,
+        timelineType,
+        timelineTone
+    }).save();
+    await broadcastAdminLogs();
+    if(includeInTimeline) await broadcastWorldTimeline();
+    return log;
+}
+
 io.on('connection', async (socket) => {
   
   socket.on('login_request', async ({ username, code }) => {
@@ -186,17 +342,8 @@ io.on('connection', async (socket) => {
 
   socket.on('request_initial_data', async (userId) => {
       socket.emit('rooms_data', await Room.find());
-      let posts = await Post.find({ isArticle: { $ne: true } }).sort({ timestamp: -1 }).limit(50);
-      posts = posts.map(p => {
-          let displayPost = p.toObject();
-          if(displayPost.isAnonymous) {
-              displayPost.authorName = "Source Anonyme";
-              displayPost.authorAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E";
-              displayPost.authorRole = "Leak";
-          }
-          return displayPost;
-      });
-      socket.emit('feed_data', posts);
+      socket.emit('feed_data', await getFeedPosts());
+      socket.emit('world_timeline_data', await buildWorldTimeline());
       // [NOUVEAU] Envoyer alerte active si existante
       const activeAlert = await Alert.findOne({ active: true }).sort({ timestamp: -1 });
       if(activeAlert) socket.emit('alert_data', activeAlert);
@@ -207,6 +354,14 @@ io.on('connection', async (socket) => {
           const notifs = await Notification.find({ targetOwnerId: userId }).sort({ timestamp: -1 }).limit(20);
           socket.emit('notifications_data', notifs);
       }
+  });
+
+  socket.on('request_feed', async () => {
+      socket.emit('feed_data', await getFeedPosts());
+  });
+
+  socket.on('request_world_timeline', async () => {
+      socket.emit('world_timeline_data', await buildWorldTimeline());
   });
 
   socket.on('get_char_profile', async (charName) => {
@@ -304,6 +459,8 @@ io.on('connection', async (socket) => {
 
   // [NOUVEAU] Admin modifie les stats (followers, likes)
   socket.on('admin_edit_followers', async ({ charId, count }) => {
+      const user = await getSocketUser(socket);
+      if(!user || !user.isAdmin) return;
       const char = await Character.findById(charId);
       if(!char) return;
       const current = char.followers.length;
@@ -312,9 +469,20 @@ io.on('connection', async (socket) => {
       else { char.followers = char.followers.slice(0, count < 0 ? 0 : count); }
       await char.save();
       socket.emit('char_profile_data', { ...char.toObject(), postCount: await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } }), lastPosts: [] });
+      await logAdminAction({
+          actorUser: user,
+          actionType: 'followers_edited',
+          targetType: 'character',
+          targetId: String(char._id),
+          targetLabel: char.name,
+          message: `${user.username} a ajusté les abonnés de ${char.name} à ${Math.max(0, Number(count) || 0)}`,
+          meta: { redirectView: 'profile', redirectData: { charId: String(char._id) } }
+      });
   });
 
   socket.on('admin_edit_post_likes', async ({ postId, count }) => {
+      const user = await getSocketUser(socket);
+      if(!user || !user.isAdmin) return;
       const post = await Post.findById(postId);
       if(!post) return;
       const current = post.likes.length;
@@ -322,11 +490,22 @@ io.on('connection', async (socket) => {
       if(diff > 0) { for(let i=0;i<diff;i++) post.likes.push('fake_like_'+Date.now()+'_'+i); }
       else { post.likes = post.likes.slice(0, count < 0 ? 0 : count); }
       await post.save();
-      io.emit('post_updated', post);
+      io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));
+      await logAdminAction({
+          actorUser: user,
+          actionType: 'post_likes_edited',
+          targetType: post.isArticle ? 'article' : 'post',
+          targetId: String(post._id),
+          targetLabel: post.authorName || 'Publication',
+          message: `${user.username} a fixé les likes de ${post.authorName || 'une publication'} à ${Math.max(0, Number(count) || 0)}`,
+          meta: { redirectView: post.isArticle ? 'presse' : 'feed', redirectData: { postId: String(post._id) } }
+      });
   });
 
   // [NOUVEAU] Admin modifie le capital d'un personnage
   socket.on('admin_edit_capital', async ({ charId, capital }) => {
+      const user = await getSocketUser(socket);
+      if(!user || !user.isAdmin) return;
       await Character.findByIdAndUpdate(charId, { capital: Number(capital) || 0 });
       const char = await Character.findById(charId);
       if(char) {
@@ -334,18 +513,54 @@ io.on('connection', async (socket) => {
           const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
           const charData = char.toObject(); charData.postCount = postCount; charData.lastPosts = lastPosts;
           socket.emit('char_profile_data', charData);
+          await logAdminAction({
+              actorUser: user,
+              actionType: 'capital_edited',
+              targetType: 'character',
+              targetId: String(char._id),
+              targetLabel: char.name,
+              message: `${user.username} a fixé le capital de ${char.name} à ${Number(capital) || 0}`,
+              meta: { redirectView: 'profile', redirectData: { charId: String(char._id) } },
+              includeInTimeline: true,
+              timelineType: 'market',
+              timelineTone: 'market'
+          });
       }
   });
 
   // [NOUVEAU] Bandeau d'alerte global (Admin)
   socket.on('admin_set_alert', async ({ message, color, active }) => {
+      const user = await getSocketUser(socket);
+      if(!user || !user.isAdmin) return;
       await Alert.deleteMany({});
       if(active && message) {
           const alert = new Alert({ message, color: color || 'red', active: true });
           await alert.save();
           io.emit('alert_data', alert);
+          await logAdminAction({
+              actorUser: user,
+              actionType: 'alert_set',
+              targetType: 'alert',
+              targetId: String(alert._id),
+              targetLabel: 'Alerte globale',
+              message: `${user.username} a activé une alerte ${alert.color || 'red'}: ${message}`,
+              meta: { redirectView: 'accueil', redirectData: null },
+              includeInTimeline: true,
+              timelineType: 'alert',
+              timelineTone: 'alert'
+          });
       } else {
           io.emit('alert_cleared');
+          await logAdminAction({
+              actorUser: user,
+              actionType: 'alert_cleared',
+              targetType: 'alert',
+              targetLabel: 'Alerte globale',
+              message: `${user.username} a retiré l'alerte globale`,
+              includeInTimeline: true,
+              timelineType: 'alert',
+              timelineTone: 'alert'
+          });
       }
   });
 
@@ -552,19 +767,15 @@ io.on('connection', async (socket) => {
 
   socket.on('create_post', async (postData) => {
       const savedPost = await new Post(postData).save();
-      let displayPost = savedPost.toObject();
-      if(displayPost.isAnonymous) {
-          displayPost.authorName = "Source Anonyme";
-          displayPost.authorAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E";
-          displayPost.authorRole = "Leak";
-      }
+      let authorChar = postData.authorCharId ? await Character.findById(postData.authorCharId) : null;
+      let displayPost = buildDisplayPost(savedPost, authorChar);
       if(displayPost.isArticle) {
           io.emit('new_article', displayPost);
       } else {
           io.emit('new_post', displayPost);
+          await broadcastWorldTimeline();
       }
       
-      let authorChar = postData.authorCharId ? await Character.findById(postData.authorCharId) : null;
       if(authorChar && authorChar.followers.length > 0) {
           const followersChars = await Character.find({ _id: { $in: authorChar.followers } });
           const notifiedOwners = new Set();
@@ -598,9 +809,33 @@ io.on('connection', async (socket) => {
               i++;
           }
       }
+      if(displayPost.isArticle) await broadcastWorldTimeline();
   });
 
-  socket.on('delete_post', async (postId) => { await Post.findByIdAndDelete(postId); io.emit('post_deleted', postId); });
+  socket.on('delete_post', async (payload) => {
+      const postId = typeof payload === 'string' ? payload : payload?.postId;
+      const ownerId = typeof payload === 'string' ? null : payload?.ownerId;
+      const post = await Post.findById(postId);
+      if(!post) return;
+      const requester = ownerId ? await User.findOne({ secretCode: ownerId }) : null;
+      const isAdmin = !!requester?.isAdmin;
+      if(post.ownerId !== ownerId && !isAdmin) return;
+      await Post.findByIdAndDelete(postId);
+      io.emit('post_deleted', postId);
+      await broadcastWorldTimeline();
+      if(isAdmin && requester) {
+          await logAdminAction({
+              actorUser: requester,
+              actionType: 'post_deleted',
+              targetType: post.isArticle ? 'article' : 'post',
+              targetId: String(post._id),
+              targetLabel: post.isArticle ? extractArticleTitle(post.content || '') : (post.authorName || 'Post'),
+              message: `${requester.username} a supprimé ${post.isArticle ? 'un article' : 'un post'} de ${post.authorName || 'source inconnue'}`,
+              meta: { redirectView: post.isArticle ? 'presse' : 'feed', redirectData: { postId: String(post._id) } },
+              includeInTimeline: false
+          });
+      }
+  });
 
   socket.on('edit_post', async ({ postId, content, ownerId }) => {
       const post = await Post.findById(postId);
@@ -609,7 +844,8 @@ io.on('connection', async (socket) => {
       post.content = content;
       post.edited = true;
       await post.save();
-      io.emit('post_updated', post);
+      io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));
+      await broadcastWorldTimeline();
   });
 
   socket.on('like_post', async ({ postId, charId }) => { 
@@ -620,7 +856,7 @@ io.on('connection', async (socket) => {
       if(index === -1) { post.likes.push(charId); action = 'like'; } 
       else { post.likes.splice(index, 1); }
       await post.save();
-      io.emit('post_updated', post);
+    io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));
       if (action === 'like' && post.ownerId) {
            const likerChar = await Character.findById(charId);
            await createNotification(post.ownerId, 'like', `(${likerChar ? likerChar.name : "Inconnu"}) a aimé votre post`, "Feed", 'feed', { postId: String(post._id) });
@@ -633,15 +869,31 @@ io.on('connection', async (socket) => {
       comment.id = new mongoose.Types.ObjectId().toString();
       post.comments.push(comment);
       await post.save();
-      io.emit('post_updated', post);
+      io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));
     if (post.ownerId !== comment.ownerId) await createNotification(post.ownerId, 'reply', `(${comment.authorName}) a commenté votre post`, "Feed", 'feed', { postId: String(post._id) });
   });
-  socket.on('delete_comment', async ({ postId, commentId }) => {
+  socket.on('delete_comment', async ({ postId, commentId, ownerId }) => {
       const post = await Post.findById(postId);
       if(!post) return;
+      const comment = post.comments.find(c => c.id === commentId);
+      if(!comment) return;
+      const requester = ownerId ? await User.findOne({ secretCode: ownerId }) : null;
+      const isAdmin = !!requester?.isAdmin;
+      if(comment.ownerId !== ownerId && post.ownerId !== ownerId && !isAdmin) return;
       post.comments = post.comments.filter(c => c.id !== commentId);
       await post.save();
-      io.emit('post_updated', post);
+      io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));
+      if(isAdmin && requester) {
+          await logAdminAction({
+              actorUser: requester,
+              actionType: 'comment_deleted',
+              targetType: 'comment',
+              targetId: commentId,
+              targetLabel: post.authorName || 'Commentaire',
+              message: `${requester.username} a supprimé un commentaire sur le post de ${post.authorName || 'source inconnue'}`,
+              meta: { redirectView: 'feed', redirectData: { postId: String(post._id) } }
+          });
+      }
   });
 
   socket.on('vote_poll', async ({ postId, optionIndex, charId }) => {
@@ -663,7 +915,7 @@ io.on('connection', async (socket) => {
           post.poll.options[optionIndex].voters.push(fakeId);
       }
       await post.save();
-      io.emit('post_updated', post);
+      io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));
   });
   
   socket.on('mark_notifications_read', async (userId) => { await Notification.updateMany({ targetOwnerId: userId, isRead: false }, { isRead: true }); socket.emit('notifications_read_confirmed'); });
@@ -685,12 +937,27 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('set_headline', async ({ postId, value }) => {
-      const user = await User.findOne({ secretCode: Object.keys(onlineUsers).includes(socket.id) ? null : null });
-      // On vérifie admin via le socket
+      const user = await getSocketUser(socket);
+      if(!user || !user.isAdmin) return;
       await Post.updateMany({ isHeadline: true }, { isHeadline: false });
       if(value) await Post.findByIdAndUpdate(postId, { isHeadline: true });
       const articles = await Post.find({ isArticle: true }).sort({ isHeadline: -1, timestamp: -1 }).limit(50);
       io.emit('presse_data', articles);
+      const headline = value ? await Post.findById(postId) : null;
+      await logAdminAction({
+          actorUser: user,
+          actionType: 'headline_set',
+          targetType: 'article',
+          targetId: postId || '',
+          targetLabel: headline ? extractArticleTitle(headline.content || '') : 'Une presse',
+          message: value
+              ? `${user.username} a défini une nouvelle Une: ${extractArticleTitle(headline?.content || '')}`
+              : `${user.username} a retiré la Une actuelle`,
+          meta: { redirectView: 'presse', redirectData: { articleId: postId } },
+          includeInTimeline: true,
+          timelineType: 'article',
+          timelineTone: 'article'
+      });
   });
 
   // ACTUALITÉS
@@ -699,13 +966,42 @@ io.on('connection', async (socket) => {
       socket.emit('events_data', events);
   });
   socket.on('create_event', async (data) => {
+      const user = await getSocketUser(socket);
+      if(!user || !user.isAdmin) return;
       const ev = new Event(data);
       await ev.save();
       io.emit('events_data', await Event.find().sort({ date: 1, heure: 1 }));
+      await logAdminAction({
+          actorUser: user,
+          actionType: 'event_created',
+          targetType: 'event',
+          targetId: String(ev._id),
+          targetLabel: ev.evenement || 'Événement',
+          message: `${user.username} a publié un événement: ${ev.evenement}`,
+          meta: { redirectView: 'actualites', redirectData: { eventId: String(ev._id) } },
+          includeInTimeline: true,
+          timelineType: 'event',
+          timelineTone: 'event'
+      });
   });
   socket.on('delete_event', async (id) => {
+      const user = await getSocketUser(socket);
+      if(!user || !user.isAdmin) return;
+      const event = await Event.findById(id);
       await Event.findByIdAndDelete(id);
       io.emit('events_data', await Event.find().sort({ date: 1, heure: 1 }));
+      await broadcastWorldTimeline();
+      if(event) {
+          await logAdminAction({
+              actorUser: user,
+              actionType: 'event_deleted',
+              targetType: 'event',
+              targetId: String(event._id),
+              targetLabel: event.evenement || 'Événement',
+              message: `${user.username} a supprimé l'événement: ${event.evenement}`,
+              meta: { redirectView: 'actualites', redirectData: { eventId: String(event._id) } }
+          });
+      }
   });
 
   // OMBRA
@@ -937,6 +1233,7 @@ io.on('connection', async (socket) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
+      const isCreation = !stockId;
       let stock = stockId ? await Stock.findById(stockId) : null;
       if(!stock) stock = await Stock.findOne({ companyName, charId });
       if(!stock) {
@@ -961,6 +1258,18 @@ io.on('connection', async (socket) => {
       await stock.save();
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
+      await logAdminAction({
+          actorUser: user,
+          actionType: isCreation ? 'stock_created' : 'stock_updated',
+          targetType: 'stock',
+          targetId: String(stock._id),
+          targetLabel: stock.companyName || companyName || 'Action',
+          message: `${user.username} a ${isCreation ? 'coté' : 'mis à jour'} l'action ${stock.companyName || companyName}`,
+          meta: { redirectView: 'bourse', redirectData: { stockId: String(stock._id) } },
+          includeInTimeline: true,
+          timelineType: 'market',
+          timelineTone: 'market'
+      });
   });
 
   socket.on('admin_apply_stock_trend', async ({ stockId, trend }) => {
@@ -989,6 +1298,18 @@ io.on('connection', async (socket) => {
       await applyStockValueChange(stock, oldTrendVal, newVal);
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
+      await logAdminAction({
+          actorUser: user,
+          actionType: 'stock_trend_applied',
+          targetType: 'stock',
+          targetId: String(stock._id),
+          targetLabel: stock.companyName || 'Action',
+          message: `${user.username} a appliqué la tendance ${trend} à ${stock.companyName || 'une action'} (${oldTrendVal} → ${newVal})`,
+          meta: { redirectView: 'bourse', redirectData: { stockId: String(stock._id) }, trend, oldValue: oldTrendVal, newValue: newVal },
+          includeInTimeline: true,
+          timelineType: 'market',
+          timelineTone: newVal >= oldTrendVal ? 'up' : 'down'
+      });
   });
 
   socket.on('admin_apply_stock_custom', async ({ stockId, pct }) => {
@@ -1007,15 +1328,39 @@ io.on('connection', async (socket) => {
       await applyStockValueChange(stock, oldCustomVal, newVal);
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
+      await logAdminAction({
+          actorUser: user,
+          actionType: 'stock_custom_applied',
+          targetType: 'stock',
+          targetId: String(stock._id),
+          targetLabel: stock.companyName || 'Action',
+          message: `${user.username} a appliqué ${Number(pct).toFixed(2)}% à ${stock.companyName || 'une action'}`,
+          meta: { redirectView: 'bourse', redirectData: { stockId: String(stock._id) }, pct, oldValue: oldCustomVal, newValue: newVal },
+          includeInTimeline: true,
+          timelineType: 'market',
+          timelineTone: newVal >= oldCustomVal ? 'up' : 'down'
+      });
   });
 
   socket.on('admin_delete_stock', async ({ stockId }) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
+      const stock = await Stock.findById(stockId);
       await Stock.findByIdAndDelete(stockId);
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
+      if(stock) {
+          await logAdminAction({
+              actorUser: user,
+              actionType: 'stock_deleted',
+              targetType: 'stock',
+              targetId: String(stock._id),
+              targetLabel: stock.companyName || 'Action',
+              message: `${user.username} a supprimé l'action ${stock.companyName || ''}`,
+              meta: { redirectView: 'bourse', redirectData: { stockId: String(stock._id) } }
+          });
+      }
   });
 
   socket.on('admin_reset_stock_history', async ({ stockId }) => {
@@ -1029,6 +1374,15 @@ io.on('connection', async (socket) => {
       await stock.save();
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
+      await logAdminAction({
+          actorUser: user,
+          actionType: 'stock_history_reset',
+          targetType: 'stock',
+          targetId: String(stock._id),
+          targetLabel: stock.companyName || 'Action',
+          message: `${user.username} a réinitialisé l'historique de ${stock.companyName || 'une action'}`,
+          meta: { redirectView: 'bourse', redirectData: { stockId: String(stock._id) } }
+      });
   });
 
   // Boost bourse via publication pub (Feed / Presse)
@@ -1064,6 +1418,17 @@ io.on('connection', async (socket) => {
       }
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
+      await logAdminAction({
+          actorUser: user,
+          actionType: 'trading_day_advanced',
+          targetType: 'market',
+          targetLabel: 'Bourse de ConvSmos',
+          message: `${user.username} a validé le jour de cotation suivant pour ${allStocks.length} action(s)`,
+          meta: { redirectView: 'bourse', redirectData: null, stockCount: allStocks.length },
+          includeInTimeline: true,
+          timelineType: 'market',
+          timelineTone: 'market'
+      });
   });
 
   // Admin — définir le chiffre d'affaires d'une entreprise
@@ -1085,6 +1450,18 @@ io.on('connection', async (socket) => {
       io.emit('char_profile_data', charData);
       const stocksRefresh = await getEnrichedStocks();
       io.emit('stocks_updated', stocksRefresh);
+      await logAdminAction({
+          actorUser: user,
+          actionType: 'company_revenue_set',
+          targetType: 'company',
+          targetId: String(char._id),
+          targetLabel: companyName,
+          message: `${user.username} a fixé le chiffre d'affaires de ${companyName} à ${Math.max(0, Number(revenue) || 0)}`,
+          meta: { redirectView: 'bourse', redirectData: { stockId: stocksRefresh.find(stock => String(stock.charId) === String(char._id) && stock.companyName === companyName)?._id || null } },
+          includeInTimeline: true,
+          timelineType: 'market',
+          timelineTone: 'market'
+      });
   });
 
   socket.on('admin_update_company', async ({ charId, companyIndex, company, oldCompanyName }) => {
@@ -1131,6 +1508,18 @@ io.on('connection', async (socket) => {
       io.emit('char_profile_data', charData);
       io.emit('stocks_updated', await getEnrichedStocks());
       socket.emit('admin_action_result', { success: true, msg: 'Entreprise mise à jour.' });
+      await logAdminAction({
+          actorUser: user,
+          actionType: 'company_updated',
+          targetType: 'company',
+          targetId: String(char._id),
+          targetLabel: nextCompany.name,
+          message: `${user.username} a mis à jour l'entreprise ${nextCompany.name} de ${char.name}`,
+          meta: { redirectView: 'bourse', redirectData: null },
+          includeInTimeline: true,
+          timelineType: 'market',
+          timelineTone: 'market'
+      });
   });
   // ========== [FIN BOURSE SOCKET] ==========
   // ========== [WIKI] SOCKET EVENTS ==========
@@ -1194,6 +1583,12 @@ io.on('connection', async (socket) => {
       });
   });
 
+  socket.on('request_admin_logs', async () => {
+      const user = await getSocketUser(socket);
+      if(!user || !user.isAdmin) return;
+      socket.emit('admin_logs_data', await getRecentAdminLogs());
+  });
+
   socket.on('admin_get_users', async () => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
@@ -1241,6 +1636,15 @@ io.on('connection', async (socket) => {
       socket.emit('admin_action_result', { success: true });
       const users = await User.find({}, 'username isAdmin createdAt').sort({ username: 1 });
       socket.emit('admin_users_data', users);
+      await logAdminAction({
+          actorUser: user,
+          actionType: target.isAdmin ? 'admin_granted' : 'admin_revoked',
+          targetType: 'user',
+          targetId: String(target._id),
+          targetLabel: target.username,
+          message: `${user.username} a ${target.isAdmin ? 'accordé' : 'retiré'} les droits admin à ${target.username}`,
+          meta: { redirectView: 'admin', redirectData: { userId: String(target._id) } }
+      });
   });
 
   socket.on('admin_delete_user', async ({ targetUsername, targetUserId }) => {
@@ -1264,6 +1668,15 @@ io.on('connection', async (socket) => {
       socket.emit('admin_action_result', { success: true, msg: `Utilisateur "${target.username}" supprimé.` });
       const users = await User.find({}, 'username isAdmin createdAt').sort({ username: 1 });
       socket.emit('admin_users_data', users);
+      await logAdminAction({
+          actorUser: user,
+          actionType: 'user_deleted',
+          targetType: 'user',
+          targetId: String(target._id),
+          targetLabel: target.username,
+          message: `${user.username} a supprimé l'utilisateur ${target.username}`,
+          meta: { redirectView: 'admin', redirectData: null }
+      });
   });
 
   socket.on('admin_clear_all_posts', async () => {
@@ -1273,6 +1686,15 @@ io.on('connection', async (socket) => {
       await Post.deleteMany({ isArticle: { $ne: true } });
       io.emit('reload_posts');
       socket.emit('admin_action_result', { success: true, msg: 'Tous les posts supprimés.' });
+      await broadcastWorldTimeline();
+      await logAdminAction({
+          actorUser: user,
+          actionType: 'posts_cleared',
+          targetType: 'feed',
+          targetLabel: 'Flux social',
+          message: `${user.username} a vidé tout le flux social`,
+          meta: { redirectView: 'feed', redirectData: null }
+      });
   });
   // ========== [FIN ADMIN PANEL SOCKET] ==========
 });

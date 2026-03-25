@@ -305,6 +305,10 @@
                     <div class="accueil-headline-title"><i class="fa-solid fa-star"></i> Article à la Une</div>
                     <div id="accueil-headline-preview" class="accueil-headline-preview"></div>
                 </div>
+                <div class="accueil-timeline-wrap">
+                    <div class="accueil-timeline-title"><i class="fa-solid fa-wave-square"></i> Fil du monde</div>
+                    <div id="accueil-world-timeline" class="accueil-world-timeline"></div>
+                </div>
                 <div class="accueil-content-grid">
                     <div class="accueil-widget">
                         <div class="accueil-widget-title"><i class="fa-solid fa-bullhorn"></i> Derniers posts</div>
@@ -416,6 +420,21 @@
                 <div class="feed-view-header">
                                 <h3 style="margin:0; font-size:1.1rem;">Flux Social</h3>
                                 <div id="feed-char-avatar-wrapper" style="position:relative;"></div>
+                            </div>
+
+                            <div class="feed-smart-toolbar">
+                                <div id="feed-filter-bar" class="feed-filter-bar">
+                                    <button class="feed-filter-btn" data-filter="official" onclick="toggleFeedFilter('official')">Officiel</button>
+                                    <button class="feed-filter-btn" data-filter="following" onclick="toggleFeedFilter('following')">Persos suivis</button>
+                                    <button class="feed-filter-btn" data-filter="anonymous" onclick="toggleFeedFilter('anonymous')">Anonyme</button>
+                                    <button class="feed-filter-btn" data-filter="breaking" onclick="toggleFeedFilter('breaking')">Breaking</button>
+                                    <button class="feed-filter-btn" data-filter="sponsored" onclick="toggleFeedFilter('sponsored')">Pub</button>
+                                    <button class="feed-filter-btn" data-filter="companies" onclick="toggleFeedFilter('companies')">Entreprises</button>
+                                </div>
+                                <div class="feed-filter-meta-row">
+                                    <div id="feed-filter-meta" class="feed-filter-meta">Tous les posts du réseau</div>
+                                    <button class="btn-secondary" onclick="resetFeedFilters()" style="padding:6px 10px;font-size:0.74rem;"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+                                </div>
                             </div>
 
                             <div class="feed-container">
@@ -1039,6 +1058,10 @@
                         <div class="admin-section admin-console-section">
                             <div class="admin-section-title"><i class="fa-solid fa-calendar-days"></i> Derniers événements publiés</div>
                             <div id="admin-console-events" class="admin-console-list"></div>
+                        </div>
+                        <div class="admin-section admin-console-section">
+                            <div class="admin-section-title"><i class="fa-solid fa-scroll"></i> Journal admin serveur</div>
+                            <div id="admin-console-audit" class="admin-console-list"></div>
                         </div>
                     </div>
                 </div>
