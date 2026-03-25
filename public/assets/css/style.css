@@ -839,8 +839,8 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .city-card-evol.evol-neg { color: #da373c; }
 
 /* Panneau détail (slide depuis la droite comme profil) */
-.city-detail-panel { position: fixed; top: 0; right: -100%; width: 100%; max-width: min(460px, 100vw); height: 100%; background: var(--bg-secondary); border-left: 1px solid var(--border); z-index: 400; transition: right 0.3s cubic-bezier(0.22,1,0.36,1); overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; padding-bottom: 40px; box-sizing: border-box; }
-.city-detail-panel.open { right: 0; box-shadow: -20px 0 60px rgba(0,0,0,0.5); }
+.city-detail-panel { position: fixed; top: 0; right: 0; width: min(460px, 100vw); height: 100%; background: var(--bg-secondary); border-left: 1px solid var(--border); z-index: 400; transition: transform 0.3s cubic-bezier(0.22,1,0.36,1), box-shadow 0.3s; transform: translateX(100%); overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; padding-bottom: 40px; box-sizing: border-box; }
+.city-detail-panel.open { transform: translateX(0); box-shadow: -20px 0 60px rgba(0,0,0,0.5); }
 
 /* Drapeau dans le panneau */
 .city-detail-flag { width: 96px; height: 64px; object-fit: contain; border-radius: 5px; border: 1px solid var(--border); flex-shrink: 0; background: rgba(255,255,255,0.05); }
@@ -897,7 +897,7 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 /* Responsive */
 @media (max-width: 640px) {
     .cites-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
-    .city-detail-panel { max-width: 100%; }
+    .city-detail-panel { width: 100vw; }
     .city-hero-name { font-size: 1.3rem; }
 }
 /* ==================== [FIN CITÉS] ==================== */
@@ -1871,7 +1871,7 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 /* ==================== [FIN WIKI] ==================== */
 
 /* ==================== [BOURSE - DÉTAIL ACTION] ==================== */
-.stock-detail-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; padding: 16px 24px 0; }
+.stock-detail-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; padding: 16px 24px 0; overflow: hidden; }
 .stock-detail-logo { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border); flex-shrink: 0; }
 .stock-detail-logo-placeholder { width: 60px; height: 60px; border-radius: 50%; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; font-size: 1.6rem; color: var(--text-muted); flex-shrink: 0; }
 .stock-detail-info { min-width: 0; flex: 1; overflow: hidden; }
