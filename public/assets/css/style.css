@@ -902,6 +902,100 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 }
 /* ==================== [FIN CITÉS] ==================== */
 
+/* ==================== [DIPLOMATIE] ==================== */
+
+/* Sous-onglets */
+.cites-subtabs { display: flex; gap: 4px; margin-top: 12px; }
+.cites-subtab { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-muted); padding: 6px 16px; border-radius: var(--radius-sm); font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.18s; display: flex; align-items: center; gap: 6px; }
+.cites-subtab:hover { color: white; border-color: rgba(255,255,255,0.15); }
+.cites-subtab.active { background: rgba(108,99,255,0.15); border-color: var(--accent); color: var(--accent-soft); }
+
+/* Toolbar filtres */
+.diplo-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0 8px; flex-wrap: wrap; }
+.diplo-filters { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+.diplo-select { background: var(--bg-secondary); border: 1px solid var(--border); color: white; padding: 7px 10px; border-radius: var(--radius-sm); font-size: 0.78rem; cursor: pointer; min-width: 150px; }
+.diplo-select:focus { outline: none; border-color: var(--accent); }
+
+/* Légende */
+.diplo-legend { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; padding: 10px 14px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); }
+.diplo-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.68rem; color: var(--text-muted); font-weight: 600; }
+.diplo-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Couleurs par statut */
+.diplo-allie            .diplo-dot, .diplo-badge-allie            { background: #23a559; }
+.diplo-pacte_non_agression .diplo-dot, .diplo-badge-pacte_non_agression { background: #00d4aa; }
+.diplo-partenariat      .diplo-dot, .diplo-badge-partenariat      { background: #6c63ff; }
+.diplo-neutre           .diplo-dot, .diplo-badge-neutre           { background: #6b7280; }
+.diplo-observateur      .diplo-dot, .diplo-badge-observateur      { background: #60a5fa; }
+.diplo-tension          .diplo-dot, .diplo-badge-tension          { background: #f59e0b; }
+.diplo-sanction         .diplo-dot, .diplo-badge-sanction         { background: #fb923c; }
+.diplo-blocus           .diplo-dot, .diplo-badge-blocus           { background: #f97316; }
+.diplo-hostile          .diplo-dot, .diplo-badge-hostile          { background: #ef4444; }
+.diplo-conflit_froid    .diplo-dot, .diplo-badge-conflit_froid    { background: #818cf8; }
+.diplo-guerre           .diplo-dot, .diplo-badge-guerre           { background: #da373c; }
+
+/* Grille des relations */
+.diplo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; padding-bottom: 40px; }
+
+/* Carte de relation */
+.diplo-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 0; overflow: hidden; transition: all 0.18s; position: relative; }
+.diplo-card:hover { border-color: rgba(255,255,255,0.12); box-shadow: 0 4px 18px rgba(0,0,0,0.3); transform: translateY(-1px); }
+
+/* Bannière de couleur en haut de la carte */
+.diplo-card-banner { height: 4px; width: 100%; }
+.diplo-banner-allie            { background: linear-gradient(90deg, #23a559, #00d4aa); }
+.diplo-banner-pacte_non_agression { background: linear-gradient(90deg, #00d4aa, #3b82f6); }
+.diplo-banner-partenariat      { background: linear-gradient(90deg, #6c63ff, #818cf8); }
+.diplo-banner-neutre           { background: var(--border); }
+.diplo-banner-observateur      { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+.diplo-banner-tension          { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.diplo-banner-sanction         { background: linear-gradient(90deg, #fb923c, #f59e0b); }
+.diplo-banner-blocus           { background: linear-gradient(90deg, #f97316, #ef4444); }
+.diplo-banner-hostile          { background: linear-gradient(90deg, #ef4444, #da373c); }
+.diplo-banner-conflit_froid    { background: linear-gradient(90deg, #818cf8, #6b7280); }
+.diplo-banner-guerre           { background: linear-gradient(90deg, #da373c, #7f1d1d); }
+
+/* Corps de la carte */
+.diplo-card-body { padding: 12px 14px 14px; }
+.diplo-card-cities { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.diplo-city-flag { width: 36px; height: 24px; object-fit: contain; border: 1px solid var(--border); border-radius: 3px; flex-shrink: 0; background: rgba(255,255,255,0.04); }
+.diplo-city-flag-ph { width: 36px; height: 24px; background: var(--bg-tertiary); border-radius: 3px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: var(--text-muted); flex-shrink: 0; }
+.diplo-city-name { font-family: var(--font-display); font-size: 0.85rem; font-weight: 800; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.diplo-vs { font-size: 0.65rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; flex-shrink: 0; padding: 0 2px; }
+.diplo-cities-pair { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.diplo-cities-names { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 2px; }
+
+/* Badge statut */
+.diplo-status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 8px; color: white; }
+.diplo-badge-allie            { background: rgba(35,165,89,0.18); border-color: rgba(35,165,89,0.35); color: #4ade80; }
+.diplo-badge-pacte_non_agression { background: rgba(0,212,170,0.14); border-color: rgba(0,212,170,0.3); color: #34d399; }
+.diplo-badge-partenariat      { background: rgba(108,99,255,0.15); border-color: rgba(108,99,255,0.3); color: #a78bfa; }
+.diplo-badge-neutre           { background: rgba(107,114,128,0.15); border-color: rgba(107,114,128,0.25); color: #9ca3af; }
+.diplo-badge-observateur      { background: rgba(96,165,250,0.15); border-color: rgba(96,165,250,0.3); color: #60a5fa; }
+.diplo-badge-tension          { background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.3); color: #fbbf24; }
+.diplo-badge-sanction         { background: rgba(251,146,60,0.15); border-color: rgba(251,146,60,0.3); color: #fb923c; }
+.diplo-badge-blocus           { background: rgba(249,115,22,0.18); border-color: rgba(249,115,22,0.35); color: #f97316; }
+.diplo-badge-hostile          { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.3); color: #f87171; }
+.diplo-badge-conflit_froid    { background: rgba(129,140,248,0.15); border-color: rgba(129,140,248,0.3); color: #818cf8; }
+.diplo-badge-guerre           { background: rgba(218,55,60,0.2); border-color: rgba(218,55,60,0.4); color: #f87171; }
+
+/* Détails carte */
+.diplo-card-meta { font-size: 0.68rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px; margin-top: 3px; }
+.diplo-card-desc { font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+.diplo-card-actions { display: flex; gap: 6px; margin-top: 10px; opacity: 0; transition: opacity 0.18s; }
+.diplo-card:hover .diplo-card-actions { opacity: 1; }
+.diplo-card-btn { padding: 5px 10px; border-radius: var(--radius-sm); font-size: 0.7rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-muted); transition: all 0.15s; }
+.diplo-card-btn:hover { color: white; border-color: rgba(255,255,255,0.2); }
+.diplo-card-btn.danger:hover { background: rgba(218,55,60,0.15); border-color: rgba(218,55,60,0.4); color: #f87171; }
+
+/* Responsive */
+@media (max-width: 640px) {
+    .diplo-grid { grid-template-columns: 1fr; }
+    .diplo-toolbar { flex-direction: column; align-items: flex-start; }
+    .diplo-filters { width: 100%; }
+}
+/* ==================== [FIN DIPLOMATIE] ==================== */
+
 /* EDC valeur entière dans le panneau détail */
 .city-edc-full { font-size: 0.6rem; color: var(--text-muted); font-weight: 400; font-family: var(--font-main); margin-top: 2px; letter-spacing: 0; word-break: break-all; }
 

@@ -29,6 +29,7 @@ const Notification = require('./src/models/Notification');
 
 // ========== [CITÉS] ==========
 const City = require('./src/models/City');
+const CityRelation = require('./src/models/CityRelation');
 
 // ========== [BOURSE] ==========
 const Stock = require('./src/models/Stock');
@@ -760,6 +761,70 @@ io.on('connection', async (socket) => {
       io.emit('cities_data', cities);
   });
   // ========== [FIN CITÉS SOCKET] ==========
+
+  // ========== [DIPLOMATIE] SOCKET EVENTS ==========
+  socket.on('request_city_relations', async () => {
+      const relations = await CityRelation.find()
+          .populate('cityA', 'name flag archipel')
+          .populate('cityB', 'name flag archipel')
+          .sort({ updatedAt: -1 });
+      socket.emit('city_relations_data', relations);
+  });
+
+  socket.on('admin_upsert_city_relation', async ({ relationId, cityAId, cityBId, status, description, initiatedBy, since }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+
+      if(!cityAId || !cityBId || cityAId === cityBId) return;
+
+      // Normaliser l'ordre pour garantir l'unicité bidirectionnelle
+      const [idA, idB] = [cityAId, cityBId].sort();
+
+      let rel;
+      if(relationId) {
+          rel = await CityRelation.findById(relationId);
+          if(!rel) return;
+      } else {
+          rel = await CityRelation.findOne({
+              $or: [
+                  { cityA: idA, cityB: idB },
+                  { cityA: idB, cityB: idA }
+              ]
+          });
+          if(!rel) rel = new CityRelation({ cityA: idA, cityB: idB });
+      }
+
+      rel.cityA        = idA;
+      rel.cityB        = idB;
+      rel.status       = status || 'neutre';
+      rel.description  = description || '';
+      rel.initiatedBy  = initiatedBy || '';
+      if(since) rel.since = new Date(since);
+
+      await rel.save();
+
+      const relations = await CityRelation.find()
+          .populate('cityA', 'name flag archipel')
+          .populate('cityB', 'name flag archipel')
+          .sort({ updatedAt: -1 });
+      io.emit('city_relations_data', relations);
+  });
+
+  socket.on('admin_delete_city_relation', async ({ relationId }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+
+      await CityRelation.findByIdAndDelete(relationId);
+
+      const relations = await CityRelation.find()
+          .populate('cityA', 'name flag archipel')
+          .populate('cityB', 'name flag archipel')
+          .sort({ updatedAt: -1 });
+      io.emit('city_relations_data', relations);
+  });
+  // ========== [FIN DIPLOMATIE SOCKET] ==========
 
   // ========== [BOURSE] SOCKET EVENTS ==========
   socket.on('request_stocks', async () => {

@@ -96,7 +96,7 @@ function switchView(view) {
         const actuBtn = document.getElementById('btn-view-actualites');
         if(actuBtn) actuBtn.classList.remove('nav-notify');
     }
-    if(view === 'cites') { loadCities(); } // [CITÉS]
+    if(view === 'cites') { loadCities(); loadCityRelations(); } // [CITÉS]
     if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); }
     if(view === 'wiki') { loadWiki(); }
     if(view === 'accueil') { renderAccueil(); socket.emit('request_feed'); socket.emit('request_events'); if(!stocksData.length) socket.emit('request_stocks'); }
@@ -2423,6 +2423,7 @@ socket.on('cities_data', (cities) => {
     citiesData = cities;
     renderCitiesGrid(cities);
     renderCitiesRankings(cities);
+    populateDiploFilters();
     if(currentCityId) {
         const updated = cities.find(c => c._id === currentCityId);
         if(updated) renderCityDetailContent(updated);
@@ -2690,6 +2691,211 @@ async function adminUploadFlag() {
     input.value = '';
 }
 // ==================== [FIN CITÉS] ====================
+
+// ==================== [DIPLOMATIE] ====================
+let cityRelationsData = [];
+let currentDiploTab = 'geo';
+
+// Libellés et icônes par statut
+const DIPLO_STATUS_META = {
+    allie:               { label: 'Allié',                    icon: '🤝', tier: 0 },
+    pacte_non_agression: { label: 'Pacte de Non-Agression',   icon: '🛡️', tier: 1 },
+    partenariat:         { label: 'Partenariat économique',   icon: '💼', tier: 2 },
+    neutre:              { label: 'Neutre',                   icon: '⚪', tier: 3 },
+    observateur:         { label: 'Sous surveillance',        icon: '👁️', tier: 4 },
+    tension:             { label: 'Tension diplomatique',     icon: '⚠️', tier: 5 },
+    sanction:            { label: 'Sanctions économiques',    icon: '🚫', tier: 6 },
+    blocus:              { label: 'Blocus',                   icon: '⛔', tier: 7 },
+    hostile:             { label: 'Relations hostiles',       icon: '☠️', tier: 8 },
+    conflit_froid:       { label: 'Conflit froid',            icon: '❄️', tier: 9 },
+    guerre:              { label: 'En guerre ouverte',        icon: '💥', tier: 10 }
+};
+
+function loadCityRelations() {
+    socket.emit('request_city_relations');
+}
+
+socket.on('city_relations_data', (relations) => {
+    cityRelationsData = relations;
+    populateDiploFilters();
+    renderDiplomacy();
+    if(IS_ADMIN) {
+        const btn = document.getElementById('diplo-admin-btn');
+        if(btn) btn.classList.remove('hidden');
+    }
+});
+
+function switchCitesTab(tab) {
+    currentDiploTab = tab;
+    document.getElementById('cites-tab-geo').classList.toggle('hidden', tab !== 'geo');
+    document.getElementById('cites-tab-diplo').classList.toggle('hidden', tab !== 'diplo');
+    document.getElementById('subtab-geo').classList.toggle('active', tab === 'geo');
+    document.getElementById('subtab-diplo').classList.toggle('active', tab === 'diplo');
+    if(tab === 'diplo' && !cityRelationsData.length) loadCityRelations();
+}
+
+function populateDiploFilters() {
+    const sel = document.getElementById('diplo-filter-city');
+    if(!sel) return;
+    const current = sel.value;
+    // Collecter toutes les cités impliquées
+    const citySet = new Map();
+    cityRelationsData.forEach(r => {
+        if(r.cityA) citySet.set(String(r.cityA._id), r.cityA.name);
+        if(r.cityB) citySet.set(String(r.cityB._id), r.cityB.name);
+    });
+    // Compléter avec citiesData
+    citiesData.forEach(c => citySet.set(String(c._id), c.name));
+    const sorted = [...citySet.entries()].sort((a,b) => a[1].localeCompare(b[1]));
+
+    sel.innerHTML = '<option value="">Toutes les cités</option>';
+    sorted.forEach(([id, name]) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = name;
+        if(id === current) opt.selected = true;
+        sel.appendChild(opt);
+    });
+
+    // Remplir aussi les selects de la modale
+    populateDiploModalSelects();
+}
+
+function populateDiploModalSelects() {
+    ['diploCityA', 'diploCityB'].forEach(id => {
+        const sel = document.getElementById(id);
+        if(!sel) return;
+        const prev = sel.value;
+        sel.innerHTML = '<option value="">— Choisir une cité —</option>';
+        const sorted = [...citiesData].sort((a,b) => a.name.localeCompare(b.name));
+        sorted.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = String(c._id);
+            opt.textContent = c.name;
+            if(String(c._id) === prev) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    });
+}
+
+function renderDiplomacy() {
+    const grid = document.getElementById('diplo-relations-grid');
+    if(!grid) return;
+
+    const filterCity   = document.getElementById('diplo-filter-city')?.value || '';
+    const filterStatus = document.getElementById('diplo-filter-status')?.value || '';
+
+    let list = [...cityRelationsData];
+
+    if(filterCity)   list = list.filter(r => String(r.cityA?._id) === filterCity || String(r.cityB?._id) === filterCity);
+    if(filterStatus) list = list.filter(r => r.status === filterStatus);
+
+    // Trier par gravité décroissante (guerre en premier), puis par nom
+    list.sort((a,b) => {
+        const ta = DIPLO_STATUS_META[a.status]?.tier ?? 99;
+        const tb = DIPLO_STATUS_META[b.status]?.tier ?? 99;
+        return tb - ta || (a.cityA?.name || '').localeCompare(b.cityA?.name || '');
+    });
+
+    if(!list.length) {
+        grid.innerHTML = '<div class="rank-empty" style="grid-column:1/-1;">Aucune relation diplomatique correspondante.</div>';
+        return;
+    }
+
+    grid.innerHTML = list.map(r => renderDiploCard(r)).join('');
+}
+
+function renderDiploCard(r) {
+    const meta = DIPLO_STATUS_META[r.status] || { label: r.status, icon: '❓' };
+    const since = r.since ? new Date(r.since).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' }) : '';
+    const idStr = r._id;
+
+    const flagA = r.cityA?.flag
+        ? `<img src="${escapeHtml(r.cityA.flag)}" class="diplo-city-flag" alt="">`
+        : `<div class="diplo-city-flag-ph"><i class="fa-solid fa-flag"></i></div>`;
+    const flagB = r.cityB?.flag
+        ? `<img src="${escapeHtml(r.cityB.flag)}" class="diplo-city-flag" alt="">`
+        : `<div class="diplo-city-flag-ph"><i class="fa-solid fa-flag"></i></div>`;
+
+    const adminActions = IS_ADMIN ? `
+        <div class="diplo-card-actions">
+            <button class="diplo-card-btn" onclick="openDiploModal('${idStr}')"><i class="fa-solid fa-pen"></i> Modifier</button>
+            <button class="diplo-card-btn danger" onclick="deleteDiploRelation('${idStr}')"><i class="fa-solid fa-trash"></i> Supprimer</button>
+        </div>` : '';
+
+    return `
+    <div class="diplo-card">
+        <div class="diplo-card-banner diplo-banner-${r.status}"></div>
+        <div class="diplo-card-body">
+            <div class="diplo-card-cities">
+                <div class="diplo-cities-pair">
+                    ${flagA}
+                    <div class="diplo-cities-names">
+                        <div class="diplo-city-name">${escapeHtml(r.cityA?.name || '—')}</div>
+                        <div class="diplo-city-name" style="opacity:0.7;">${escapeHtml(r.cityB?.name || '—')}</div>
+                    </div>
+                    ${flagB}
+                </div>
+            </div>
+            <span class="diplo-status-badge diplo-badge-${r.status}">${meta.icon} ${meta.label}</span>
+            ${since ? `<div class="diplo-card-meta"><i class="fa-regular fa-calendar"></i> Depuis le ${since}</div>` : ''}
+            ${r.initiatedBy ? `<div class="diplo-card-meta"><i class="fa-solid fa-user"></i> ${escapeHtml(r.initiatedBy)}</div>` : ''}
+            ${r.description ? `<div class="diplo-card-desc">${escapeHtml(r.description)}</div>` : ''}
+            ${adminActions}
+        </div>
+    </div>`;
+}
+
+function openDiploModal(relationId) {
+    populateDiploModalSelects();
+    document.getElementById('diploRelationId').value = '';
+    document.getElementById('diploCityA').value = '';
+    document.getElementById('diploCityB').value = '';
+    document.getElementById('diploStatus').value = 'neutre';
+    document.getElementById('diploInitiatedBy').value = '';
+    document.getElementById('diploDesc').value = '';
+    document.getElementById('diploSince').value = new Date().toISOString().split('T')[0];
+
+    if(relationId) {
+        const rel = cityRelationsData.find(r => String(r._id) === String(relationId));
+        if(rel) {
+            document.getElementById('diploRelationId').value = String(rel._id);
+            document.getElementById('diploCityA').value = String(rel.cityA?._id || '');
+            document.getElementById('diploCityB').value = String(rel.cityB?._id || '');
+            document.getElementById('diploStatus').value = rel.status || 'neutre';
+            document.getElementById('diploInitiatedBy').value = rel.initiatedBy || '';
+            document.getElementById('diploDesc').value = rel.description || '';
+            if(rel.since) document.getElementById('diploSince').value = new Date(rel.since).toISOString().split('T')[0];
+        }
+    }
+    document.getElementById('diplo-modal').classList.remove('hidden');
+}
+
+function closeDiploModal() {
+    document.getElementById('diplo-modal').classList.add('hidden');
+}
+
+function submitDiploRelation() {
+    const cityAId      = document.getElementById('diploCityA').value;
+    const cityBId      = document.getElementById('diploCityB').value;
+    const status       = document.getElementById('diploStatus').value;
+    const initiatedBy  = document.getElementById('diploInitiatedBy').value.trim();
+    const description  = document.getElementById('diploDesc').value.trim();
+    const since        = document.getElementById('diploSince').value;
+    const relationId   = document.getElementById('diploRelationId').value;
+
+    if(!cityAId || !cityBId) return alert('Sélectionnez deux cités.');
+    if(cityAId === cityBId) return alert('Les deux cités doivent être différentes.');
+
+    socket.emit('admin_upsert_city_relation', { relationId: relationId || null, cityAId, cityBId, status, initiatedBy, description, since });
+    closeDiploModal();
+}
+
+function deleteDiploRelation(relationId) {
+    if(!confirm('Supprimer cette relation diplomatique ?')) return;
+    socket.emit('admin_delete_city_relation', { relationId });
+}
+// ==================== [FIN DIPLOMATIE] ====================
 
 // ==================== [BOURSE] ====================
 let stocksData = [];

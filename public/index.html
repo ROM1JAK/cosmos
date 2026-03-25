@@ -694,24 +694,80 @@
             <div class="cites-main">
                 <div class="cites-header">
                     <h2 class="cites-title"><i class="fa-solid fa-city"></i> Géopolitique — Cités</h2>
-                </div>
-                <div id="cites-grid-container"></div>
-
-                <!-- Classements en direct -->
-                <div class="cites-rankings-wrap">
-                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-                        <div class="cites-section-title" style="margin-bottom:0;"><i class="fa-solid fa-trophy"></i> Classements en direct</div>
-                        <button id="btn-reset-rank-evol" class="btn-secondary" onclick="resetRankEvolutions()" style="font-size:0.72rem; padding:5px 10px;"><i class="fa-solid fa-rotate-left"></i> Réinit. évolutions</button>
+                    <!-- Sous-onglets -->
+                    <div class="cites-subtabs">
+                        <button class="cites-subtab active" id="subtab-geo" onclick="switchCitesTab('geo')"><i class="fa-solid fa-earth-americas"></i> Géopolitique</button>
+                        <button class="cites-subtab" id="subtab-diplo" onclick="switchCitesTab('diplo')"><i class="fa-solid fa-handshake"></i> Diplomatie</button>
                     </div>
-                    <div class="cites-rankings">
-                        <div class="cites-rankings-col">
-                            <div class="cites-ranking-header"><i class="fa-solid fa-chart-bar"></i> EDC</div>
-                            <div id="ranking-edc"><div class="rank-empty">Aucune donnée.</div></div>
+                </div>
+
+                <!-- == VUE GÉOPOLITIQUE == -->
+                <div id="cites-tab-geo">
+                    <div id="cites-grid-container"></div>
+                    <!-- Classements en direct -->
+                    <div class="cites-rankings-wrap">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                            <div class="cites-section-title" style="margin-bottom:0;"><i class="fa-solid fa-trophy"></i> Classements en direct</div>
+                            <button id="btn-reset-rank-evol" class="btn-secondary" onclick="resetRankEvolutions()" style="font-size:0.72rem; padding:5px 10px;"><i class="fa-solid fa-rotate-left"></i> Réinit. évolutions</button>
                         </div>
-                        <div class="cites-rankings-col">
-                            <div class="cites-ranking-header"><i class="fa-solid fa-users"></i> Population</div>
-                            <div id="ranking-pop"><div class="rank-empty">Aucune donnée.</div></div>
+                        <div class="cites-rankings">
+                            <div class="cites-rankings-col">
+                                <div class="cites-ranking-header"><i class="fa-solid fa-chart-bar"></i> EDC</div>
+                                <div id="ranking-edc"><div class="rank-empty">Aucune donnée.</div></div>
+                            </div>
+                            <div class="cites-rankings-col">
+                                <div class="cites-ranking-header"><i class="fa-solid fa-users"></i> Population</div>
+                                <div id="ranking-pop"><div class="rank-empty">Aucune donnée.</div></div>
+                            </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- == VUE DIPLOMATIE == -->
+                <div id="cites-tab-diplo" class="hidden">
+
+                    <!-- Barre de filtres + bouton admin -->
+                    <div class="diplo-toolbar">
+                        <div class="diplo-filters">
+                            <select id="diplo-filter-city" class="diplo-select" onchange="renderDiplomacy()">
+                                <option value="">Toutes les cités</option>
+                            </select>
+                            <select id="diplo-filter-status" class="diplo-select" onchange="renderDiplomacy()">
+                                <option value="">Tous les statuts</option>
+                                <option value="allie">🤝 Allié</option>
+                                <option value="pacte_non_agression">🛡️ Pacte de Non-Agression</option>
+                                <option value="partenariat">🤝 Partenariat économique</option>
+                                <option value="neutre">⚪ Neutre</option>
+                                <option value="observateur">👁️ Sous surveillance</option>
+                                <option value="tension">⚠️ Tension diplomatique</option>
+                                <option value="sanction">🚫 Sanctions économiques</option>
+                                <option value="blocus">⛔ Blocus</option>
+                                <option value="hostile">☠️ Hostile</option>
+                                <option value="conflit_froid">❄️ Conflit froid</option>
+                                <option value="guerre">💥 En guerre</option>
+                            </select>
+                        </div>
+                        <button id="diplo-admin-btn" class="btn-primary hidden" onclick="openDiploModal(null)" style="font-size:0.78rem;padding:7px 14px;"><i class="fa-solid fa-plus"></i> Nouvelle relation</button>
+                    </div>
+
+                    <!-- Résumé légende statuts -->
+                    <div class="diplo-legend">
+                        <div class="diplo-legend-item diplo-allie"><span class="diplo-dot"></span>Allié</div>
+                        <div class="diplo-legend-item diplo-pacte_non_agression"><span class="diplo-dot"></span>PNA</div>
+                        <div class="diplo-legend-item diplo-partenariat"><span class="diplo-dot"></span>Partenariat</div>
+                        <div class="diplo-legend-item diplo-neutre"><span class="diplo-dot"></span>Neutre</div>
+                        <div class="diplo-legend-item diplo-observateur"><span class="diplo-dot"></span>Surveillance</div>
+                        <div class="diplo-legend-item diplo-tension"><span class="diplo-dot"></span>Tension</div>
+                        <div class="diplo-legend-item diplo-sanction"><span class="diplo-dot"></span>Sanctions</div>
+                        <div class="diplo-legend-item diplo-blocus"><span class="diplo-dot"></span>Blocus</div>
+                        <div class="diplo-legend-item diplo-hostile"><span class="diplo-dot"></span>Hostile</div>
+                        <div class="diplo-legend-item diplo-conflit_froid"><span class="diplo-dot"></span>Conflit froid</div>
+                        <div class="diplo-legend-item diplo-guerre"><span class="diplo-dot"></span>Guerre</div>
+                    </div>
+
+                    <!-- Grille des relations -->
+                    <div id="diplo-relations-grid" class="diplo-grid">
+                        <div class="rank-empty" style="grid-column:1/-1;">Aucune relation diplomatique enregistrée.</div>
                     </div>
                 </div>
             </div>
@@ -865,6 +921,49 @@
             </div>
         </div>
     </div>
+    <!-- [DIPLOMATIE] Modale Admin — Créer/éditer une relation -->
+    <div id="diplo-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeDiploModal()">
+        <div class="modal-box" style="max-width:460px;" onclick="event.stopPropagation()">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h3 style="margin:0;color:white;"><i class="fa-solid fa-handshake"></i> Relation Diplomatique</h3>
+                <button onclick="closeDiploModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
+            </div>
+            <input type="hidden" id="diploRelationId">
+            <label class="cfl">Cité A</label>
+            <select id="diploCityA" class="modal-input">
+                <option value="">— Choisir une cité —</option>
+            </select>
+            <label class="cfl" style="margin-top:10px;">Cité B</label>
+            <select id="diploCityB" class="modal-input">
+                <option value="">— Choisir une cité —</option>
+            </select>
+            <label class="cfl" style="margin-top:10px;">Statut diplomatique</label>
+            <select id="diploStatus" class="modal-input">
+                <option value="allie">🤝 Allié — Alliance militaire & économique</option>
+                <option value="pacte_non_agression">🛡️ Pacte de Non-Agression</option>
+                <option value="partenariat">💼 Partenariat économique</option>
+                <option value="neutre" selected>⚪ Neutre</option>
+                <option value="observateur">👁️ Sous surveillance</option>
+                <option value="tension">⚠️ Tension diplomatique</option>
+                <option value="sanction">🚫 Sanctions économiques</option>
+                <option value="blocus">⛔ Blocus</option>
+                <option value="hostile">☠️ Relations hostiles</option>
+                <option value="conflit_froid">❄️ Conflit froid (proxy)</option>
+                <option value="guerre">💥 En guerre ouverte</option>
+            </select>
+            <label class="cfl" style="margin-top:10px;">Initiée par (personnage / événement)</label>
+            <input type="text" id="diploInitiatedBy" class="modal-input" placeholder="Ex: Commandant Arvan, Traité de Solara…">
+            <label class="cfl" style="margin-top:10px;">Depuis le</label>
+            <input type="date" id="diploSince" class="modal-input">
+            <label class="cfl" style="margin-top:10px;">Description / Contexte RP (optionnel)</label>
+            <textarea id="diploDesc" class="modal-input" rows="3" placeholder="Contexte, conditions, historique…" style="resize:vertical;"></textarea>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+                <button onclick="closeDiploModal()" class="btn-secondary">Annuler</button>
+                <button onclick="submitDiploRelation()" class="btn-primary"><i class="fa-solid fa-check"></i> Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
     <div id="bourse-stock-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeStockModal()">
         <div class="modal-box" style="max-width:420px;" onclick="event.stopPropagation()">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
