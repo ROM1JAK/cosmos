@@ -37,6 +37,7 @@ let isBourseRankingCollapsed = localStorage.getItem('bourse_ranking_collapsed') 
 let currentAdminTab = localStorage.getItem('admin_current_tab') || 'overview';
 let bourseFilter = localStorage.getItem('bourse_filter') || 'all';
 let boursePulseTimeout = null;
+let isAccueilTimelineCollapsed = localStorage.getItem('accueil_timeline_collapsed') === '1';
 let feedFilters = (() => {
     try {
         return {
@@ -349,6 +350,22 @@ function renderWorldTimeline() {
             </div>
         </div>`;
     }).join('');
+}
+
+function syncAccueilTimelineUI() {
+    const wrap = document.getElementById('accueil-timeline-wrap');
+    const toggle = document.getElementById('accueil-timeline-toggle');
+    if(!wrap || !toggle) return;
+    wrap.classList.toggle('collapsed', isAccueilTimelineCollapsed);
+    toggle.setAttribute('aria-expanded', String(!isAccueilTimelineCollapsed));
+    const chevron = toggle.querySelector('.accueil-timeline-chevron i');
+    if(chevron) chevron.className = `fa-solid fa-chevron-${isAccueilTimelineCollapsed ? 'down' : 'up'}`;
+}
+
+function toggleAccueilTimeline(force) {
+    isAccueilTimelineCollapsed = typeof force === 'boolean' ? force : !isAccueilTimelineCollapsed;
+    localStorage.setItem('accueil_timeline_collapsed', isAccueilTimelineCollapsed ? '1' : '0');
+    syncAccueilTimelineUI();
 }
 
 function previewImg(input, previewId) {
@@ -722,6 +739,7 @@ function joinRoom(roomId) {
     document.getElementById('messages').innerHTML = ""; document.getElementById('typing-indicator').classList.add('hidden');
     document.getElementById('char-selector-wrapper').classList.remove('hidden'); document.getElementById('dm-header-actions').classList.add('hidden');
     socket.emit('request_history', currentRoomId); cancelContext(); clearStaging();
+    scrollToBottom(true); scheduleScrollToBottom(true);
     if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
     updateRoomListUI(); updateDmListUI(); switchView('chat'); 
 }
@@ -747,6 +765,7 @@ function openDm(target) {
     document.getElementById('currentRoomName').textContent = `@${target}`; document.getElementById('currentRoomName').style.color = "#9b59b6"; 
     document.getElementById('messages').innerHTML = ""; document.getElementById('char-selector-wrapper').classList.add('hidden'); document.getElementById('dm-header-actions').classList.remove('hidden'); 
     cancelContext(); clearStaging(); socket.emit('request_dm_history', { myUsername: USERNAME, targetUsername: target });
+    scrollToBottom(true); scheduleScrollToBottom(true);
     updateRoomListUI(); updateDmListUI(); switchView('chat'); 
     if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
 }
@@ -1023,9 +1042,11 @@ function openProfile(name) {
     const cs = document.getElementById('profileCompaniesSection'); if(cs) cs.style.display = 'none';
     closeBioEdit();
     const overlay = document.getElementById('profile-overlay');
+    const panel = document.getElementById('profile-slide-panel');
     overlay.classList.remove('hidden');
-    overlay.onclick = closeProfileModal; // cliquer dans le vide ferme le profil
-    document.getElementById('profile-slide-panel').classList.add('open');
+    overlay.onclick = closeProfileModal;
+    if(panel) panel.onclick = event => event.stopPropagation();
+    panel.classList.add('open');
     socket.emit('get_char_profile', name);
 }
 function closeProfileModal() { 
@@ -2989,6 +3010,7 @@ function adminSetCompanyRevenue(charId, companyName, currentRevenue) {
 
 // ==================== [ACCUEIL] ====================
 function renderAccueil() {
+    syncAccueilTimelineUI();
     // Article a la une
     const headlinePrev = document.getElementById('accueil-headline-preview');
     if(headlinePrev) {

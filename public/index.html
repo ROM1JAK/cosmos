@@ -305,10 +305,6 @@
                     <div class="accueil-headline-title"><i class="fa-solid fa-star"></i> Article à la Une</div>
                     <div id="accueil-headline-preview" class="accueil-headline-preview"></div>
                 </div>
-                <div class="accueil-timeline-wrap">
-                    <div class="accueil-timeline-title"><i class="fa-solid fa-wave-square"></i> Fil du monde</div>
-                    <div id="accueil-world-timeline" class="accueil-world-timeline"></div>
-                </div>
                 <div class="accueil-content-grid">
                     <div class="accueil-widget">
                         <div class="accueil-widget-title"><i class="fa-solid fa-bullhorn"></i> Derniers posts</div>
@@ -330,6 +326,13 @@
                         <div id="accueil-chars-preview" class="accueil-widget-body"></div>
                         <div class="accueil-widget-footer"><button class="accueil-more-btn" onclick="switchView('mes-persos')">Gérer mes persos <i class="fa-solid fa-arrow-right"></i></button></div>
                     </div>
+                </div>
+                <div id="accueil-timeline-wrap" class="accueil-timeline-wrap">
+                    <button id="accueil-timeline-toggle" class="accueil-timeline-title accueil-timeline-toggle" onclick="toggleAccueilTimeline()" aria-expanded="true" type="button">
+                        <span class="accueil-timeline-title-main"><i class="fa-solid fa-wave-square"></i> Fil du monde</span>
+                        <span class="accueil-timeline-chevron"><i class="fa-solid fa-chevron-up"></i></span>
+                    </button>
+                    <div id="accueil-world-timeline" class="accueil-world-timeline"></div>
                 </div>
             </div>
         </div>
