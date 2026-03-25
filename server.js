@@ -135,9 +135,9 @@ function broadcastUserList() {
     io.emit('update_user_list', uniqueNames);
 }
 
-async function createNotification(targetId, type, content, fromName) {
+async function createNotification(targetId, type, content, fromName, redirectView = null, redirectData = null) {
     if(!targetId || targetId === ADMIN_CODE) return;
-    const notif = new Notification({ targetOwnerId: targetId, type, content, fromName });
+    const notif = new Notification({ targetOwnerId: targetId, type, content, fromName, redirectView, redirectData });
     await notif.save();
     io.emit('notification_dispatch', notif); 
 }
@@ -232,6 +232,9 @@ io.on('connection', async (socket) => {
   });
   
   socket.on('edit_char', async (data) => {
+      const existingChar = await Character.findById(data.charId);
+      if(!existingChar) return;
+      const effectiveOwnerId = existingChar.ownerId || data.ownerId;
       const updateData = { 
           name: data.newName, role: data.newRole, avatar: data.newAvatar, color: data.newColor, 
           description: data.newDescription, partyName: data.partyName, partyLogo: data.partyLogo,
@@ -246,8 +249,8 @@ io.on('connection', async (socket) => {
       if(data.companies !== undefined) updateData.companies = data.companies;
       if(data.politicalRole !== undefined) updateData.politicalRole = data.politicalRole;
       await Character.findByIdAndUpdate(data.charId, updateData);
-      await Message.updateMany({ senderName: data.originalName, ownerId: data.ownerId }, { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }});
-      await Post.updateMany({ authorName: data.originalName, ownerId: data.ownerId }, { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor }});
+      await Message.updateMany({ senderName: data.originalName, ownerId: effectiveOwnerId }, { $set: { senderName: data.newName, senderRole: data.newRole, senderAvatar: data.newAvatar, senderColor: data.newColor }});
+      await Post.updateMany({ authorName: data.originalName, ownerId: effectiveOwnerId }, { $set: { authorName: data.newName, authorRole: data.newRole, authorAvatar: data.newAvatar, authorColor: data.newColor }});
       socket.emit('my_chars_data', await Character.find({ ownerId: data.ownerId }));
       io.emit('force_history_refresh', { roomId: data.currentRoomId });
       io.emit('reload_posts'); 
@@ -358,12 +361,34 @@ io.on('connection', async (socket) => {
           date: data.date, timestamp: new Date()
       });
       const saved = await msg.save();
+      const payload = saved.toObject();
+    payload.senderOwnerUsername = data.senderOwnerUsername || '';
+      payload.targetAvatar = data.targetAvatar || '';
+      payload.targetColor = data.targetColor || '';
+      payload.targetRole = data.targetRole || '';
+      payload.targetOwnerUsername = data.targetOwnerUsername || '';
       const targetSockets = Object.entries(onlineUsers).filter(([,u]) => {
           return u === data.targetOwnerUsername;
       }).map(([id]) => id);
       const senderSockets = Object.entries(onlineUsers).filter(([,u]) => u === data.senderOwnerUsername).map(([id]) => id);
-      [...new Set([...targetSockets, ...senderSockets])].forEach(sid => io.to(sid).emit('receive_char_dm', saved));
-      await createNotification(data.targetOwnerId, 'reply', `(${data.senderCharName}) vous a envoyé un message`, data.senderCharName);
+      [...new Set([...targetSockets, ...senderSockets])].forEach(sid => io.to(sid).emit('receive_char_dm', payload));
+      await createNotification(
+          data.targetOwnerId,
+          'reply',
+          `(${data.senderCharName}) vous a envoyé un message`,
+          data.senderCharName,
+          'char-mp',
+          {
+              myCharId: data.targetCharId,
+              otherCharId: data.senderCharId,
+              otherCharName: data.senderCharName,
+              otherCharAvatar: data.senderAvatar || '',
+              otherCharColor: data.senderColor || '',
+              otherCharRole: data.senderRole || '',
+              otherOwnerId: data.ownerId || '',
+              otherOwnerUsername: data.senderOwnerUsername || ''
+          }
+      );
   });
 
   socket.on('request_char_dm_history', async ({ senderCharId, targetCharId }) => {
@@ -386,19 +411,22 @@ io.on('connection', async (socket) => {
 
       // Regrouper par paire (monCharId, autreCharId) → dernière info utile
       const convMap = {}; // clé: "myCharId|otherCharId"
+      const otherCharIds = new Set();
       for(const m of msgs) {
           const myId   = myCharIds.includes(String(m.senderCharId)) ? String(m.senderCharId) : String(m.targetCharId);
           const othId  = myCharIds.includes(String(m.senderCharId)) ? String(m.targetCharId) : String(m.senderCharId);
           const key    = `${myId}|${othId}`;
+          otherCharIds.add(othId);
           if(!convMap[key]) {
               convMap[key] = {
                   myCharId:      myId,
                   otherCharId:   othId,
                   otherName:     myCharIds.includes(String(m.senderCharId)) ? m.targetName   : m.senderName,
-                  otherAvatar:   myCharIds.includes(String(m.senderCharId)) ? ''             : (m.senderAvatar || ''),
-                  otherColor:    myCharIds.includes(String(m.senderCharId)) ? ''             : (m.senderColor  || ''),
-                  otherRole:     myCharIds.includes(String(m.senderCharId)) ? ''             : (m.senderRole   || ''),
-                  otherOwnerId:  m.targetOwnerId,
+                  otherAvatar:   myCharIds.includes(String(m.senderCharId)) ? (m.targetAvatar || '') : (m.senderAvatar || ''),
+                  otherColor:    myCharIds.includes(String(m.senderCharId)) ? (m.targetColor  || '') : (m.senderColor  || ''),
+                  otherRole:     myCharIds.includes(String(m.senderCharId)) ? (m.targetRole   || '') : (m.senderRole   || ''),
+                  otherOwnerId:  myCharIds.includes(String(m.senderCharId)) ? m.targetOwnerId : m.ownerId,
+                  otherOwnerUsername: myCharIds.includes(String(m.senderCharId)) ? (m.targetOwnerUsername || '') : (m.senderOwnerUsername || ''),
                   lastDate:      m.timestamp,
                   lastContent:   m.content
               };
@@ -407,6 +435,18 @@ io.on('connection', async (socket) => {
               convMap[key].lastContent = m.content;
           }
       }
+      const chars = await Character.find({ _id: { $in: [...otherCharIds] } }).select('_id name avatar color role ownerId ownerUsername');
+      const charMap = new Map(chars.map(char => [String(char._id), char]));
+      Object.values(convMap).forEach(conv => {
+          const otherChar = charMap.get(String(conv.otherCharId));
+          if(!otherChar) return;
+          conv.otherName = otherChar.name || conv.otherName;
+          conv.otherAvatar = otherChar.avatar || conv.otherAvatar;
+          conv.otherColor = otherChar.color || conv.otherColor;
+          conv.otherRole = otherChar.role || conv.otherRole;
+          conv.otherOwnerId = otherChar.ownerId || conv.otherOwnerId;
+          conv.otherOwnerUsername = otherChar.ownerUsername || conv.otherOwnerUsername;
+      });
       socket.emit('my_char_convos', Object.values(convMap));
   });
 
@@ -415,7 +455,12 @@ io.on('connection', async (socket) => {
       const followerChar = await Character.findById(followerCharId);
       if(!targetChar || !followerChar || String(followerChar._id) === String(targetChar._id)) return;
       const index = targetChar.followers.indexOf(followerCharId);
-      if(index === -1) { targetChar.followers.push(followerCharId); await createNotification(targetChar.ownerId, 'follow', `(${followerChar.name}) vous suit désormais`, followerChar.ownerUsername); } 
+      if(index === -1) {
+          targetChar.followers.push(followerCharId);
+          await createNotification(targetChar.ownerId, 'follow', `(${followerChar.name}) vous suit désormais`, followerChar.ownerUsername, 'profile', {
+              charName: followerChar.name
+          });
+      } 
       else { targetChar.followers.splice(index, 1); }
       await targetChar.save();
       const charData = targetChar.toObject(); charData.postCount = await Post.countDocuments({ authorCharId: targetChar._id });
@@ -464,7 +509,7 @@ io.on('connection', async (socket) => {
       const targetSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.target);
       const senderSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.sender);
       [...new Set([...targetSockets, ...senderSockets])].forEach(sockId => { io.to(sockId).emit('receive_dm', payload); });
-      if (targetUser) await createNotification(targetUser.secretCode, 'reply', `vous a envoyé un message privé`, data.sender);
+    if (targetUser) await createNotification(targetUser.secretCode, 'reply', `vous a envoyé un message privé`, data.sender, 'dm', { username: data.sender });
   });
 
   socket.on('message_rp', async (msgData) => {
@@ -475,7 +520,7 @@ io.on('connection', async (socket) => {
     io.to(msgData.roomId).emit('message_rp', savedMsg);
     if (msgData.replyTo && msgData.replyTo.id) {
         const originalMsg = await Message.findById(msgData.replyTo.id);
-        if (originalMsg && originalMsg.ownerId !== msgData.ownerId) await createNotification(originalMsg.ownerId, 'reply', `a répondu à votre message`, msgData.senderName);
+        if (originalMsg && originalMsg.ownerId !== msgData.ownerId) await createNotification(originalMsg.ownerId, 'reply', `a répondu à votre message`, msgData.senderName, 'chat', { roomId: msgData.roomId });
     }
     // Détection des mentions @
     if (msgData.content && msgData.content.includes('@')) {
@@ -490,7 +535,7 @@ io.on('connection', async (socket) => {
                     if (!potentialName) continue;
                     const mc = await Character.findOne({ name: new RegExp(`^${potentialName}$`, 'i') });
                     if (mc && mc.ownerId !== msgData.ownerId && !notifiedOwners.has(mc.ownerId)) {
-                        await createNotification(mc.ownerId, 'mention', `(${msgData.senderName}) vous a mentionné dans le chat`, msgData.senderName);
+                        await createNotification(mc.ownerId, 'mention', `(${msgData.senderName}) vous a mentionné dans le chat`, msgData.senderName, 'chat', { roomId: msgData.roomId });
                         notifiedOwners.add(mc.ownerId);
                         i += len - 1;
                         break;
@@ -525,7 +570,7 @@ io.on('connection', async (socket) => {
           const notifiedOwners = new Set();
           for(const f of followersChars) {
               if(!notifiedOwners.has(f.ownerId)) {
-                  await createNotification(f.ownerId, 'follow', `(${postData.authorName}) a publié un post`, "Feed");
+                  await createNotification(f.ownerId, 'follow', `(${postData.authorName}) a publié un post`, "Feed", 'feed', { postId: String(savedPost._id) });
                   notifiedOwners.add(f.ownerId);
               }
           }
@@ -543,7 +588,7 @@ io.on('connection', async (socket) => {
                       if (!potentialName) continue;
                       const mc = await Character.findOne({ name: new RegExp(`^${potentialName}$`, 'i') });
                       if (mc && mc.ownerId !== postData.ownerId && !notifiedOwners.has(mc.ownerId)) {
-                          await createNotification(mc.ownerId, 'mention', `(${postData.authorName}) vous a mentionné dans un post`, postData.authorName);
+                          await createNotification(mc.ownerId, 'mention', `(${postData.authorName}) vous a mentionné dans un post`, postData.authorName, 'feed', { postId: String(savedPost._id) });
                           notifiedOwners.add(mc.ownerId);
                           i += len - 1;
                           break;
@@ -578,7 +623,7 @@ io.on('connection', async (socket) => {
       io.emit('post_updated', post);
       if (action === 'like' && post.ownerId) {
            const likerChar = await Character.findById(charId);
-           await createNotification(post.ownerId, 'like', `(${likerChar ? likerChar.name : "Inconnu"}) a aimé votre post`, "Feed");
+           await createNotification(post.ownerId, 'like', `(${likerChar ? likerChar.name : "Inconnu"}) a aimé votre post`, "Feed", 'feed', { postId: String(post._id) });
       }
   });
 
@@ -589,7 +634,7 @@ io.on('connection', async (socket) => {
       post.comments.push(comment);
       await post.save();
       io.emit('post_updated', post);
-      if (post.ownerId !== comment.ownerId) await createNotification(post.ownerId, 'reply', `(${comment.authorName}) a commenté votre post`, "Feed");
+    if (post.ownerId !== comment.ownerId) await createNotification(post.ownerId, 'reply', `(${comment.authorName}) a commenté votre post`, "Feed", 'feed', { postId: String(post._id) });
   });
   socket.on('delete_comment', async ({ postId, commentId }) => {
       const post = await Post.findById(postId);
@@ -1153,8 +1198,27 @@ io.on('connection', async (socket) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
-      const users = await User.find({}, 'username isAdmin createdAt').sort({ username: 1 });
-      socket.emit('admin_users_data', users);
+      const users = await User.find({}, 'username isAdmin createdAt secretCode').sort({ username: 1 });
+      const chars = await Character.find({ ownerId: { $in: users.map(u => u.secretCode) } }).select('name role ownerId avatar color');
+      const charsByOwner = new Map();
+      chars.forEach(char => {
+          const key = char.ownerId || '';
+          if(!charsByOwner.has(key)) charsByOwner.set(key, []);
+          charsByOwner.get(key).push({
+              _id: String(char._id),
+              name: char.name,
+              role: char.role || '',
+              avatar: char.avatar || '',
+              color: char.color || ''
+          });
+      });
+      socket.emit('admin_users_data', users.map(u => ({
+          _id: String(u._id),
+          username: u.username,
+          isAdmin: !!u.isAdmin,
+          createdAt: u.createdAt,
+          characters: charsByOwner.get(u.secretCode) || []
+      })));
   });
 
   socket.on('admin_set_admin', async ({ targetUsername, targetUserId, value, makeAdmin }) => {

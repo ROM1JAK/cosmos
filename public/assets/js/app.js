@@ -831,6 +831,12 @@ function editMyCharFromProfile() {
 
 socket.on('char_profile_data', (char) => {
     currentProfileChar = char;
+    if(window.__pendingProfileEdit && String(window.__pendingProfileEdit) === String(char._id)) {
+        window.__pendingProfileEdit = null;
+        closeProfileModal();
+        prepareEditAnyCharacter(char._id);
+        return;
+    }
 
     // En-tête héro
     document.getElementById('profileName').textContent = char.name;
@@ -1091,6 +1097,10 @@ let charMpCurrentKey    = null;
 
 function mpKey(a, b)  { return `${a}|${b}`; }
 function mpParse(key) { const [a, b] = key.split('|'); return { myCharId: a, otherCharId: b }; }
+function isCharMpVisible() {
+    const panel = document.getElementById('reseau-panel-mp');
+    return currentView === 'reseau' && !!panel && !panel.classList.contains('hidden');
+}
 
 // ── Charger toutes les convos existantes depuis le serveur ──
 function loadMyCharConvos() {
@@ -1107,7 +1117,7 @@ socket.on('my_char_convos', (convos) => {
         if(!charMpConversations[key]) {
             charMpConversations[key] = {
                 myChar,
-                otherChar: { _id: c.otherCharId, name: c.otherName, avatar: c.otherAvatar||'', color: c.otherColor||'', role: c.otherRole||'', ownerId: c.otherOwnerId||'' },
+                otherChar: { _id: c.otherCharId, name: c.otherName, avatar: c.otherAvatar||'', color: c.otherColor||'', role: c.otherRole||'', ownerId: c.otherOwnerId||'', ownerUsername: c.otherOwnerUsername||'' },
                 msgs: [], unread: false, lastContent: c.lastContent || ''
             };
         }
@@ -1207,6 +1217,7 @@ function sendCharMpMessage() {
         senderAvatar: conv.myChar.avatar, senderColor: conv.myChar.color, senderRole: conv.myChar.role,
         senderOwnerUsername: USERNAME,
         targetCharId: conv.otherChar._id, targetCharName: conv.otherChar.name,
+        targetAvatar: conv.otherChar.avatar || '', targetColor: conv.otherChar.color || '', targetRole: conv.otherChar.role || '',
         targetOwnerId: conv.otherChar.ownerId, targetOwnerUsername: conv.otherChar.ownerUsername||'',
         ownerId: PLAYER_ID, content,
         date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
@@ -1235,11 +1246,11 @@ function appendCharMpMsg(msg) {
 
 // ── Historique ──
 socket.on('char_dm_history', ({ senderCharId, targetCharId, msgs }) => {
-    if(currentView === 'char-mp' && charMpCurrentKey) {
+    if(isCharMpVisible() && charMpCurrentKey) {
         const { myCharId, otherCharId } = mpParse(charMpCurrentKey);
         const match = (String(senderCharId)===String(myCharId) && String(targetCharId)===String(otherCharId))
                    || (String(senderCharId)===String(otherCharId) && String(targetCharId)===String(myCharId));
-        if(match) { const c=document.getElementById('char-mp-messages'); if(c){c.innerHTML=''; msgs.forEach(m=>appendCharMpMsg(m));} }
+        if(match) { const c=document.getElementById('char-mp-messages'); if(c){c.innerHTML=''; msgs.forEach(m=>appendCharMpMsg(m)); c.scrollTop = c.scrollHeight;} }
     }
     const modal = document.getElementById('char-dm-modal');
     if(modal && !modal.classList.contains('hidden')) {
@@ -1262,13 +1273,21 @@ socket.on('receive_char_dm', (msg) => {
         if(!myChar) return;
         charMpConversations[key] = {
             myChar,
-            otherChar: { _id: othCharId, name: isISender?msg.targetName:msg.senderName, avatar: isISender?'':(msg.senderAvatar||''), color: isISender?'':(msg.senderColor||''), role: isISender?'':(msg.senderRole||''), ownerId: isISender?msg.targetOwnerId:msg.ownerId },
+            otherChar: {
+                _id: othCharId,
+                name: isISender ? msg.targetName : msg.senderName,
+                avatar: isISender ? (msg.targetAvatar || '') : (msg.senderAvatar || ''),
+                color: isISender ? (msg.targetColor || '') : (msg.senderColor || ''),
+                role: isISender ? (msg.targetRole || '') : (msg.senderRole || ''),
+                ownerId: isISender ? msg.targetOwnerId : msg.ownerId,
+                ownerUsername: isISender ? (msg.targetOwnerUsername || '') : (msg.senderOwnerUsername || '')
+            },
             msgs:[], unread:false
         };
     }
     charMpConversations[key].lastContent = msg.content;
     charMpConversations[key].msgs.push(msg);
-    if(currentView==='char-mp' && charMpCurrentKey===key) { appendCharMpMsg(msg); }
+    if(isCharMpVisible() && charMpCurrentKey===key) { appendCharMpMsg(msg); }
     const isOnMp = (currentView === 'reseau' && localStorage.getItem('last_reseau_tab') === 'mp');
     if(!isOnMp && msg.ownerId !== PLAYER_ID) {
         charMpConversations[key].unread = true;
@@ -1363,7 +1382,7 @@ function sendCharDm() {
     const senderChar = sel ? myCharacters.find(c=>c._id===sel.value) : null; if(!senderChar) return;
     socket.emit('send_char_dm', {
         senderCharId:senderChar._id, senderCharName:senderChar.name, senderAvatar:senderChar.avatar, senderColor:senderChar.color, senderRole:senderChar.role, senderOwnerUsername:USERNAME,
-        targetCharId:charDmTarget._id, targetCharName:charDmTarget.name, targetOwnerId:charDmTarget.ownerId, targetOwnerUsername:charDmTarget.ownerUsername||'',
+        targetCharId:charDmTarget._id, targetCharName:charDmTarget.name, targetAvatar:charDmTarget.avatar||'', targetColor:charDmTarget.color||'', targetRole:charDmTarget.role||'', targetOwnerId:charDmTarget.ownerId, targetOwnerUsername:charDmTarget.ownerUsername||'',
         ownerId:PLAYER_ID, content, date:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
     });
     document.getElementById('charDmInput').value='';
@@ -1840,6 +1859,21 @@ function createPostElement(post) {
 let notifications = [];
 socket.on('notifications_data', (d) => { notifications = d; updateNotificationBadge(); });
 socket.on('notification_dispatch', (n) => { if(n.targetOwnerId === PLAYER_ID) { notifications.unshift(n); updateNotificationBadge(); if(notificationsEnabled) notifSound.play().catch(e=>{}); } });
+function getNotificationMeta(notification) {
+    const metaByType = {
+        like:    { icon: 'fa-heart',              cls: 'notif-like',    label: 'Like' },
+        mention: { icon: 'fa-at',                 cls: 'notif-mention', label: 'Mention' },
+        follow:  { icon: 'fa-user-plus',          cls: 'notif-follow',  label: 'Suivi' },
+        reply:   { icon: 'fa-reply',              cls: 'notif-reply',   label: 'Réponse' }
+    };
+    const base = metaByType[notification.type] || { icon: 'fa-bell', cls: 'notif-default', label: 'Notification' };
+    if(notification.redirectView === 'char-mp') return { ...base, icon: 'fa-user-group', cls: 'notif-char-mp', label: 'MP perso' };
+    if(notification.redirectView === 'dm') return { ...base, icon: 'fa-envelope', cls: 'notif-dm', label: 'Message privé' };
+    if(notification.redirectView === 'chat') return { ...base, icon: 'fa-comments', cls: 'notif-chat', label: 'Chat' };
+    if(notification.redirectView === 'feed') return { ...base, icon: 'fa-bullhorn', cls: 'notif-feed', label: 'Feed' };
+    if(notification.redirectView === 'profile') return { ...base, icon: 'fa-user', cls: 'notif-profile', label: 'Profil' };
+    return base;
+}
 function updateNotificationBadge() {
     const c = notifications.filter(n => !n.isRead).length; const b = document.getElementById('notif-badge');
     if(c > 0) { b.textContent = c; b.classList.remove('hidden'); } else b.classList.add('hidden');
@@ -1849,11 +1883,105 @@ function openNotifications() {
     const list = document.getElementById('notif-list'); list.innerHTML = "";
     if(notifications.length === 0) list.innerHTML = "<div style='text-align:center; padding:20px; color:#777'>Rien.</div>";
     notifications.forEach(n => {
-        list.innerHTML += `<div class="notif-item ${!n.isRead?'unread':''}"><div class="notif-icon"><i class="fa-solid fa-bell"></i></div><div class="notif-content"><strong>${n.fromName}</strong> ${n.content}</div></div>`;
+        const meta = getNotificationMeta(n);
+        const title = n.redirectView === 'char-mp' ? 'Ouvrir la conversation' : 'Ouvrir';
+        const time = n.timestamp ? new Date(n.timestamp).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+        list.innerHTML += `<div class="notif-item ${meta.cls} ${!n.isRead?'unread':''}" onclick="openNotificationTarget('${n._id}')" title="${title}"><div class="notif-icon"><i class="fa-solid ${meta.icon}"></i></div><div class="notif-content"><div class="notif-topline"><span class="notif-label">${meta.label}</span><span class="notif-time">${time}</span></div><div><strong>${n.fromName}</strong> ${n.content}</div></div></div>`;
     });
     socket.emit('mark_notifications_read', PLAYER_ID); notifications.forEach(n=>n.isRead=true); updateNotificationBadge();
 }
 function closeNotifications() { document.getElementById('notifications-modal').classList.add('hidden'); }
+function openNotificationTarget(notificationId) {
+    const notification = notifications.find(n => String(n._id) === String(notificationId));
+    if(!notification) return;
+    closeNotifications();
+    if(notification.redirectView === 'char-mp' && notification.redirectData) {
+        const data = notification.redirectData;
+        const myChar = myCharacters.find(c => String(c._id) === String(data.myCharId));
+        if(!myChar) return;
+        const key = mpKey(String(data.myCharId), String(data.otherCharId));
+        if(!charMpConversations[key]) {
+            charMpConversations[key] = {
+                myChar,
+                otherChar: {
+                    _id: data.otherCharId,
+                    name: data.otherCharName || '',
+                    avatar: data.otherCharAvatar || '',
+                    color: data.otherCharColor || '',
+                    role: data.otherCharRole || '',
+                    ownerId: data.otherOwnerId || '',
+                    ownerUsername: data.otherOwnerUsername || ''
+                },
+                msgs: [],
+                unread: false,
+                lastContent: ''
+            };
+        }
+        switchView('reseau');
+        switchReseauTab('mp');
+        openCharMpConvo(key);
+        return;
+    }
+    if(notification.redirectView === 'dm' && notification.redirectData?.username) {
+        switchView('chat');
+        openDm(notification.redirectData.username);
+        return;
+    }
+    if(notification.redirectView === 'chat') {
+        joinRoom(notification.redirectData?.roomId || 'global');
+        return;
+    }
+    if(notification.redirectView === 'feed') {
+        switchView('reseau');
+        switchReseauTab('flux');
+        if(notification.redirectData?.postId) setTimeout(() => openPostDetail(notification.redirectData.postId), 150);
+        return;
+    }
+    if(notification.redirectView === 'profile' && notification.redirectData?.charName) {
+        openProfile(notification.redirectData.charName);
+    }
+}
+
+function openProfileById(charId, editAfterLoad = false) {
+    const localChar = myCharacters.find(c => String(c._id) === String(charId));
+    if(localChar) {
+        if(editAfterLoad) prepareEditAnyCharacter(localChar._id);
+        else openProfile(localChar.name);
+        return;
+    }
+    const match = adminUsersCache.flatMap(u => Array.isArray(u.characters) ? u.characters : []).find(c => String(c._id) === String(charId));
+    if(match) {
+        window.__pendingProfileEdit = editAfterLoad ? String(charId) : null;
+        openProfile(match.name);
+    }
+}
+
+function prepareEditAnyCharacter(id) {
+    const char = myCharacters.find(c => String(c._id) === String(id)) || (currentProfileChar && String(currentProfileChar._id) === String(id) ? currentProfileChar : null);
+    if(!char) {
+        openProfileById(id, true);
+        return;
+    }
+    document.getElementById('editCharId').value = char._id;
+    document.getElementById('editCharOriginalName').value = char.name;
+    document.getElementById('editCharName').value = char.name;
+    document.getElementById('editCharRole').value = char.role;
+    document.getElementById('editCharDesc').value = char.description || '';
+    document.getElementById('editCharColor').value = char.color || '#5c7cfa';
+    document.getElementById('editCharBase64').value = char.avatar;
+    document.getElementById('editCharPartyName').value = char.partyName || '';
+    document.getElementById('editCharPartyBase64').value = char.partyLogo || '';
+    document.getElementById('editCharCapital').value = char.capital || 0;
+    if(document.getElementById('editCharPartyFounder')) document.getElementById('editCharPartyFounder').value = char.partyFounder || '';
+    if(document.getElementById('editCharPartyCreationDate')) document.getElementById('editCharPartyCreationDate').value = char.partyCreationDate || '';
+    if(document.getElementById('editCharPartyMotto')) document.getElementById('editCharPartyMotto').value = char.partyMotto || '';
+    if(document.getElementById('editCharPartyDescription')) document.getElementById('editCharPartyDescription').value = char.partyDescription || '';
+    const prEl = document.getElementById('editCharPoliticalRole');
+    if(prEl) prEl.value = char.politicalRole || '';
+    editCharCompanies = (char.companies || []).map(c => ({...c}));
+    renderEditCharCompanies();
+    openCharModal('edit');
+}
 
 document.addEventListener('click', (e) => {
     const wrapper = document.getElementById('feed-char-avatar-wrapper');
@@ -4144,12 +4272,17 @@ function renderAdminUsers(users) {
     list.innerHTML = users.map(u => {
         const since = u.createdAt ? new Date(u.createdAt).toLocaleDateString('fr-FR') : '?';
         const adminBadge = u.isAdmin ? '<span class="admin-user-badge admin-badge-admin">admin</span>' : '<span class="admin-user-badge">user</span>';
+        const chars = Array.isArray(u.characters) ? u.characters : [];
+        const charsHtml = chars.length
+            ? `<div class="admin-user-characters">${chars.map(char => `<span class="admin-char-chip"><img src="${char.avatar || ''}" class="admin-char-chip-avatar" alt=""><button class="admin-char-chip-main" onclick="openProfileById('${char._id}')"><span class="admin-char-chip-name" style="color:${char.color || 'white'}">${escapeHtml(char.name || '')}</span><span class="admin-char-chip-role">${escapeHtml(char.role || '')}</span></button><button class="admin-char-chip-action" onclick="event.stopPropagation(); openProfileById('${char._id}')" title="Profil"><i class="fa-solid fa-user"></i></button><button class="admin-char-chip-action" onclick="event.stopPropagation(); prepareEditAnyCharacter('${char._id}')" title="Modifier"><i class="fa-solid fa-pen"></i></button></span>`).join('')}</div>`
+            : '<div class="admin-user-nochars">Aucun personnage</div>';
         return `<div class="admin-user-row">
             <div class="admin-user-info">
                 <span class="admin-user-name">${escapeHtml(u.username)}</span>
                 ${adminBadge}
                 <span class="admin-user-since">depuis ${since}</span>
             </div>
+            ${charsHtml}
             <div class="admin-user-actions">
                 <button class="btn-secondary" style="padding:4px 8px;font-size:0.75rem;" onclick="adminToggleAdmin('${u._id}',${!u.isAdmin})">
                     ${u.isAdmin ? '<i class="fa-solid fa-user-minus"></i> Retirer admin' : '<i class="fa-solid fa-user-plus"></i> Rendre admin'}
@@ -4163,7 +4296,13 @@ function renderAdminUsers(users) {
 }
 function filterAdminUsers(query) {
     const q = (query||'').toLowerCase();
-    renderAdminUsers(q ? adminUsersCache.filter(u => u.username.toLowerCase().includes(q)) : adminUsersCache);
+    renderAdminUsers(q ? adminUsersCache.filter(u => {
+        if((u.username || '').toLowerCase().includes(q)) return true;
+        return (u.characters || []).some(char =>
+            (char.name || '').toLowerCase().includes(q) ||
+            (char.role || '').toLowerCase().includes(q)
+        );
+    }) : adminUsersCache);
 }
 function resetAdminCompanyEditor() {
     ['admin-company-char-id', 'admin-company-index', 'admin-company-old-name', 'admin-company-name', 'admin-company-role', 'admin-company-hq', 'admin-company-revenue', 'admin-company-logo', 'admin-company-description'].forEach(id => {

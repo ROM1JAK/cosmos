@@ -139,7 +139,27 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .notif-item.unread { background: var(--accent-muted); border-left: 3px solid var(--accent); }
 .notif-icon { width: 34px; height: 34px; background: var(--bg-tertiary); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--text-muted); flex-shrink: 0; font-size: 0.9rem; }
 .notif-content { font-size: 0.88rem; color: var(--text-normal); flex: 1; }
+.notif-topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.notif-label { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
 .notif-time { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
+.notif-like .notif-icon { background: rgba(218,55,60,0.14); color: #f87171; }
+.notif-like .notif-label { color: #f87171; }
+.notif-mention .notif-icon { background: rgba(245,158,11,0.14); color: #fbbf24; }
+.notif-mention .notif-label { color: #fbbf24; }
+.notif-follow .notif-icon { background: rgba(35,165,89,0.14); color: #4ade80; }
+.notif-follow .notif-label { color: #4ade80; }
+.notif-reply .notif-icon { background: rgba(96,165,250,0.14); color: #60a5fa; }
+.notif-reply .notif-label { color: #60a5fa; }
+.notif-char-mp .notif-icon { background: rgba(168,85,247,0.16); color: #c084fc; }
+.notif-char-mp .notif-label { color: #c084fc; }
+.notif-dm .notif-icon { background: rgba(59,130,246,0.14); color: #93c5fd; }
+.notif-dm .notif-label { color: #93c5fd; }
+.notif-chat .notif-icon { background: rgba(45,212,191,0.14); color: #5eead4; }
+.notif-chat .notif-label { color: #5eead4; }
+.notif-feed .notif-icon { background: rgba(251,146,60,0.14); color: #fdba74; }
+.notif-feed .notif-label { color: #fdba74; }
+.notif-profile .notif-icon { background: rgba(148,163,184,0.14); color: #cbd5e1; }
+.notif-profile .notif-label { color: #cbd5e1; }
 
 /* ==================== PROFILE PLEIN ÉCRAN [NOUVEAU] ==================== */
 #profile-slide-panel { 
@@ -2176,6 +2196,26 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 }
 .admin-badge-admin { background: rgba(108,99,255,0.18); color: var(--accent); border-color: rgba(108,99,255,0.3); }
 .admin-user-since { font-size: 0.72rem; color: var(--text-muted); }
+.admin-user-characters { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 220px; }
+.admin-char-chip {
+    display: inline-flex; align-items: center; gap: 7px; padding: 4px 8px;
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 999px;
+    max-width: 100%;
+}
+.admin-char-chip-avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); flex-shrink: 0; }
+.admin-char-chip-main {
+    background: none; border: none; padding: 0; display: inline-flex; align-items: center; gap: 6px;
+    cursor: pointer; min-width: 0; font-family: var(--font-main);
+}
+.admin-char-chip-name { font-size: 0.76rem; font-weight: 700; white-space: nowrap; }
+.admin-char-chip-role { font-size: 0.68rem; color: var(--text-muted); white-space: nowrap; }
+.admin-char-chip-action {
+    width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border);
+    background: rgba(255,255,255,0.04); color: var(--text-muted); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.admin-char-chip-action:hover, .admin-char-chip-main:hover .admin-char-chip-name { color: white; }
+.admin-user-nochars { flex: 1; color: var(--text-muted); font-size: 0.75rem; }
 .admin-user-actions { display: flex; gap: 6px; align-items: center; }
 .admin-actions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .admin-companies-layout { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 18px; align-items: start; }
