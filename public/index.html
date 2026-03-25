@@ -893,6 +893,16 @@
                 <!-- Summary cards -->
                 <div id="bourse-summary-row" class="bourse-summary-row"></div>
 
+                <div class="bourse-toolbar">
+                    <div id="bourse-filter-bar" class="bourse-filter-bar">
+                        <button class="bourse-filter-btn active" data-filter="all" onclick="setBourseFilter('all')">Toutes</button>
+                        <button class="bourse-filter-btn" data-filter="gainers" onclick="setBourseFilter('gainers')">En hausse</button>
+                        <button class="bourse-filter-btn" data-filter="losers" onclick="setBourseFilter('losers')">En baisse</button>
+                        <button class="bourse-filter-btn" data-filter="topRevenue" onclick="setBourseFilter('topRevenue')">Top CA</button>
+                    </div>
+                    <div id="bourse-filter-meta" class="bourse-filter-meta">Affichage complet</div>
+                </div>
+
                 <!-- Classement entreprises / CA -->
                 <div id="bourse-ranking-section" class="bourse-ranking-section">
                     <div class="bourse-ranking-title">
@@ -1007,6 +1017,29 @@
                     <div class="admin-section">
                         <div class="admin-section-title"><i class="fa-solid fa-circle-dot" style="color:#23a559;"></i> Connectés maintenant</div>
                         <div id="admin-online-list" class="admin-online-list"></div>
+                    </div>
+
+                    <div class="admin-console-grid">
+                        <div class="admin-section admin-console-section">
+                            <div class="admin-section-title"><i class="fa-solid fa-wave-square"></i> Activité récente</div>
+                            <div id="admin-console-activity" class="admin-console-list"></div>
+                        </div>
+                        <div class="admin-section admin-console-section">
+                            <div class="admin-section-title"><i class="fa-solid fa-user-plus"></i> Derniers comptes créés</div>
+                            <div id="admin-console-users" class="admin-console-list"></div>
+                        </div>
+                        <div class="admin-section admin-console-section">
+                            <div class="admin-section-title"><i class="fa-solid fa-shield"></i> Posts à surveiller</div>
+                            <div id="admin-console-posts" class="admin-console-list"></div>
+                        </div>
+                        <div class="admin-section admin-console-section">
+                            <div class="admin-section-title"><i class="fa-solid fa-chart-line"></i> Dernières variations bourse</div>
+                            <div id="admin-console-bourse" class="admin-console-list"></div>
+                        </div>
+                        <div class="admin-section admin-console-section">
+                            <div class="admin-section-title"><i class="fa-solid fa-calendar-days"></i> Derniers événements publiés</div>
+                            <div id="admin-console-events" class="admin-console-list"></div>
+                        </div>
                     </div>
                 </div>
 

@@ -30,8 +30,11 @@ let eventsCache = [];
 let presseArticlesCache = [];
 let presseJournalFilter = '';
 let presseUxBound = false;
-let expandedAdminUserId = null;
+let expandedAdminUserId = localStorage.getItem('admin_expanded_user_id') || null;
 let isBourseRankingCollapsed = localStorage.getItem('bourse_ranking_collapsed') === '1';
+let currentAdminTab = localStorage.getItem('admin_current_tab') || 'overview';
+let bourseFilter = localStorage.getItem('bourse_filter') || 'all';
+let boursePulseTimeout = null;
 
 // FEED IDENTITY
 let currentFeedCharId = null;
@@ -100,7 +103,7 @@ function switchView(view) {
     if(view === 'chat')    { switchView('reseau'); switchReseauTab('chat', false); return; }
     if(view === 'feed')    { switchView('reseau'); switchReseauTab('flux', false); return; }
     if(view === 'char-mp') { switchView('reseau'); switchReseauTab('mp', false); return; }
-    if(view === 'admin') { if(IS_ADMIN) loadAdminData(); }
+    if(view === 'admin') { if(IS_ADMIN) { loadAdminData(); switchAdminTab(currentAdminTab); } }
     if(view === 'presse') { loadPresse(); }
     if(view === 'actualites') {
         loadActualites(); updateActuAdminForm();
@@ -110,7 +113,7 @@ function switchView(view) {
         if(actuBtn) actuBtn.classList.remove('nav-notify');
     }
     if(view === 'cites') { loadCities(); loadCityRelations(); }
-    if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); syncBourseRankingState(); }
+    if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); syncBourseRankingState(); syncBourseFilterUI(); restorePersistentScroll('bourse-scroll'); }
     if(view === 'wiki') { loadWiki(); }
     if(view === 'accueil') { renderAccueil(); socket.emit('request_feed'); socket.emit('request_events'); socket.emit('request_presse'); if(!stocksData.length) socket.emit('request_stocks'); }
     if(view === 'mes-persos') { renderMesPersos(); }
@@ -123,7 +126,12 @@ function switchReseauTab(tab, save = true) {
         const panel = document.getElementById(`reseau-panel-${t}`);
         const btn   = document.getElementById(`reseau-tab-${t}`);
         if(!panel || !btn) return;
-        if(t === tab) { panel.classList.remove('hidden'); btn.classList.add('active'); }
+        if(t === tab) {
+            panel.classList.remove('hidden');
+            panel.classList.add('reseau-panel-enter');
+            btn.classList.add('active');
+            setTimeout(() => panel.classList.remove('reseau-panel-enter'), 260);
+        }
         else          { panel.classList.add('hidden');    btn.classList.remove('active'); }
     });
     if(tab === 'flux') {
@@ -143,6 +151,57 @@ function switchReseauTab(tab, save = true) {
         if(reseauBtn) reseauBtn.classList.remove('nav-char-mp-unread');
         if(!_reseauTabLoaded.mp) { initCharMpView(); _reseauTabLoaded.mp = true; }
     }
+}
+
+function bindPersistentScroll(elementId, storageKey) {
+    const el = document.getElementById(elementId);
+    if(!el || el.dataset.scrollBound === '1') return;
+    el.dataset.scrollBound = '1';
+    el.addEventListener('scroll', () => {
+        localStorage.setItem(storageKey, String(el.scrollTop));
+    }, { passive: true });
+}
+
+function restorePersistentScroll(storageKey, elementId) {
+    const fallbackMap = {
+        'admin-users-scroll': 'admin-users-list',
+        'admin-companies-scroll': 'admin-companies-list',
+        'notif-list-scroll': 'notif-list',
+        'bourse-scroll': 'view-bourse'
+    };
+    const target = document.getElementById(elementId || fallbackMap[storageKey]);
+    if(!target) return;
+    const saved = Number(localStorage.getItem(storageKey) || 0);
+    requestAnimationFrame(() => { target.scrollTop = Number.isFinite(saved) ? saved : 0; });
+}
+
+function objectIdToDate(id) {
+    if(!id || typeof id !== 'string' || id.length < 8) return null;
+    const timestamp = parseInt(id.slice(0, 8), 16);
+    if(Number.isNaN(timestamp)) return null;
+    return new Date(timestamp * 1000);
+}
+
+function formatRelativeDate(date) {
+    if(!date) return 'date inconnue';
+    const diffMs = Date.now() - date.getTime();
+    const minutes = Math.max(1, Math.round(diffMs / 60000));
+    if(minutes < 60) return `il y a ${minutes} min`;
+    const hours = Math.round(minutes / 60);
+    if(hours < 24) return `il y a ${hours} h`;
+    const days = Math.round(hours / 24);
+    if(days < 7) return `il y a ${days} j`;
+    return date.toLocaleDateString('fr-FR');
+}
+
+function renderConsoleList(targetId, items, emptyText) {
+    const target = document.getElementById(targetId);
+    if(!target) return;
+    if(!items.length) {
+        target.innerHTML = `<div class="admin-console-empty">${emptyText}</div>`;
+        return;
+    }
+    target.innerHTML = items.join('');
 }
 
 function previewImg(input, previewId) {
@@ -1862,7 +1921,19 @@ function createPostElement(post) {
 
 let notifications = [];
 socket.on('notifications_data', (d) => { notifications = d; updateNotificationBadge(); });
-socket.on('notification_dispatch', (n) => { if(n.targetOwnerId === PLAYER_ID) { notifications.unshift(n); updateNotificationBadge(); if(notificationsEnabled) notifSound.play().catch(e=>{}); } });
+socket.on('notification_dispatch', (n) => {
+    if(n.targetOwnerId === PLAYER_ID) {
+        notifications.unshift(n);
+        updateNotificationBadge();
+        const btn = document.getElementById('btn-notifs');
+        if(btn) {
+            btn.classList.remove('notif-pop');
+            void btn.offsetWidth;
+            btn.classList.add('notif-pop');
+        }
+        if(notificationsEnabled) notifSound.play().catch(e=>{});
+    }
+});
 function getNotificationMeta(notification) {
     const metaByType = {
         like:    { icon: 'fa-heart',              cls: 'notif-like',    label: 'Like' },
@@ -1886,12 +1957,14 @@ function openNotifications() {
     document.getElementById('notifications-modal').classList.remove('hidden');
     const list = document.getElementById('notif-list'); list.innerHTML = "";
     if(notifications.length === 0) list.innerHTML = "<div style='text-align:center; padding:20px; color:#777'>Rien.</div>";
-    notifications.forEach(n => {
+    notifications.forEach((n, idx) => {
         const meta = getNotificationMeta(n);
         const title = n.redirectView === 'char-mp' ? 'Ouvrir la conversation' : 'Ouvrir';
         const time = n.timestamp ? new Date(n.timestamp).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
-        list.innerHTML += `<div class="notif-item ${meta.cls} ${!n.isRead?'unread':''}" onclick="openNotificationTarget('${n._id}')" title="${title}"><div class="notif-icon"><i class="fa-solid ${meta.icon}"></i></div><div class="notif-content"><div class="notif-topline"><span class="notif-label">${meta.label}</span><span class="notif-time">${time}</span></div><div><strong>${n.fromName}</strong> ${n.content}</div></div></div>`;
+        list.innerHTML += `<div class="notif-item ${meta.cls} ${!n.isRead?'unread':''} notif-enter" style="animation-delay:${Math.min(idx * 0.035, 0.24)}s" onclick="openNotificationTarget('${n._id}')" title="${title}"><div class="notif-icon"><i class="fa-solid ${meta.icon}"></i></div><div class="notif-content"><div class="notif-topline"><span class="notif-label">${meta.label}</span><span class="notif-time">${time}</span></div><div><strong>${n.fromName}</strong> ${n.content}</div></div></div>`;
     });
+    bindPersistentScroll('notif-list', 'notif-list-scroll');
+    restorePersistentScroll('notif-list-scroll', 'notif-list');
     socket.emit('mark_notifications_read', PLAYER_ID); notifications.forEach(n=>n.isRead=true); updateNotificationBadge();
 }
 function closeNotifications() { document.getElementById('notifications-modal').classList.add('hidden'); }
@@ -3411,6 +3484,49 @@ let bourseSearch = '';
 let currentStockEdit = null;
 let currentStockDetailId = null;
 
+function applyBourseFilter(stocks) {
+    if(bourseFilter === 'gainers') return [...stocks].filter(s => {
+        const hist = s.history || [];
+        const prev = hist.length >= 2 ? hist[hist.length - 2].value : s.currentValue;
+        return prev && s.currentValue > prev;
+    }).sort((a, b) => {
+        const pct = stock => { const hist = stock.history || []; const prev = hist.length >= 2 ? hist[hist.length - 2].value : stock.currentValue; return prev ? ((stock.currentValue - prev) / prev) * 100 : 0; };
+        return pct(b) - pct(a);
+    });
+    if(bourseFilter === 'losers') return [...stocks].filter(s => {
+        const hist = s.history || [];
+        const prev = hist.length >= 2 ? hist[hist.length - 2].value : s.currentValue;
+        return prev && s.currentValue < prev;
+    }).sort((a, b) => {
+        const pct = stock => { const hist = stock.history || []; const prev = hist.length >= 2 ? hist[hist.length - 2].value : stock.currentValue; return prev ? ((stock.currentValue - prev) / prev) * 100 : 0; };
+        return pct(a) - pct(b);
+    });
+    if(bourseFilter === 'topRevenue') return [...stocks].sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
+    return stocks;
+}
+
+function syncBourseFilterUI() {
+    document.querySelectorAll('.bourse-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === bourseFilter);
+    });
+    const meta = document.getElementById('bourse-filter-meta');
+    if(meta) {
+        meta.textContent = ({
+            all: 'Affichage complet',
+            gainers: 'Tri sur les meilleures hausses',
+            losers: 'Tri sur les plus fortes baisses',
+            topRevenue: 'Tri sur le chiffre d\'affaires'
+        })[bourseFilter] || 'Affichage complet';
+    }
+}
+
+function setBourseFilter(filter) {
+    bourseFilter = filter;
+    localStorage.setItem('bourse_filter', filter);
+    syncBourseFilterUI();
+    renderStockGrid(stocksData);
+}
+
 function loadBourse() { socket.emit('request_stocks'); }
 
 function updateBourseAdminUI() {
@@ -3436,6 +3552,7 @@ socket.on('stocks_data', (stocks) => {
     updateBourseAdminUI();
     populatePubStockSelects();
     renderBourseRanking(stocks);
+    buildAdminConsoleOverview();
 });
 socket.on('stocks_updated', (stocks) => {
     stocksData = stocks;
@@ -3446,6 +3563,15 @@ socket.on('stocks_updated', (stocks) => {
     updateBourseCustomSelect(stocks);
     populatePubStockSelects();
     renderBourseRanking(stocks);
+    buildAdminConsoleOverview();
+    const section = document.getElementById('bourse-ranking-section');
+    if(section) {
+        section.classList.remove('ranking-updated');
+        void section.offsetWidth;
+        section.classList.add('ranking-updated');
+        clearTimeout(boursePulseTimeout);
+        boursePulseTimeout = setTimeout(() => section.classList.remove('ranking-updated'), 650);
+    }
     if(currentView === 'admin') loadAdminCompanies();
 });
 
@@ -3524,12 +3650,14 @@ function renderStockGrid(stocks) {
     const grid = document.getElementById('bourse-stocks-grid');
     if(!grid) return;
     const _bq = bourseSearch;
-    const filtered = _bq ? stocks.filter(s =>
+    const source = applyBourseFilter(stocks);
+    syncBourseFilterUI();
+    const filtered = _bq ? source.filter(s =>
         (s.companyName||'').toLowerCase().includes(_bq) ||
         (s.charName||'').toLowerCase().includes(_bq) ||
         (s.description||'').toLowerCase().includes(_bq) ||
         (s.headquarters||'').toLowerCase().includes(_bq)
-    ) : stocks;
+    ) : source;
     if(!filtered.length) {
         grid.innerHTML = _bq
             ? '<div class="bourse-empty"><i class="fa-solid fa-magnifying-glass"></i><p>Aucune action ne correspond à votre recherche.</p></div>'
@@ -3824,6 +3952,7 @@ function adminStockTrend(stockId, trend) {
 
 function onBourseSearch(val) {
     bourseSearch = val.toLowerCase().trim();
+    localStorage.setItem('bourse_search', val || '');
     renderStockGrid(stocksData);
 }
 
@@ -4230,11 +4359,100 @@ function renderWikiMarkdown(md) {
     return html;
 }
 
+function buildAdminConsoleOverview() {
+    const recentUsers = [...adminUsersCache]
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+        .slice(0, 6);
+    const flaggedPosts = [...feedPostsCache]
+        .filter(post => post && (post.isBreakingNews || post.isAnonymous || (post.comments || []).length >= 3 || (post.likes || []).length >= 8))
+        .sort((a, b) => new Date(b.timestamp || objectIdToDate(b._id) || 0) - new Date(a.timestamp || objectIdToDate(a._id) || 0))
+        .slice(0, 6);
+    const stockMoves = [...stocksData]
+        .map(stock => {
+            const hist = stock.history || [];
+            const prev = hist.length >= 2 ? hist[hist.length - 2].value : stock.currentValue;
+            const pct = prev ? ((stock.currentValue - prev) / prev) * 100 : 0;
+            return {
+                stock,
+                pct,
+                updatedAt: hist.length ? new Date(hist[hist.length - 1].date || objectIdToDate(stock._id) || Date.now()) : objectIdToDate(stock._id)
+            };
+        })
+        .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))
+        .slice(0, 6);
+    const recentEvents = [...eventsCache].slice(0, 6);
+
+    const activity = [
+        ...recentUsers.slice(0, 3).map(user => ({
+            when: new Date(user.createdAt || objectIdToDate(user._id) || Date.now()),
+            icon: 'fa-user-plus',
+            tone: 'user',
+            text: `${escapeHtml(user.username)} a créé son compte`
+        })),
+        ...flaggedPosts.slice(0, 3).map(post => ({
+            when: new Date(post.timestamp || objectIdToDate(post._id) || Date.now()),
+            icon: post.isBreakingNews ? 'fa-burst' : 'fa-bullhorn',
+            tone: post.isBreakingNews ? 'alert' : 'post',
+            text: `${escapeHtml(post.authorName || 'Auteur inconnu')} a publié un post à surveiller`
+        })),
+        ...stockMoves.slice(0, 3).map(item => ({
+            when: item.updatedAt || new Date(),
+            icon: item.pct >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down',
+            tone: item.pct >= 0 ? 'up' : 'down',
+            text: `${escapeHtml(item.stock.companyName || 'Action')} ${item.pct >= 0 ? 'progresse' : 'recule'} de ${Math.abs(item.pct).toFixed(2)}%`
+        }))
+    ].sort((a, b) => (b.when?.getTime?.() || 0) - (a.when?.getTime?.() || 0)).slice(0, 8);
+
+    renderConsoleList('admin-console-activity', activity.map(item => `
+        <div class="admin-console-item admin-console-${item.tone}">
+            <div class="admin-console-icon"><i class="fa-solid ${item.icon}"></i></div>
+            <div class="admin-console-body">
+                <div class="admin-console-text">${item.text}</div>
+                <div class="admin-console-meta">${formatRelativeDate(item.when)}</div>
+            </div>
+        </div>`), 'Aucune activité récente.');
+
+    renderConsoleList('admin-console-users', recentUsers.map(user => `
+        <button class="admin-console-item admin-console-clickable" onclick="switchAdminTab('users'); expandedAdminUserId='${user._id}'; localStorage.setItem('admin_expanded_user_id','${user._id}'); renderAdminUsers(getFilteredAdminUsers(document.getElementById('admin-user-search')?.value || ''));">
+            <div class="admin-console-icon"><i class="fa-solid fa-user"></i></div>
+            <div class="admin-console-body">
+                <div class="admin-console-text">${escapeHtml(user.username)} <span class="admin-console-badge">${(user.characters || []).length} perso${(user.characters || []).length > 1 ? 's' : ''}</span></div>
+                <div class="admin-console-meta">Créé ${formatRelativeDate(new Date(user.createdAt || objectIdToDate(user._id) || Date.now()))}</div>
+            </div>
+        </button>`), 'Aucun compte récent.');
+
+    renderConsoleList('admin-console-posts', flaggedPosts.map(post => `
+        <div class="admin-console-item admin-console-post">
+            <div class="admin-console-icon"><i class="fa-solid ${post.isBreakingNews ? 'fa-burst' : post.isAnonymous ? 'fa-user-secret' : 'fa-comment-dots'}"></i></div>
+            <div class="admin-console-body">
+                <div class="admin-console-text">${escapeHtml(post.authorName || 'Auteur inconnu')} • ${escapeHtml((post.content || '').slice(0, 88) || 'Post sans texte')}${(post.content || '').length > 88 ? '…' : ''}</div>
+                <div class="admin-console-meta">${(post.comments || []).length} commentaires • ${(post.likes || []).length} likes</div>
+            </div>
+        </div>`), 'Aucun post à surveiller.');
+
+    renderConsoleList('admin-console-bourse', stockMoves.map(item => `
+        <div class="admin-console-item admin-console-${item.pct >= 0 ? 'up' : 'down'}">
+            <div class="admin-console-icon"><i class="fa-solid ${item.pct >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'}"></i></div>
+            <div class="admin-console-body">
+                <div class="admin-console-text">${escapeHtml(item.stock.companyName || 'Action')} • ${formatStockValue(item.stock.currentValue)}</div>
+                <div class="admin-console-meta">${item.pct >= 0 ? '+' : '−'}${Math.abs(item.pct).toFixed(2)}% • ${formatRelativeDate(item.updatedAt || new Date())}</div>
+            </div>
+        </div>`), 'Aucune variation bourse disponible.');
+
+    renderConsoleList('admin-console-events', recentEvents.map(event => `
+        <div class="admin-console-item admin-console-event">
+            <div class="admin-console-icon"><i class="fa-solid fa-calendar-day"></i></div>
+            <div class="admin-console-body">
+                <div class="admin-console-text">${escapeHtml(event.evenement || 'Événement')}</div>
+                <div class="admin-console-meta">${escapeHtml(event.date || 'date inconnue')}${event.heure ? ` • ${escapeHtml(event.heure)}` : ''}</div>
+            </div>
+        </div>`), 'Aucun événement récent.');
+}
+
 // ==================== [ADMIN PANEL] ====================
 let adminUsersCache = [];
 let adminCompaniesCache = [];
 let pendingAdminStockSelection = null;
-let currentAdminTab = 'overview';
 function getFilteredAdminUsers(query) {
     const q = (query || '').toLowerCase();
     if(!q) return adminUsersCache;
@@ -4248,16 +4466,21 @@ function getFilteredAdminUsers(query) {
 }
 function toggleAdminUserExpand(userId) {
     expandedAdminUserId = expandedAdminUserId === userId ? null : userId;
+    if(expandedAdminUserId) localStorage.setItem('admin_expanded_user_id', expandedAdminUserId);
+    else localStorage.removeItem('admin_expanded_user_id');
     renderAdminUsers(getFilteredAdminUsers(document.getElementById('admin-user-search')?.value || ''));
 }
 function switchAdminTab(tab) {
     currentAdminTab = tab;
+    localStorage.setItem('admin_current_tab', tab);
     ['overview', 'users', 'companies', 'site'].forEach(name => {
         const panel = document.getElementById(`admin-panel-${name}`);
         const btn = document.getElementById(`admin-tab-${name}`);
         if(panel) panel.classList.toggle('hidden', name !== tab);
         if(btn) btn.classList.toggle('active', name === tab);
     });
+    if(tab === 'users') restorePersistentScroll('admin-users-scroll');
+    if(tab === 'companies') restorePersistentScroll('admin-companies-scroll');
     if(tab === 'companies' && !adminCompaniesCache.length) loadAdminCompanies();
 }
 function loadAdminData() {
@@ -4283,11 +4506,13 @@ socket.on('admin_stats_data', (data) => {
             ? data.onlineUsers.map(u => `<span class="admin-online-chip"><i class="fa-solid fa-circle" style="font-size:0.55rem;color:#23a559;"></i> ${escapeHtml(u)}</span>`).join('')
             : '<span style="color:var(--text-muted);font-size:0.82rem;">Aucun utilisateur connecté.</span>';
     }
+    buildAdminConsoleOverview();
 });
 socket.on('admin_users_data', (users) => {
     adminUsersCache = users;
     if(expandedAdminUserId && !users.some(u => u._id === expandedAdminUserId)) expandedAdminUserId = null;
     renderAdminUsers(users);
+    buildAdminConsoleOverview();
 });
 socket.on('admin_companies_data', (companies) => {
     adminCompaniesCache = companies;
@@ -4303,6 +4528,7 @@ socket.on('admin_action_result', (data) => {
 function renderAdminUsers(users) {
     const list = document.getElementById('admin-users-list');
     if(!list) return;
+    bindPersistentScroll('admin-users-list', 'admin-users-scroll');
     if(!users.length) { list.innerHTML = '<div style="color:var(--text-muted);padding:8px;">Aucun utilisateur.</div>'; return; }
     list.innerHTML = users.map(u => {
         const since = u.createdAt ? new Date(u.createdAt).toLocaleDateString('fr-FR') : '?';
@@ -4340,10 +4566,14 @@ function renderAdminUsers(users) {
 }
 function filterAdminUsers(query) {
     const filtered = getFilteredAdminUsers(query);
+    const input = document.getElementById('admin-user-search');
+    if(input) localStorage.setItem('admin_user_search', input.value || '');
     if(filtered.length) {
         if(!filtered.some(u => u._id === expandedAdminUserId)) expandedAdminUserId = filtered[0]._id;
+        localStorage.setItem('admin_expanded_user_id', expandedAdminUserId);
     } else if(query) {
         expandedAdminUserId = null;
+        localStorage.removeItem('admin_expanded_user_id');
     }
     renderAdminUsers(filtered);
 }
@@ -4359,6 +4589,7 @@ function renderAdminCompanies(companies) {
     const list = document.getElementById('admin-companies-list');
     const meta = document.getElementById('admin-companies-meta');
     if(!list) return;
+    bindPersistentScroll('admin-companies-list', 'admin-companies-scroll');
     if(meta) {
         const withStock = companies.filter(c => c.stock).length;
         meta.textContent = `${companies.length} entreprise(s) • ${withStock} cotée(s)`;
@@ -4403,6 +4634,7 @@ function renderAdminCompanies(companies) {
 }
 function filterAdminCompanies(query) {
     const q = (query || '').trim().toLowerCase();
+    localStorage.setItem('admin_company_search', query || '');
     if(!q) return renderAdminCompanies(adminCompaniesCache);
     renderAdminCompanies(adminCompaniesCache.filter(item => {
         const company = item.company || {};
@@ -4470,6 +4702,24 @@ function adminDeleteUser(userId, username) {
 function adminClearAllPosts() {
     socket.emit('admin_clear_all_posts');
 }
+
+window.addEventListener('DOMContentLoaded', () => {
+    const bourseInput = document.getElementById('bourse-search-input');
+    if(bourseInput) bourseInput.value = localStorage.getItem('bourse_search') || '';
+    bourseSearch = (localStorage.getItem('bourse_search') || '').trim().toLowerCase();
+
+    const adminUserSearch = document.getElementById('admin-user-search');
+    if(adminUserSearch) adminUserSearch.value = localStorage.getItem('admin_user_search') || '';
+
+    const adminCompanySearch = document.getElementById('admin-company-search');
+    if(adminCompanySearch) adminCompanySearch.value = localStorage.getItem('admin_company_search') || '';
+
+    bindPersistentScroll('admin-users-list', 'admin-users-scroll');
+    bindPersistentScroll('admin-companies-list', 'admin-companies-scroll');
+    bindPersistentScroll('notif-list', 'notif-list-scroll');
+    bindPersistentScroll('view-bourse', 'bourse-scroll');
+    syncBourseFilterUI();
+});
 function adminSetAlertQuick(active) {
     const msg   = document.getElementById('adminAlertMsgQuick')?.value?.trim() || '';
     const color = document.getElementById('adminAlertColorQuick')?.value || 'orange';
