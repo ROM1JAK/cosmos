@@ -812,6 +812,10 @@
                         <h2 class="bourse-title"><i class="fa-solid fa-landmark"></i> Bourse de ConvSmos</h2>
                         <div class="bourse-subtitle">Marché financier fictif &middot; Mis à jour en direct</div>
                     </div>
+                    <div class="bourse-search-wrap">
+                        <i class="fa-solid fa-magnifying-glass bourse-search-icon"></i>
+                        <input type="text" id="bourse-search-input" class="bourse-search-input" placeholder="Rechercher une entreprise…" oninput="onBourseSearch(this.value)">
+                    </div>
                     <div id="bourse-admin-header" class="hidden" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                         <button class="btn-primary" onclick="adminNextTradingDay()" style="background:linear-gradient(135deg,#6c63ff,#4f46e5);"><i class="fa-solid fa-forward-step"></i> Jour suivant</button>
                         <button class="btn-primary" onclick="openStockAddModal()"><i class="fa-solid fa-plus"></i> Coter une action</button>
@@ -1235,6 +1239,19 @@
                         <button onclick="submitEditCharacter()" class="btn-primary"><i class="fa-solid fa-check"></i> Enregistrer</button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALE — Confirmation quitter sans sauvegarder -->
+    <div id="unsaved-modal" class="modal-overlay hidden" onclick="unsavedCancel()">
+        <div class="modal-box" style="max-width:340px;text-align:center;" onclick="event.stopPropagation()">
+            <div style="font-size:2.2rem;margin-bottom:12px;">⚠️</div>
+            <h3 style="margin:0 0 8px;color:white;font-size:1rem;">Modifications non enregistrées</h3>
+            <p style="margin:0 0 20px;color:var(--text-muted);font-size:0.82rem;">Vous avez des changements non sauvegardés.<br>Êtes-vous sûr de vouloir quitter ?</p>
+            <div style="display:flex;gap:10px;justify-content:center;">
+                <button onclick="unsavedCancel()" class="btn-secondary" style="flex:1;max-width:140px;"><i class="fa-solid fa-arrow-left"></i> Rester</button>
+                <button onclick="unsavedConfirm()" class="btn-primary" style="flex:1;max-width:140px;background:var(--danger);border-color:var(--danger);"><i class="fa-solid fa-door-open"></i> Quitter</button>
             </div>
         </div>
     </div>

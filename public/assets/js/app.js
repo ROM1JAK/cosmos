@@ -209,6 +209,58 @@ function switchCharTab(mode, tab) {
 }
 
 // [NOUVEAU] Modales centrées pour création/édition de personnage
+// ==================== [UNSAVED GUARD] ====================
+let _formSnaps = {};
+let _unsavedBypass = false;
+let _pendingCloseFn = null;
+
+function snapForm(modalId) {
+    const el = document.getElementById(modalId);
+    if(!el) return;
+    const snap = {};
+    el.querySelectorAll('input:not([type=hidden]):not([type=file]):not([type=submit]):not([type=button]):not([type=color]):not([type=range]), textarea, select').forEach(f => {
+        const key = f.id || f.getAttribute('name');
+        if(key) snap[key] = f.value;
+    });
+    _formSnaps[modalId] = snap;
+}
+
+function isFormDirty(modalId) {
+    const el = document.getElementById(modalId);
+    const snap = _formSnaps[modalId];
+    if(!el || !snap) return false;
+    const fields = el.querySelectorAll('input:not([type=hidden]):not([type=file]):not([type=submit]):not([type=button]):not([type=color]):not([type=range]), textarea, select');
+    for(const f of fields) {
+        const key = f.id || f.getAttribute('name');
+        if(key && snap[key] !== undefined && snap[key] !== f.value) return true;
+    }
+    return false;
+}
+
+function guardClose(modalId, closeFn) {
+    if(_unsavedBypass || !isFormDirty(modalId)) {
+        _unsavedBypass = false;
+        closeFn();
+        return;
+    }
+    _pendingCloseFn = closeFn;
+    const modal = document.getElementById('unsaved-modal');
+    if(modal) modal.classList.remove('hidden');
+    else if(confirm('Quitter sans enregistrer ?')) closeFn();
+}
+
+function unsavedConfirm() {
+    document.getElementById('unsaved-modal').classList.add('hidden');
+    if(_pendingCloseFn) { _pendingCloseFn(); _pendingCloseFn = null; }
+}
+
+function unsavedCancel() {
+    document.getElementById('unsaved-modal').classList.add('hidden');
+    _pendingCloseFn = null;
+    _unsavedBypass = false;
+}
+// ==================== [FIN UNSAVED GUARD] ====================
+
 function openCharModal(mode) {
     document.getElementById('char-modal').classList.remove('hidden');
     if(mode === 'create') {
@@ -220,15 +272,18 @@ function openCharModal(mode) {
         document.getElementById('char-modal-create').classList.add('hidden');
         document.getElementById('char-modal-edit').classList.remove('hidden');
     }
+    snapForm('char-modal');
 }
 function closeCharModal() {
-    document.getElementById('char-modal').classList.add('hidden');
-    newCharCompanies = [];
-    const list = document.getElementById('newCharCompaniesList');
-    if(list) list.innerHTML = '';
-    editCharCompanies = [];
-    const editList = document.getElementById('editCharCompaniesList');
-    if(editList) editList.innerHTML = '';
+    guardClose('char-modal', () => {
+        document.getElementById('char-modal').classList.add('hidden');
+        newCharCompanies = [];
+        const list = document.getElementById('newCharCompaniesList');
+        if(list) list.innerHTML = '';
+        editCharCompanies = [];
+        const editList = document.getElementById('editCharCompaniesList');
+        if(editList) editList.innerHTML = '';
+    });
 }
 function toggleNotifications() {
     notificationsEnabled = !notificationsEnabled; const btn = document.getElementById('btn-notif-toggle');
@@ -490,6 +545,7 @@ async function createCharacter() {
     if(!name || !role) return alert("Nom et rôle requis.");
     
     const isOfficial = role.includes('Journaliste') || role.includes('Gouvernement') || role.includes('Presse');
+    _unsavedBypass = true;
     socket.emit('create_char', { 
         name, role, 
         color: document.getElementById('newCharColor').value, 
@@ -572,6 +628,7 @@ async function submitEditCharacter() {
         companies: editCharCompanies,
         politicalRole: document.getElementById('editCharPoliticalRole')?.value || ''
     });
+    _unsavedBypass = true;
     closeCharModal();
     document.getElementById('editCharFile').value = '';
     document.getElementById('editCharPartyFile').value = '';
@@ -931,8 +988,9 @@ function openCompanyModal() {
         list.innerHTML = '<div style="color:var(--text-muted); font-size:0.82rem; margin-bottom:8px;">Aucune entreprise associée.</div>';
     }
     document.getElementById('company-modal').classList.remove('hidden');
+    snapForm('company-modal');
 }
-function closeCompanyModal() { document.getElementById('company-modal').classList.add('hidden'); }
+function closeCompanyModal() { guardClose('company-modal', () => { document.getElementById('company-modal').classList.add('hidden'); }); }
 
 async function submitAddCompany() {
     if(!currentProfileChar || !IS_ADMIN) return;
@@ -952,6 +1010,7 @@ async function submitAddCompany() {
     if(document.getElementById('companyHQ')) document.getElementById('companyHQ').value = '';
     if(document.getElementById('companyRevenue')) document.getElementById('companyRevenue').value = '';
     document.getElementById('companyLogoFile').value = '';
+    _unsavedBypass = true;
     closeCompanyModal();
 }
 function adminRemoveCompany(charId, idx) {
@@ -1542,10 +1601,11 @@ function openArticleEditModal(postId) {
     document.getElementById('editArticleTitle').value = titleText;
     document.getElementById('editArticleContent').value = bodyText;
     document.getElementById('article-edit-modal').classList.remove('hidden');
+    snapForm('article-edit-modal');
 }
 
 function closeArticleEditModal() {
-    document.getElementById('article-edit-modal').classList.add('hidden');
+    guardClose('article-edit-modal', () => { document.getElementById('article-edit-modal').classList.add('hidden'); });
 }
 
 function submitArticleEdit() {
@@ -1555,6 +1615,7 @@ function submitArticleEdit() {
     if(!postId) return;
     const newContent = title ? `[TITRE]${title}[/TITRE]\n${body}` : body;
     socket.emit('edit_post', { postId, content: newContent, ownerId: PLAYER_ID });
+    _unsavedBypass = true;
     closeArticleEditModal();
 }
 
@@ -2535,15 +2596,18 @@ function renderCityDetailContent(city) {
         // Reset save message
         const saveMsg = document.getElementById('cityAdminSaveMsg');
         if(saveMsg) saveMsg.classList.add('hidden');
+        snapForm('cityAdminPanel');
     } else {
         adminPanel.classList.add('hidden');
     }
 }
 
 function closeCityDetail() {
-    document.getElementById('city-detail-overlay').classList.add('hidden');
-    document.getElementById('city-detail-panel').classList.remove('open');
-    currentCityId = null;
+    guardClose('cityAdminPanel', () => {
+        document.getElementById('city-detail-overlay').classList.add('hidden');
+        document.getElementById('city-detail-panel').classList.remove('open');
+        currentCityId = null;
+    });
 }
 
 function renderCityMiniChart(historyEDC) {
@@ -2646,6 +2710,7 @@ function adminSaveCityInfo() {
         population: pop ? Number(pop) : null,
         baseEDC:    edc ? Number(edc) : null
     });
+    snapForm('cityAdminPanel');
 }
 
 socket.on('city_save_success', () => {
@@ -2869,10 +2934,11 @@ function openDiploModal(relationId) {
         }
     }
     document.getElementById('diplo-modal').classList.remove('hidden');
+    snapForm('diplo-modal');
 }
 
 function closeDiploModal() {
-    document.getElementById('diplo-modal').classList.add('hidden');
+    guardClose('diplo-modal', () => { document.getElementById('diplo-modal').classList.add('hidden'); });
 }
 
 function submitDiploRelation() {
@@ -2888,6 +2954,7 @@ function submitDiploRelation() {
     if(cityAId === cityBId) return alert('Les deux cités doivent être différentes.');
 
     socket.emit('admin_upsert_city_relation', { relationId: relationId || null, cityAId, cityBId, status, initiatedBy, description, since });
+    _unsavedBypass = true;
     closeDiploModal();
 }
 
@@ -2899,6 +2966,7 @@ function deleteDiploRelation(relationId) {
 
 // ==================== [BOURSE] ====================
 let stocksData = [];
+let bourseSearch = '';
 let currentStockEdit = null;
 let currentStockDetailId = null;
 
@@ -3011,12 +3079,21 @@ function renderBourseSummary(stocks) {
 function renderStockGrid(stocks) {
     const grid = document.getElementById('bourse-stocks-grid');
     if(!grid) return;
-    if(!stocks.length) {
-        grid.innerHTML = '<div class="bourse-empty"><i class="fa-solid fa-chart-line"></i><p>Aucune action cotée.</p><span>Un admin peut coter les entreprises des personnages.</span></div>';
+    const _bq = bourseSearch;
+    const filtered = _bq ? stocks.filter(s =>
+        (s.companyName||'').toLowerCase().includes(_bq) ||
+        (s.charName||'').toLowerCase().includes(_bq) ||
+        (s.description||'').toLowerCase().includes(_bq) ||
+        (s.headquarters||'').toLowerCase().includes(_bq)
+    ) : stocks;
+    if(!filtered.length) {
+        grid.innerHTML = _bq
+            ? '<div class="bourse-empty"><i class="fa-solid fa-magnifying-glass"></i><p>Aucune action ne correspond à votre recherche.</p></div>'
+            : '<div class="bourse-empty"><i class="fa-solid fa-chart-line"></i><p>Aucune action cotée.</p><span>Un admin peut coter les entreprises des personnages.</span></div>';
         return;
     }
     grid.innerHTML = '';
-    stocks.forEach((s, idx) => {
+    filtered.forEach((s, idx) => {
         const hist = s.history || [];
         const prev = hist.length >= 2 ? hist[hist.length - 2].value : s.currentValue;
         const pct = prev ? ((s.currentValue - prev) / prev * 100) : 0;
@@ -3212,6 +3289,7 @@ function openStockAddModal() {
     if(sel) sel.value = '';
     document.getElementById('bourse-stock-modal-title').textContent = '📈 Coter une action';
     document.getElementById('bourse-stock-modal').classList.remove('hidden');
+    snapForm('bourse-stock-modal');
     socket.emit('request_all_chars_companies');
 }
 
@@ -3230,10 +3308,11 @@ function openStockEditModal(stockId) {
     if(logoPreview2) { logoPreview2.src = stock.companyLogo || ''; logoPreview2.style.display = stock.companyLogo ? 'block' : 'none'; }
     document.getElementById('bourse-stock-modal-title').textContent = '✏️ Modifier l\'action';
     document.getElementById('bourse-stock-modal').classList.remove('hidden');
+    snapForm('bourse-stock-modal');
     socket.emit('request_all_chars_companies');
 }
 
-function closeStockModal() { document.getElementById('bourse-stock-modal').classList.add('hidden'); }
+function closeStockModal() { guardClose('bourse-stock-modal', () => { document.getElementById('bourse-stock-modal').classList.add('hidden'); }); }
 
 socket.on('all_chars_companies', (data) => {
     const select = document.getElementById('bourseStockCharSelect');
@@ -3280,11 +3359,17 @@ async function submitStockAdmin() {
         companyData.companyLogo = logoUrlVal;
     }
     socket.emit('admin_save_stock', { stockId: idVal || null, ...companyData, stockColor: color, currentValue: value, description: desc, headquarters: hq });
+    _unsavedBypass = true;
     closeStockModal();
 }
 
 function adminStockTrend(stockId, trend) {
     socket.emit('admin_apply_stock_trend', { stockId, trend });
+}
+
+function onBourseSearch(val) {
+    bourseSearch = val.toLowerCase().trim();
+    renderStockGrid(stocksData);
 }
 
 function previewStockLogo(input) {
@@ -3536,6 +3621,7 @@ function openWikiCreateModal() {
     document.getElementById('wikiPageContent').value = '';
     document.getElementById('wiki-modal-title').innerHTML = '<i class="fa-solid fa-plus"></i> Nouvelle page Wiki';
     document.getElementById('wiki-edit-modal').classList.remove('hidden');
+    snapForm('wiki-edit-modal');
 }
 
 function openWikiEditModal(id) {
@@ -3548,10 +3634,11 @@ function openWikiEditModal(id) {
     document.getElementById('wikiPageContent').value = page.content || '';
     document.getElementById('wiki-modal-title').innerHTML = '<i class="fa-solid fa-pen"></i> Modifier la page';
     document.getElementById('wiki-edit-modal').classList.remove('hidden');
+    snapForm('wiki-edit-modal');
 }
 
 function closeWikiModal() {
-    document.getElementById('wiki-edit-modal').classList.add('hidden');
+    guardClose('wiki-edit-modal', () => { document.getElementById('wiki-edit-modal').classList.add('hidden'); });
 }
 
 async function uploadWikiCover(input) {
@@ -3573,6 +3660,7 @@ function submitWikiPage() {
     } else {
         socket.emit('create_wiki_page', { title, category, content, coverImage, authorName: USERNAME });
     }
+    _unsavedBypass = true;
     closeWikiModal();
 }
 
