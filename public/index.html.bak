@@ -331,203 +331,115 @@
         </div>
         <!-- ===== [FIN ACCUEIL] ===== -->
 
-                <!-- ===== [RÉSEAU] : Chat | Flux Social | MP Perso ===== -->
-        <div id="view-reseau" class="view-section hidden" style="flex-direction:column;">
+        <div id="view-chat" class="view-section hidden">
+            <div id="app-container">
+                <div id="sidebar">
+                    <div class="sidebar-header">
+                        <h2 class="app-title">ConvSmos</h2>
+                        <div id="player-id-display">...</div>
+                        <button id="btn-account-main" class="btn-login" onclick="openAccountUI()">Connexion</button>
+                    </div>
+                    <div class="sidebar-section">
+                        <h3>SALONS</h3><div id="roomList"></div><button class="btn-add-room" onclick="createRoomPrompt()">+ Créer Salon</button>
+                    </div>
+                    <div class="sidebar-section">
+                        <h3>PERSONNAGES</h3>
+                        <div id="myCharList"></div>
+                        <div class="create-form-toggle" onclick="toggleCreateForm()">+ Nouveau Personnage</div>
+                    </div>
+                    <div class="sidebar-section"><h3>MESSAGES PRIVÉS</h3><div id="dmList"></div></div>
+                </div>
 
-            <!-- Barre d'onglets réseau -->
-            <div class="reseau-tabbar">
-                <button class="reseau-tab active" id="reseau-tab-chat" onclick="switchReseauTab('chat')">
-                    <i class="fa-solid fa-comments"></i><span class="reseau-tab-label"> Chat</span>
-                </button>
-                <button class="reseau-tab" id="reseau-tab-flux" onclick="switchReseauTab('flux')" style="position:relative;">
-                    <i class="fa-solid fa-bullhorn"></i><span class="reseau-tab-label"> Flux Social</span>
-                    <span id="reseau-flux-badge" class="reseau-tab-badge hidden"></span>
-                </button>
-                <button class="reseau-tab" id="reseau-tab-mp" onclick="switchReseauTab('mp')" style="position:relative;">
-                    <i class="fa-solid fa-user-group"></i><span class="reseau-tab-label"> MP Perso</span>
-                    <span id="char-mp-badge" class="reseau-tab-badge hidden"></span>
-                </button>
-            </div>
+                <div id="chat-area">
+                    <div class="chat-header">
+                        <span class="header-hash">#</span><h3 id="currentRoomName">Salon Global</h3>
+                        <div id="dm-header-actions" class="hidden" style="margin-left:auto; display:flex; gap:10px;">
+                            <button onclick="deleteCurrentDmHistory()" style="background:none; border:none; cursor:pointer; color:#da373c;"><i class="fa-solid fa-trash"></i></button>
+                            <button onclick="closeCurrentDm()" style="background:none; border:none; cursor:pointer; color:#aaa;"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
 
-            <!-- Panel Chat -->
-            <div id="reseau-panel-chat" class="reseau-panel">
-                <div id="app-container">
-                                <div id="sidebar">
-                                    <div class="sidebar-header">
-                                        <h2 class="app-title">ConvSmos</h2>
-                                        <div id="player-id-display">...</div>
-                                        <button id="btn-account-main" class="btn-login" onclick="openAccountUI()">Connexion</button>
-                                    </div>
-                                    <div class="sidebar-section">
-                                        <h3>SALONS</h3><div id="roomList"></div><button class="btn-add-room" onclick="createRoomPrompt()">+ Créer Salon</button>
-                                    </div>
-                                    <div class="sidebar-section">
-                                        <h3>PERSONNAGES</h3>
-                                        <div id="myCharList"></div>
-                                        <div class="create-form-toggle" onclick="toggleCreateForm()">+ Nouveau Personnage</div>
-                                    </div>
-                                    <div class="sidebar-section"><h3>MESSAGES PRIVÉS</h3><div id="dmList"></div></div>
-                                </div>
-
-                                <div id="chat-area">
-                                    <div class="chat-header">
-                                        <span class="header-hash">#</span><h3 id="currentRoomName">Salon Global</h3>
-                                        <div id="dm-header-actions" class="hidden" style="margin-left:auto; display:flex; gap:10px;">
-                                            <button onclick="deleteCurrentDmHistory()" style="background:none; border:none; cursor:pointer; color:#da373c;"><i class="fa-solid fa-trash"></i></button>
-                                            <button onclick="closeCurrentDm()" style="background:none; border:none; cursor:pointer; color:#aaa;"><i class="fa-solid fa-xmark"></i></button>
-                                        </div>
-                                    </div>
-
-                                    <div id="messages"></div>
-                                    <div id="typing-indicator" class="hidden"><span class="typing-dots">...</span> <span id="typing-text"></span></div>
+                    <div id="messages"></div>
+                    <div id="typing-indicator" class="hidden"><span class="typing-dots">...</span> <span id="typing-text"></span></div>
                     
-                                    <div id="input-wrapper">
-                                        <div id="char-selector-wrapper" class="hidden">
-                                            <div id="char-bar-actions"><button id="btn-toggle-chars" onclick="toggleCharBar()"><i id="toggle-icon" class="fa-solid fa-chevron-up"></i></button></div>
-                                            <div id="char-bar-horizontal" class="char-bar-content hidden-bar"></div>
-                                        </div>
-                                        <div id="context-bar" class="hidden">
-                                            <div class="context-info"><span id="context-icon"></span> <span id="context-text"></span></div><button class="btn-close-reply" onclick="cancelContext()">X</button>
-                                        </div>
-                                        <div id="mention-suggestions" class="hidden"></div>
-                                        <div id="chat-staging" class="chat-staging hidden"></div>
-                                        <div id="emoji-picker" class="hidden"></div>
+                    <div id="input-wrapper">
+                        <div id="char-selector-wrapper" class="hidden">
+                            <div id="char-bar-actions"><button id="btn-toggle-chars" onclick="toggleCharBar()"><i id="toggle-icon" class="fa-solid fa-chevron-up"></i></button></div>
+                            <div id="char-bar-horizontal" class="char-bar-content hidden-bar"></div>
+                        </div>
+                        <div id="context-bar" class="hidden">
+                            <div class="context-info"><span id="context-icon"></span> <span id="context-text"></span></div><button class="btn-close-reply" onclick="cancelContext()">X</button>
+                        </div>
+                        <div id="mention-suggestions" class="hidden"></div>
+                        <div id="chat-staging" class="chat-staging hidden"></div>
+                        <div id="emoji-picker" class="hidden"></div>
 
-                                        <div id="input-zone">
-                                            <button class="btn-icon" onclick="document.getElementById('chat-img-input').click()"><i class="fa-solid fa-circle-plus"></i></button>
-                                            <input id="txtInput" type="text" autocomplete="off" placeholder="Envoyer un message...">
-                                            <!-- [NOUVEAU] Message crypté -->
-                                            <button class="btn-icon" onclick="openCryptoModal()" title="Message crypté"><i class="fa-solid fa-lock"></i></button>
-                                            <button class="btn-icon" id="btn-emoji" onclick="toggleEmojiPicker()"><i class="fa-solid fa-face-smile"></i></button>
-                                            <button class="btn-icon" id="btn-record-chat" onclick="toggleRecording('chat')"><i class="fa-solid fa-microphone"></i></button>
-                                        </div>
-                                    </div>
-                                </div>
+                        <div id="input-zone">
+                            <button class="btn-icon" onclick="document.getElementById('chat-img-input').click()"><i class="fa-solid fa-circle-plus"></i></button>
+                            <input id="txtInput" type="text" autocomplete="off" placeholder="Envoyer un message...">
+                            <!-- [NOUVEAU] Message crypté -->
+                            <button class="btn-icon" onclick="openCryptoModal()" title="Message crypté"><i class="fa-solid fa-lock"></i></button>
+                            <button class="btn-icon" id="btn-emoji" onclick="toggleEmojiPicker()"><i class="fa-solid fa-face-smile"></i></button>
+                            <button class="btn-icon" id="btn-record-chat" onclick="toggleRecording('chat')"><i class="fa-solid fa-microphone"></i></button>
+                        </div>
+                    </div>
+                </div>
 
-                                <div id="users-sidebar">
-                                    <div class="users-header"><h3>EN LIGNE — <span id="online-count">0</span></h3></div>
-                                    <div id="online-users-list"></div>
-                                </div>
-                            </div>
+                <div id="users-sidebar">
+                    <div class="users-header"><h3>EN LIGNE — <span id="online-count">0</span></h3></div>
+                    <div id="online-users-list"></div>
+                </div>
             </div>
-
-            <!-- Panel Flux Social -->
-            <div id="reseau-panel-flux" class="reseau-panel hidden">
-                <div class="feed-view-header">
-                                <h3 style="margin:0; font-size:1.1rem;">Flux Social</h3>
-                                <div id="feed-char-avatar-wrapper" style="position:relative;"></div>
-                            </div>
-
-                            <div class="feed-container">
-                
-                                <div class="post-create-box">
-                                    <textarea id="postContent" placeholder="Quoi de neuf ?"></textarea>
-                                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-                                        <div style="display:flex; gap:10px;">
-                                             <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-image"></i><input type="file" id="postMediaFile" accept="image/*,video/*" class="hidden" onchange="previewPostFile()"></label>
-                                             <button class="btn-icon" id="btn-record-feed" onclick="toggleRecording('feed')"><i class="fa-solid fa-microphone"></i></button>
-                                             <button class="btn-icon" onclick="togglePollUI()"><i class="fa-solid fa-chart-column"></i></button>
-                                             <span id="postFileStatus" style="font-size:0.8em; color:#aaa; display:none;"></span>
-                                        </div>
-                                        <div style="display:flex; gap:10px; align-items:center;">
-                                            <span id="char-count" style="font-size:0.8em; color:#666;">0/1000</span>
-                                            <button class="btn-primary" onclick="submitPost()">Publier</button>
-                                        </div>
-                                    </div>
-                                    <div id="poll-creation-ui" class="hidden" style="background:#1e1f22; padding:10px; border-radius:4px; margin-bottom:10px;">
-                                        <input type="text" id="pollQuestion" placeholder="Question du sondage..." style="width:100%; background:#383a40; border:none; color:white; padding:8px; border-radius:4px; margin-bottom:8px; font-family:inherit;">
-                                        <div id="pollOptions"></div>
-                                        <button onclick="addPollOption()" class="btn-secondary full-width" style="margin-bottom:8px;">+ Option</button>
-                                        <button onclick="closePollUI()" class="btn-secondary full-width">Annuler</button>
-                                    </div>
-                                    <div style="display:flex; gap:10px; align-items:center; font-size:0.85rem;">
-                                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" id="postAnonymous"> 🕵️ Anonyme (Leak)</label>
-                                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer; display:none;" id="breakingNewsLabel"><input type="checkbox" id="postBreakingNews"> 🚨 Breaking News</label>
-                                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" id="postIsPub" onchange="toggleFeedPubSelect()"> 📢 Pub</label>
-                                    </div>
-                                    <div id="feed-pub-stock-wrap" class="hidden" style="margin-top:6px;">
-                                        <select id="postPubStockId" class="char-input" style="width:100%;margin-top:4px;"><option value="">— Entreprise concernée —</option></select>
-                                        <div style="font-size:0.65rem;color:var(--accent-soft);margin-top:3px;"><i class="fa-solid fa-chart-line"></i> Boost bourse +0.10 – +0.50%</div>
-                                    </div>
-                                    <input type="hidden" id="postMediaUrl">
-                                    <input type="hidden" id="pollData">
-                                </div>
-                
-                                <div id="feed-typing-indicator" class="feed-typing-indicator hidden"></div>
-                
-                                <div id="feed-stream"></div>
-                            </div>
-            </div>
-
-            <!-- Panel MP Perso -->
-            <div id="reseau-panel-mp" class="reseau-panel hidden">
-                <div class="char-mp-layout">
-
-                                <!-- ── Sidebar gauche ── -->
-                                <div class="char-mp-sidebar">
-                                    <div class="char-mp-sidebar-header">
-                                        <i class="fa-solid fa-comments"></i>
-                                        <span>Messages Persos</span>
-                                    </div>
-
-                                    <!-- Bouton nouvelle conversation -->
-                                    <button class="char-mp-new-btn" onclick="openNewConvModal()">
-                                        <i class="fa-solid fa-plus"></i> Nouvelle conversation
-                                    </button>
-
-                                    <!-- Liste des conversations, groupées par MES persos -->
-                                    <div id="char-mp-convo-list" class="char-mp-convo-list"></div>
-                                </div>
-
-                                <!-- ── Zone principale ── -->
-                                <div class="char-mp-main">
-                                    <!-- État vide -->
-                                    <div class="char-mp-empty" id="char-mp-empty">
-                                        <i class="fa-solid fa-comments"></i>
-                                        <p>Sélectionne une conversation</p>
-                                        <span>Ou clique sur <strong>+ Nouvelle conversation</strong> pour en démarrer une.</span>
-                                    </div>
-
-                                    <!-- Conversation active -->
-                                    <div id="char-mp-convo" class="hidden" style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
-
-                                        <!-- Header de la conv : mon perso → cible -->
-                                        <div class="char-mp-convo-header">
-                                            <div class="char-mp-header-mine">
-                                                <img id="mpMySenderAvatar" src="" class="char-mp-header-avatar char-mp-avatar-mine">
-                                                <div class="char-mp-header-info">
-                                                    <div id="mpMySenderName" class="char-mp-header-name"></div>
-                                                    <div id="mpMySenderRole" class="char-mp-header-role"></div>
-                                                </div>
-                                            </div>
-                                            <div class="char-mp-header-arrow"><i class="fa-solid fa-right-left"></i></div>
-                                            <div class="char-mp-header-theirs" onclick="openProfileFromMp()">
-                                                <img id="mpTargetAvatar" src="" class="char-mp-header-avatar char-mp-avatar-target">
-                                                <div class="char-mp-header-info" style="text-align:right;">
-                                                    <div id="mpTargetName" class="char-mp-header-name"></div>
-                                                    <div id="mpTargetRole" class="char-mp-header-role"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Messages -->
-                                        <div id="char-mp-messages" class="char-mp-messages"></div>
-
-                                        <!-- Zone d'envoi -->
-                                        <div class="char-mp-input-bar">
-                                            <img id="mpInputSenderAvatar" src="" class="char-mp-input-avatar">
-                                            <input id="charMpInput" type="text" class="char-input" placeholder="Écrire en tant que…" style="flex:1;" onkeyup="if(event.key==='Enter')sendCharMpMessage()">
-                                            <button class="btn-primary" onclick="sendCharMpMessage()"><i class="fa-solid fa-paper-plane"></i></button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-            </div>
-
         </div>
-        <!-- ===== [FIN RÉSEAU] ===== -->
 
-        <!-- PRESSE VIEW --><!-- PRESSE VIEW -->
+        <div id="view-feed" class="view-section hidden">
+            <div class="feed-view-header">
+                <h3 style="margin:0; font-size:1.1rem;">Flux Social</h3>
+                <div id="feed-char-avatar-wrapper" style="position:relative;"></div>
+            </div>
+
+            <div class="feed-container">
+                
+                <div class="post-create-box">
+                    <textarea id="postContent" placeholder="Quoi de neuf ?"></textarea>
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                        <div style="display:flex; gap:10px;">
+                             <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-image"></i><input type="file" id="postMediaFile" accept="image/*,video/*" class="hidden" onchange="previewPostFile()"></label>
+                             <button class="btn-icon" id="btn-record-feed" onclick="toggleRecording('feed')"><i class="fa-solid fa-microphone"></i></button>
+                             <button class="btn-icon" onclick="togglePollUI()"><i class="fa-solid fa-chart-column"></i></button>
+                             <span id="postFileStatus" style="font-size:0.8em; color:#aaa; display:none;"></span>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <span id="char-count" style="font-size:0.8em; color:#666;">0/1000</span>
+                            <button class="btn-primary" onclick="submitPost()">Publier</button>
+                        </div>
+                    </div>
+                    <div id="poll-creation-ui" class="hidden" style="background:#1e1f22; padding:10px; border-radius:4px; margin-bottom:10px;">
+                        <input type="text" id="pollQuestion" placeholder="Question du sondage..." style="width:100%; background:#383a40; border:none; color:white; padding:8px; border-radius:4px; margin-bottom:8px; font-family:inherit;">
+                        <div id="pollOptions"></div>
+                        <button onclick="addPollOption()" class="btn-secondary full-width" style="margin-bottom:8px;">+ Option</button>
+                        <button onclick="closePollUI()" class="btn-secondary full-width">Annuler</button>
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center; font-size:0.85rem;">
+                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" id="postAnonymous"> 🕵️ Anonyme (Leak)</label>
+                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer; display:none;" id="breakingNewsLabel"><input type="checkbox" id="postBreakingNews"> 🚨 Breaking News</label>
+                        <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" id="postIsPub" onchange="toggleFeedPubSelect()"> 📢 Pub</label>
+                    </div>
+                    <div id="feed-pub-stock-wrap" class="hidden" style="margin-top:6px;">
+                        <select id="postPubStockId" class="char-input" style="width:100%;margin-top:4px;"><option value="">— Entreprise concernée —</option></select>
+                        <div style="font-size:0.65rem;color:var(--accent-soft);margin-top:3px;"><i class="fa-solid fa-chart-line"></i> Boost bourse +0.10 – +0.50%</div>
+                    </div>
+                    <input type="hidden" id="postMediaUrl">
+                    <input type="hidden" id="pollData">
+                </div>
+                
+                <div id="feed-typing-indicator" class="feed-typing-indicator hidden"></div>
+                
+                <div id="feed-stream"></div>
+            </div>
+        </div>
+
+        <!-- PRESSE VIEW -->
         <div id="view-presse" class="view-section hidden">
             <div class="feed-view-header">
                 <h3 style="margin:0; font-size:1.1rem;">📰 La Presse</h3>
@@ -642,6 +554,71 @@
                     </div>
                 </div>
                 <div id="events-list"></div>
+            </div>
+        </div>
+
+        <!-- ===== VUE MP PERSONNAGES (Refonte) ===== -->
+        <div id="view-char-mp" class="view-section hidden">
+            <div class="char-mp-layout">
+
+                <!-- ── Sidebar gauche ── -->
+                <div class="char-mp-sidebar">
+                    <div class="char-mp-sidebar-header">
+                        <i class="fa-solid fa-comments"></i>
+                        <span>Messages Persos</span>
+                    </div>
+
+                    <!-- Bouton nouvelle conversation -->
+                    <button class="char-mp-new-btn" onclick="openNewConvModal()">
+                        <i class="fa-solid fa-plus"></i> Nouvelle conversation
+                    </button>
+
+                    <!-- Liste des conversations, groupées par MES persos -->
+                    <div id="char-mp-convo-list" class="char-mp-convo-list"></div>
+                </div>
+
+                <!-- ── Zone principale ── -->
+                <div class="char-mp-main">
+                    <!-- État vide -->
+                    <div class="char-mp-empty" id="char-mp-empty">
+                        <i class="fa-solid fa-comments"></i>
+                        <p>Sélectionne une conversation</p>
+                        <span>Ou clique sur <strong>+ Nouvelle conversation</strong> pour en démarrer une.</span>
+                    </div>
+
+                    <!-- Conversation active -->
+                    <div id="char-mp-convo" class="hidden" style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
+
+                        <!-- Header de la conv : mon perso → cible -->
+                        <div class="char-mp-convo-header">
+                            <div class="char-mp-header-mine">
+                                <img id="mpMySenderAvatar" src="" class="char-mp-header-avatar char-mp-avatar-mine">
+                                <div class="char-mp-header-info">
+                                    <div id="mpMySenderName" class="char-mp-header-name"></div>
+                                    <div id="mpMySenderRole" class="char-mp-header-role"></div>
+                                </div>
+                            </div>
+                            <div class="char-mp-header-arrow"><i class="fa-solid fa-right-left"></i></div>
+                            <div class="char-mp-header-theirs" onclick="openProfileFromMp()">
+                                <img id="mpTargetAvatar" src="" class="char-mp-header-avatar char-mp-avatar-target">
+                                <div class="char-mp-header-info" style="text-align:right;">
+                                    <div id="mpTargetName" class="char-mp-header-name"></div>
+                                    <div id="mpTargetRole" class="char-mp-header-role"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Messages -->
+                        <div id="char-mp-messages" class="char-mp-messages"></div>
+
+                        <!-- Zone d'envoi -->
+                        <div class="char-mp-input-bar">
+                            <img id="mpInputSenderAvatar" src="" class="char-mp-input-avatar">
+                            <input id="charMpInput" type="text" class="char-input" placeholder="Écrire en tant que…" style="flex:1;" onkeyup="if(event.key==='Enter')sendCharMpMessage()">
+                            <button class="btn-primary" onclick="sendCharMpMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -893,12 +870,6 @@
                 <!-- Summary cards -->
                 <div id="bourse-summary-row" class="bourse-summary-row"></div>
 
-                <!-- Classement entreprises / CA -->
-                <div id="bourse-ranking-section" class="bourse-ranking-section">
-                    <div class="bourse-ranking-title"><i class="fa-solid fa-trophy"></i> Classement Entreprises par CA</div>
-                    <div id="bourse-ranking-list" class="bourse-ranking-list"></div>
-                </div>
-
                 <!-- Stocks grid -->
                 <div id="bourse-stocks-grid" class="bourse-stocks-grid"></div>
 
@@ -944,11 +915,6 @@
                         <h2 class="wiki-title"><i class="fa-solid fa-book-open"></i> Wiki</h2>
                         <div class="wiki-subtitle">Encyclopédie collaborative du monde de Cosmos</div>
                     </div>
-                    <div class="wiki-search-wrap">
-                        <i class="fa-solid fa-magnifying-glass wiki-search-icon"></i>
-                        <input type="text" id="wiki-search-input" class="wiki-search-input" placeholder="Rechercher une page…" oninput="onWikiSearch(this.value)">
-                        <button class="btn-secondary" style="padding:6px 10px;" onclick="clearWikiSearch()"><i class="fa-solid fa-eraser"></i></button>
-                    </div>
                     <div id="wiki-admin-header" class="hidden">
                         <button class="btn-primary" onclick="openWikiCreateModal()"><i class="fa-solid fa-plus"></i> Nouvelle page</button>
                     </div>
@@ -967,72 +933,6 @@
 
             </div>
         </div>
-
-        <!-- ===== [ADMIN] VUE ===== -->
-        <div id="view-admin" class="view-section hidden" style="flex-direction:column;">
-            <div class="admin-container">
-                <div class="admin-header">
-                    <div>
-                        <h2 class="admin-title"><i class="fa-solid fa-shield-halved"></i> Panneau Admin</h2>
-                        <div class="admin-subtitle">Tableau de bord — ConvSmos</div>
-                    </div>
-                    <button class="btn-primary" onclick="loadAdminData()"><i class="fa-solid fa-rotate"></i> Actualiser</button>
-                </div>
-
-                <div class="admin-section">
-                    <div class="admin-section-title"><i class="fa-solid fa-chart-bar"></i> Statistiques</div>
-                    <div class="admin-stats-grid">
-                        <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-users"></i></div><div class="admin-stat-value" id="stat-users">—</div><div class="admin-stat-label">Utilisateurs</div></div>
-                        <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-id-card"></i></div><div class="admin-stat-value" id="stat-chars">—</div><div class="admin-stat-label">Personnages</div></div>
-                        <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-message"></i></div><div class="admin-stat-value" id="stat-posts">—</div><div class="admin-stat-label">Posts Feed</div></div>
-                        <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-newspaper"></i></div><div class="admin-stat-value" id="stat-articles">—</div><div class="admin-stat-label">Articles Presse</div></div>
-                        <div class="admin-stat-card"><div class="admin-stat-icon"><i class="fa-solid fa-comments"></i></div><div class="admin-stat-value" id="stat-msgs">—</div><div class="admin-stat-label">Messages Chat</div></div>
-                        <div class="admin-stat-card admin-stat-online-card"><div class="admin-stat-icon online-icon"><i class="fa-solid fa-circle"></i></div><div class="admin-stat-value admin-stat-online-val" id="stat-online">—</div><div class="admin-stat-label">En ligne</div></div>
-                    </div>
-                </div>
-
-                <div class="admin-section">
-                    <div class="admin-section-title"><i class="fa-solid fa-circle-dot" style="color:#23a559;"></i> Connectés maintenant</div>
-                    <div id="admin-online-list" class="admin-online-list"></div>
-                </div>
-
-                <div class="admin-section">
-                    <div class="admin-section-title"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Bandeau d'Alerte Global</div>
-                    <div class="admin-alert-quick">
-                        <input type="text" id="adminAlertMsgQuick" class="modal-input" placeholder="Message du bandeau d'alerte…" style="flex:1;margin:0;">
-                        <select id="adminAlertColorQuick" class="modal-input" style="width:auto;margin:0;">
-                            <option value="red">🔴 Rouge</option>
-                            <option value="orange">🟠 Orange</option>
-                            <option value="yellow">🟡 Jaune</option>
-                            <option value="blue">🔵 Bleu</option>
-                            <option value="green">🟢 Vert</option>
-                        </select>
-                        <button class="btn-primary" onclick="adminSetAlertQuick(true)"><i class="fa-solid fa-check"></i> Activer</button>
-                        <button class="btn-secondary" onclick="adminSetAlertQuick(false)"><i class="fa-solid fa-xmark"></i> Désactiver</button>
-                    </div>
-                </div>
-
-                <div class="admin-section">
-                    <div class="admin-section-title"><i class="fa-solid fa-users-gear"></i> Gestion des Utilisateurs</div>
-                    <input type="text" id="admin-user-search" class="modal-input" placeholder="Filtrer par pseudo…" oninput="filterAdminUsers(this.value)" style="margin-bottom:10px;">
-                    <div id="admin-users-list" class="admin-users-list"></div>
-                </div>
-
-                <div class="admin-section">
-                    <div class="admin-section-title"><i class="fa-solid fa-bolt"></i> Actions Rapides</div>
-                    <div class="admin-actions-grid">
-                        <button class="btn-primary" onclick="adminNextTradingDay()"><i class="fa-solid fa-forward-step"></i> Avancer Bourse</button>
-                        <button class="btn-secondary" onclick="loadAdminData()"><i class="fa-solid fa-rotate"></i> Rafraîchir</button>
-                        <button class="btn-secondary" onclick="switchView('bourse')"><i class="fa-solid fa-chart-line"></i> Bourse</button>
-                        <button class="btn-secondary" onclick="switchView('wiki')"><i class="fa-solid fa-book-open"></i> Wiki</button>
-                        <button class="btn-secondary" onclick="switchView('presse')"><i class="fa-solid fa-newspaper"></i> Presse</button>
-                        <button class="btn-secondary" onclick="switchView('cites')"><i class="fa-solid fa-city"></i> Cités</button>
-                        <button style="background:rgba(218,55,60,0.15);color:#da373c;border:1px solid rgba(218,55,60,0.3);padding:9px 14px;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;font-family:var(--font-main);" onclick="if(confirm('Supprimer TOUS les posts du feed ?')) adminClearAllPosts()"><i class="fa-solid fa-trash"></i> Vider les posts</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <!-- ===== [FIN ADMIN] ===== -->
         <!-- ===== [FIN WIKI] ===== -->
 
     </div>
@@ -1059,21 +959,7 @@
                 <label class="file-upload-label" style="flex-shrink:0;"><span><i class="fa-solid fa-upload"></i> Upload</span><input type="file" accept="image/*" onchange="uploadWikiCover(this)"></label>
             </div>
             <label class="cfl" style="margin-top:10px;">Contenu</label>
-            <div class="wiki-format-toolbar">
-                <button type="button" class="btn-secondary" onclick="applyWikiFormat('H1')">H1</button>
-                <button type="button" class="btn-secondary" onclick="applyWikiFormat('H2')">H2</button>
-                <button type="button" class="btn-secondary" onclick="applyWikiFormat('H3')">H3</button>
-                <button type="button" class="btn-secondary" onclick="applyWikiFormat('B')"><b>Gras</b></button>
-                <button type="button" class="btn-secondary" onclick="applyWikiFormat('I')"><em>Italique</em></button>
-                <button type="button" class="btn-secondary" onclick="applyWikiFormat('QUOTE')">❝ Citation</button>
-                <button type="button" class="btn-secondary" onclick="applyWikiFormat('SEP')">── Sépar.</button>
-            </div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:0.75rem;color:var(--text-muted);">
-                <span id="wiki-word-count">0 mot(s)</span>
-                <button type="button" class="btn-secondary" style="padding:3px 8px;font-size:0.72rem;" onclick="toggleWikiPreview()"><i class="fa-solid fa-eye"></i> Prévisualiser</button>
-            </div>
-            <textarea id="wikiPageContent" class="modal-input" placeholder="Contenu de la page (Markdown supporté : **gras**, *italique*, ## Titre…)" rows="10" style="resize:vertical; font-family:monospace; font-size:0.82rem;" oninput="updateWikiWordCount()"></textarea>
-            <div id="wiki-live-preview" class="wiki-live-preview hidden"></div>
+            <textarea id="wikiPageContent" class="modal-input" placeholder="Contenu de la page (Markdown supporté : **gras**, *italique*, ## Titre…)" rows="10" style="resize:vertical; font-family:monospace; font-size:0.82rem;"></textarea>
             <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
                 <button onclick="closeWikiModal()" class="btn-secondary">Annuler</button>
                 <button onclick="submitWikiPage()" class="btn-primary"><i class="fa-solid fa-check"></i> Enregistrer</button>

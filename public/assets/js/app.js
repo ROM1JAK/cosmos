@@ -85,11 +85,16 @@ function switchView(view) {
     const btnEl = document.getElementById(`btn-view-${view}`);
     if(viewEl) { viewEl.classList.remove('hidden'); viewEl.classList.add('active'); }
     if(btnEl) btnEl.classList.add('active');
-    if(view === 'feed') {
-        document.getElementById('btn-view-feed').classList.remove('nav-notify');
-        localStorage.setItem('last_feed_visit', Date.now().toString());
-        loadFeed();
+    if(view === 'reseau') {
+        // Réactive le dernier sous-onglet
+        const lastTab = localStorage.getItem('last_reseau_tab') || 'chat';
+        switchReseauTab(lastTab, false);
     }
+    // Redirections compatibilité
+    if(view === 'chat')    { switchView('reseau'); switchReseauTab('chat', false); return; }
+    if(view === 'feed')    { switchView('reseau'); switchReseauTab('flux', false); return; }
+    if(view === 'char-mp') { switchView('reseau'); switchReseauTab('mp', false); return; }
+    if(view === 'admin') { if(IS_ADMIN) loadAdminData(); }
     if(view === 'presse') { loadPresse(); }
     if(view === 'actualites') {
         loadActualites(); updateActuAdminForm();
@@ -98,18 +103,37 @@ function switchView(view) {
         const actuBtn = document.getElementById('btn-view-actualites');
         if(actuBtn) actuBtn.classList.remove('nav-notify');
     }
-    if(view === 'cites') { loadCities(); loadCityRelations(); } // [CITÉS]
+    if(view === 'cites') { loadCities(); loadCityRelations(); }
     if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); }
     if(view === 'wiki') { loadWiki(); }
     if(view === 'accueil') { renderAccueil(); socket.emit('request_feed'); socket.emit('request_events'); socket.emit('request_presse'); if(!stocksData.length) socket.emit('request_stocks'); }
     if(view === 'mes-persos') { renderMesPersos(); }
-    if(view === 'char-mp') {
-        // Effacer le badge de notif
-        const badge = document.getElementById('char-mp-badge');
+}
+
+let _reseauTabLoaded = { chat: false, flux: false, mp: false };
+function switchReseauTab(tab, save = true) {
+    if(save) localStorage.setItem('last_reseau_tab', tab);
+    ['chat','flux','mp'].forEach(t => {
+        const panel = document.getElementById(`reseau-panel-${t}`);
+        const btn   = document.getElementById(`reseau-tab-${t}`);
+        if(!panel || !btn) return;
+        if(t === tab) { panel.classList.remove('hidden'); btn.classList.add('active'); }
+        else          { panel.classList.add('hidden');    btn.classList.remove('active'); }
+    });
+    if(tab === 'flux') {
+        const badge = document.getElementById('reseau-flux-badge');
         if(badge) { badge.classList.add('hidden'); badge.textContent = ''; }
-        const btn = document.getElementById('btn-view-char-mp');
-        if(btn) btn.classList.remove('nav-char-mp-unread');
-        initCharMpView();
+        const reseauBtn = document.getElementById('btn-view-reseau');
+        if(reseauBtn) reseauBtn.classList.remove('nav-notify');
+        localStorage.setItem('last_feed_visit', Date.now().toString());
+        if(!_reseauTabLoaded.flux) { loadFeed(); _reseauTabLoaded.flux = true; }
+    }
+    if(tab === 'mp') {
+        const mpBadge = document.getElementById('char-mp-badge');
+        if(mpBadge) { mpBadge.classList.add('hidden'); mpBadge.textContent = ''; }
+        const reseauBtn = document.getElementById('btn-view-reseau');
+        if(reseauBtn) reseauBtn.classList.remove('nav-char-mp-unread');
+        if(!_reseauTabLoaded.mp) { initCharMpView(); _reseauTabLoaded.mp = true; }
     }
 }
 
@@ -1234,11 +1258,13 @@ socket.on('receive_char_dm', (msg) => {
     charMpConversations[key].lastContent = msg.content;
     charMpConversations[key].msgs.push(msg);
     if(currentView==='char-mp' && charMpCurrentKey===key) { appendCharMpMsg(msg); }
-    else if(msg.ownerId!==PLAYER_ID) {
+    const isOnMp = (currentView === 'reseau' && localStorage.getItem('last_reseau_tab') === 'mp');
+    if(!isOnMp && msg.ownerId !== PLAYER_ID) {
         charMpConversations[key].unread = true;
-        const badge=document.getElementById('char-mp-badge'), btn=document.getElementById('btn-view-char-mp');
-        if(badge){badge.classList.remove('hidden');badge.textContent='!';}
-        if(btn) btn.classList.add('nav-char-mp-unread');
+        const badge = document.getElementById('char-mp-badge');
+        if(badge) { badge.classList.remove('hidden'); badge.textContent = '!'; }
+        const reseauBtn = document.getElementById('btn-view-reseau');
+        if(reseauBtn) reseauBtn.classList.add('nav-char-mp-unread');
         renderCharMpSidebar();
     }
     const modal=document.getElementById('char-dm-modal');
@@ -1668,7 +1694,13 @@ socket.on('feed_data', (posts) => {
     if(currentView === 'accueil') renderAccueil();
 });
 socket.on('new_post', (post) => { 
-    if(currentView !== 'feed') document.getElementById('btn-view-feed').classList.add('nav-notify'); 
+    const isOnFlux = (currentView === 'reseau' && localStorage.getItem('last_reseau_tab') === 'flux');
+    if(!isOnFlux) {
+        const badge = document.getElementById('reseau-flux-badge');
+        if(badge) { badge.classList.remove('hidden'); badge.textContent = '!'; }
+        const btn = document.getElementById('btn-view-reseau');
+        if(btn) btn.classList.add('nav-notify');
+    }
     document.getElementById('feed-stream').prepend(createPostElement(post)); 
 });
 socket.on('post_updated', (post) => {
@@ -3252,6 +3284,7 @@ socket.on('stocks_data', (stocks) => {
     updateBourseCustomSelect(stocks);
     updateBourseAdminUI();
     populatePubStockSelects();
+    renderBourseRanking(stocks);
 });
 socket.on('stocks_updated', (stocks) => {
     stocksData = stocks;
@@ -3261,6 +3294,7 @@ socket.on('stocks_updated', (stocks) => {
     renderBourseCompChart(stocks);
     updateBourseCustomSelect(stocks);
     populatePubStockSelects();
+    renderBourseRanking(stocks);
 });
 
 function renderStockTicker(stocks) {
@@ -3928,3 +3962,171 @@ function deleteWikiPage(id) {
     if(currentWikiPageId === id) closeWikiPage();
 }
 // ==================== [FIN WIKI] ====================
+
+// ==================== [BOURSE RANKING] ====================
+function renderBourseRanking(stocks) {
+    const list = document.getElementById('bourse-ranking-list');
+    if(!list) return;
+    if(!stocks || !stocks.length) { list.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">Aucune entreprise.</div>'; return; }
+    const sorted = [...stocks].sort((a,b) => (b.revenue||0) - (a.revenue||0));
+    list.innerHTML = sorted.map((s, i) => {
+        const rev = typeof s.revenue === 'number' ? s.revenue.toLocaleString('fr-FR') + ' UC' : '—';
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+        const logo = s.companyLogo ? `<img src="${escapeHtml(s.companyLogo)}" class="bourse-ranking-logo" alt="">` : `<div class="bourse-ranking-logo" style="background:var(--bg-3);display:flex;align-items:center;justify-content:center;font-size:1.1rem;">🏢</div>`;
+        return `<div class="bourse-ranking-row">
+            <span class="bourse-ranking-medal">${medal}</span>
+            ${logo}
+            <span class="bourse-ranking-name">${escapeHtml(s.companyName || s.symbol)}</span>
+            <span class="bourse-ranking-rev">${rev}</span>
+        </div>`;
+    }).join('');
+}
+
+// ==================== [WIKI SEARCH & EDITOR] ====================
+function onWikiSearch(query) {
+    const q = (query || '').toLowerCase().trim();
+    if(!q) { renderWikiList(wikiCache); return; }
+    const filtered = wikiCache.filter(p =>
+        (p.title||'').toLowerCase().includes(q) ||
+        (p.content||'').toLowerCase().includes(q) ||
+        (p.category||'').toLowerCase().includes(q)
+    );
+    renderWikiList(filtered);
+}
+function clearWikiSearch() {
+    const inp = document.getElementById('wiki-search-input');
+    if(inp) inp.value = '';
+    renderWikiList(wikiCache);
+}
+function applyWikiFormat(type) {
+    const ta = document.getElementById('wikiPageContent');
+    if(!ta) return;
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    const sel = ta.value.slice(start, end);
+    const line = ta.value.slice(0, start).split('\n').pop() + sel;
+    let replacement = '';
+    if(type === 'H1')    replacement = `\n# ${sel || 'Titre'}\n`;
+    if(type === 'H2')    replacement = `\n## ${sel || 'Sous-titre'}\n`;
+    if(type === 'H3')    replacement = `\n### ${sel || 'Section'}\n`;
+    if(type === 'B')     replacement = `**${sel || 'texte'}**`;
+    if(type === 'I')     replacement = `*${sel || 'texte'}*`;
+    if(type === 'QUOTE') replacement = `\n> ${sel || 'Citation'}\n`;
+    if(type === 'SEP')   replacement = `\n---\n`;
+    ta.value = ta.value.slice(0, start) + replacement + ta.value.slice(end);
+    const newPos = start + replacement.length;
+    ta.selectionStart = ta.selectionEnd = newPos;
+    ta.focus();
+    updateWikiWordCount();
+}
+function updateWikiWordCount() {
+    const ta = document.getElementById('wikiPageContent');
+    const counter = document.getElementById('wiki-word-count');
+    if(!ta || !counter) return;
+    const words = ta.value.trim().split(/\s+/).filter(w => w.length > 0).length;
+    counter.textContent = `${words} mot(s)`;
+}
+function toggleWikiPreview() {
+    const ta      = document.getElementById('wikiPageContent');
+    const preview = document.getElementById('wiki-live-preview');
+    if(!ta || !preview) return;
+    if(preview.classList.contains('hidden')) {
+        preview.innerHTML = renderWikiMarkdown(ta.value);
+        preview.classList.remove('hidden');
+        ta.style.display = 'none';
+    } else {
+        preview.classList.add('hidden');
+        ta.style.display = '';
+    }
+}
+function renderWikiMarkdown(md) {
+    if(!md) return '';
+    let html = escapeHtml(md)
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        .replace(/^---$/gm, '<hr>')
+        .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
+    return html;
+}
+
+// ==================== [ADMIN PANEL] ====================
+let adminUsersCache = [];
+function loadAdminData() {
+    socket.emit('request_admin_stats');
+    socket.emit('admin_get_users');
+}
+socket.on('admin_stats_data', (data) => {
+    const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+    set('stat-users',    data.userCount    ?? '—');
+    set('stat-chars',    data.charCount    ?? '—');
+    set('stat-posts',    data.postCount    ?? '—');
+    set('stat-articles', data.articleCount ?? '—');
+    set('stat-msgs',     data.msgCount     ?? '—');
+    set('stat-online',   data.onlineCount  ?? '—');
+    // Online users list
+    const onlineList = document.getElementById('admin-online-list');
+    if(onlineList && data.onlineUsers) {
+        onlineList.innerHTML = data.onlineUsers.length
+            ? data.onlineUsers.map(u => `<span class="admin-online-chip"><i class="fa-solid fa-circle" style="font-size:0.55rem;color:#23a559;"></i> ${escapeHtml(u)}</span>`).join('')
+            : '<span style="color:var(--text-muted);font-size:0.82rem;">Aucun utilisateur connecté.</span>';
+    }
+});
+socket.on('admin_users_data', (users) => {
+    adminUsersCache = users;
+    renderAdminUsers(users);
+});
+socket.on('admin_action_result', (data) => {
+    if(data.success) { loadAdminData(); }
+    else { alert('Erreur : ' + (data.error || 'inconnue')); }
+});
+function renderAdminUsers(users) {
+    const list = document.getElementById('admin-users-list');
+    if(!list) return;
+    if(!users.length) { list.innerHTML = '<div style="color:var(--text-muted);padding:8px;">Aucun utilisateur.</div>'; return; }
+    list.innerHTML = users.map(u => {
+        const since = u.createdAt ? new Date(u.createdAt).toLocaleDateString('fr-FR') : '?';
+        const adminBadge = u.isAdmin ? '<span class="admin-user-badge admin-badge-admin">admin</span>' : '<span class="admin-user-badge">user</span>';
+        return `<div class="admin-user-row">
+            <div class="admin-user-info">
+                <span class="admin-user-name">${escapeHtml(u.username)}</span>
+                ${adminBadge}
+                <span class="admin-user-since">depuis ${since}</span>
+            </div>
+            <div class="admin-user-actions">
+                <button class="btn-secondary" style="padding:4px 8px;font-size:0.75rem;" onclick="adminToggleAdmin('${u._id}',${!u.isAdmin})">
+                    ${u.isAdmin ? '<i class="fa-solid fa-user-minus"></i> Retirer admin' : '<i class="fa-solid fa-user-plus"></i> Rendre admin'}
+                </button>
+                <button style="background:rgba(218,55,60,0.13);color:#da373c;border:1px solid rgba(218,55,60,0.25);padding:4px 8px;font-size:0.75rem;border-radius:var(--radius-sm);cursor:pointer;" onclick="adminDeleteUser('${u._id}','${escapeHtml(u.username)}')">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+}
+function filterAdminUsers(query) {
+    const q = (query||'').toLowerCase();
+    renderAdminUsers(q ? adminUsersCache.filter(u => u.username.toLowerCase().includes(q)) : adminUsersCache);
+}
+function adminToggleAdmin(userId, makeAdmin) {
+    if(!confirm(`${makeAdmin ? 'Rendre admin' : 'Retirer admin'} cet utilisateur ?`)) return;
+    socket.emit('admin_set_admin', { targetUserId: userId, makeAdmin });
+}
+function adminDeleteUser(userId, username) {
+    if(!confirm(`Supprimer définitivement le compte « ${username} » et tous ses personnages ?`)) return;
+    socket.emit('admin_delete_user', { targetUserId: userId });
+}
+function adminClearAllPosts() {
+    socket.emit('admin_clear_all_posts');
+}
+function adminSetAlertQuick(active) {
+    const msg   = document.getElementById('adminAlertMsgQuick')?.value?.trim() || '';
+    const color = document.getElementById('adminAlertColorQuick')?.value || 'orange';
+    socket.emit('admin_set_alert', { active, message: msg, color });
+}
+function adminNextTradingDay() {
+    if(!confirm('Avancer au prochain jour de trading pour la bourse ?')) return;
+    socket.emit('admin_next_trading_day');
+}

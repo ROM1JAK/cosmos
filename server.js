@@ -1036,6 +1036,68 @@ io.on('connection', async (socket) => {
       io.emit('wiki_pages_data', pages);
   });
   // ========== [FIN WIKI SOCKET] ==========
+
+  // ========== [ADMIN PANEL] SOCKET EVENTS ==========
+  socket.on('request_admin_stats', async () => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      const [userCount, charCount, postCount, articleCount, msgCount, roomCount] = await Promise.all([
+          User.countDocuments(),
+          Character.countDocuments(),
+          Post.countDocuments({ isArticle: { $ne: true } }),
+          Post.countDocuments({ isArticle: true }),
+          Message.countDocuments({ roomId: { $nin: ['dm'] }, isCharDm: { $ne: true } }),
+          Room.countDocuments()
+      ]);
+      socket.emit('admin_stats_data', {
+          userCount, charCount, postCount, articleCount, msgCount, roomCount,
+          onlineCount: Object.keys(onlineUsers).length
+      });
+  });
+
+  socket.on('admin_get_users', async () => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      const users = await User.find({}, 'username isAdmin createdAt').sort({ username: 1 });
+      socket.emit('admin_users_data', users);
+  });
+
+  socket.on('admin_set_admin', async ({ targetUsername, value }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      if(targetUsername === username) return; // Cannot change own role
+      await User.findOneAndUpdate({ username: targetUsername }, { isAdmin: !!value });
+      const users = await User.find({}, 'username isAdmin createdAt').sort({ username: 1 });
+      socket.emit('admin_users_data', users);
+  });
+
+  socket.on('admin_delete_user', async ({ targetUsername }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      if(targetUsername === username) return;
+      const target = await User.findOne({ username: targetUsername });
+      if(!target) return;
+      // Remove user's characters
+      await Character.deleteMany({ ownerId: target.secretCode });
+      await User.deleteOne({ username: targetUsername });
+      socket.emit('admin_action_result', { ok: true, msg: `Utilisateur "${targetUsername}" supprimé.` });
+      const users = await User.find({}, 'username isAdmin createdAt').sort({ username: 1 });
+      socket.emit('admin_users_data', users);
+  });
+
+  socket.on('admin_clear_all_posts', async () => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      await Post.deleteMany({ isArticle: { $ne: true } });
+      io.emit('reload_posts');
+      socket.emit('admin_action_result', { ok: true, msg: 'Tous les posts supprimés.' });
+  });
+  // ========== [FIN ADMIN PANEL SOCKET] ==========
 });
 
 const port = process.env.PORT || 3000;
