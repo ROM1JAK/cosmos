@@ -2088,6 +2088,37 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .reseau-tab-badge.hidden { display: none !important; }
 .reseau-panel { flex: 1; display: flex; overflow: hidden; min-height: 0; }
 .reseau-panel.hidden { display: none !important; }
+#reseau-panel-flux {
+    flex-direction: column;
+    align-items: stretch;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+#reseau-panel-flux .feed-view-header {
+    width: 100%;
+    flex-shrink: 0;
+}
+#reseau-panel-flux .feed-container {
+    width: min(100%, 780px);
+    max-width: 780px;
+    gap: 28px !important;
+    margin: 28px auto 56px;
+    padding: 0 24px 12px;
+}
+#reseau-panel-flux #feed-stream {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+#reseau-panel-flux .post-create-box {
+    padding: 22px;
+}
+#reseau-panel-flux .post-card {
+    padding: 24px !important;
+}
+#reseau-panel-flux .post-content {
+    font-size: 0.98rem;
+}
 
 /* ==================== [WIKI SCROLL FIX + SEARCH] ==================== */
 #view-wiki { overflow-y: auto; }
@@ -2123,10 +2154,20 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 }
 .bourse-ranking-title {
     font-size: 0.95rem; font-weight: 700; color: white;
-    margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+    margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
+.bourse-ranking-title-main { display: inline-flex; align-items: center; gap: 8px; }
 .bourse-ranking-title i { color: #f59e0b; }
+.bourse-ranking-toggle {
+    width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border);
+    background: var(--bg-tertiary); color: var(--text-muted); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; transition: all 0.18s;
+}
+.bourse-ranking-toggle i { color: currentColor; }
+.bourse-ranking-toggle:hover { color: white; border-color: rgba(255,255,255,0.18); }
 .bourse-ranking-list { display: flex; flex-direction: column; gap: 6px; }
+.bourse-ranking-section.collapsed .bourse-ranking-list { display: none; }
+.bourse-ranking-section.collapsed .bourse-ranking-title { margin-bottom: 0; }
 .bourse-ranking-row {
     display: flex; align-items: center; gap: 10px;
     background: var(--bg-tertiary); border-radius: var(--radius-sm);
@@ -2183,11 +2224,18 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
     display: flex; align-items: center; gap: 5px;
 }
 .admin-alert-quick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.admin-users-list { display: flex; flex-direction: column; gap: 6px; max-height: 400px; overflow-y: auto; }
+.admin-users-list { display: flex; flex-direction: column; gap: 10px; max-height: 520px; overflow-y: auto; }
 .admin-user-row {
-    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
-    background: var(--bg-tertiary); border-radius: var(--radius-sm); padding: 8px 12px;
+    display: flex; flex-direction: column; gap: 10px;
+    background: var(--bg-tertiary); border-radius: var(--radius-md); padding: 10px 12px;
+    border: 1px solid rgba(255,255,255,0.05);
 }
+.admin-user-summary {
+    width: 100%; background: none; border: none; padding: 0;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    cursor: pointer; text-align: left; font-family: var(--font-main);
+}
+.admin-user-summary.is-open .admin-user-chevron { color: white; }
 .admin-user-info { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .admin-user-name { font-weight: 700; font-size: 0.88rem; color: white; }
 .admin-user-badge {
@@ -2196,6 +2244,12 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 }
 .admin-badge-admin { background: rgba(108,99,255,0.18); color: var(--accent); border-color: rgba(108,99,255,0.3); }
 .admin-user-since { font-size: 0.72rem; color: var(--text-muted); }
+.admin-user-count {
+    font-size: 0.72rem; color: #d7dbf3; background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border); border-radius: 999px; padding: 3px 8px;
+}
+.admin-user-details.hidden { display: none !important; }
+.admin-user-details { width: 100%; padding-top: 2px; }
 .admin-user-characters { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 220px; }
 .admin-char-chip {
     display: inline-flex; align-items: center; gap: 7px; padding: 4px 8px;
@@ -2217,6 +2271,11 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .admin-char-chip-action:hover, .admin-char-chip-main:hover .admin-char-chip-name { color: white; }
 .admin-user-nochars { flex: 1; color: var(--text-muted); font-size: 0.75rem; }
 .admin-user-actions { display: flex; gap: 6px; align-items: center; }
+.admin-user-chevron {
+    width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border);
+    display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted);
+    flex-shrink: 0;
+}
 .admin-actions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .admin-companies-layout { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 18px; align-items: start; }
 .admin-company-editor-wrap { position: sticky; top: 18px; }

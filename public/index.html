@@ -895,7 +895,12 @@
 
                 <!-- Classement entreprises / CA -->
                 <div id="bourse-ranking-section" class="bourse-ranking-section">
-                    <div class="bourse-ranking-title"><i class="fa-solid fa-trophy"></i> Classement Entreprises par CA</div>
+                    <div class="bourse-ranking-title">
+                        <div class="bourse-ranking-title-main"><i class="fa-solid fa-trophy"></i> Classement Entreprises par CA</div>
+                        <button id="bourse-ranking-toggle" class="bourse-ranking-toggle" onclick="toggleBourseRanking()" aria-expanded="true" title="Replier le classement">
+                            <i class="fa-solid fa-chevron-up"></i>
+                        </button>
+                    </div>
                     <div id="bourse-ranking-list" class="bourse-ranking-list"></div>
                 </div>
 

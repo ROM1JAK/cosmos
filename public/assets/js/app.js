@@ -30,6 +30,8 @@ let eventsCache = [];
 let presseArticlesCache = [];
 let presseJournalFilter = '';
 let presseUxBound = false;
+let expandedAdminUsers = new Set();
+let isBourseRankingCollapsed = localStorage.getItem('bourse_ranking_collapsed') === '1';
 
 // FEED IDENTITY
 let currentFeedCharId = null;
@@ -108,7 +110,7 @@ function switchView(view) {
         if(actuBtn) actuBtn.classList.remove('nav-notify');
     }
     if(view === 'cites') { loadCities(); loadCityRelations(); }
-    if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); }
+    if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); syncBourseRankingState(); }
     if(view === 'wiki') { loadWiki(); }
     if(view === 'accueil') { renderAccueil(); socket.emit('request_feed'); socket.emit('request_events'); socket.emit('request_presse'); if(!stocksData.length) socket.emit('request_stocks'); }
     if(view === 'mes-persos') { renderMesPersos(); }
@@ -131,6 +133,8 @@ function switchReseauTab(tab, save = true) {
         if(reseauBtn) reseauBtn.classList.remove('nav-notify');
         localStorage.setItem('last_feed_visit', Date.now().toString());
         if(!_reseauTabLoaded.flux) { loadFeed(); _reseauTabLoaded.flux = true; }
+        const fluxPanel = document.getElementById('reseau-panel-flux');
+        if(fluxPanel) requestAnimationFrame(() => { fluxPanel.scrollTop = 0; });
     }
     if(tab === 'mp') {
         const mpBadge = document.getElementById('char-mp-badge');
@@ -4123,9 +4127,24 @@ function deleteWikiPage(id) {
 // ==================== [FIN WIKI] ====================
 
 // ==================== [BOURSE RANKING] ====================
+function syncBourseRankingState() {
+    const section = document.getElementById('bourse-ranking-section');
+    const toggle = document.getElementById('bourse-ranking-toggle');
+    if(!section || !toggle) return;
+    section.classList.toggle('collapsed', isBourseRankingCollapsed);
+    toggle.setAttribute('aria-expanded', String(!isBourseRankingCollapsed));
+    toggle.title = isBourseRankingCollapsed ? 'Déplier le classement' : 'Replier le classement';
+    toggle.innerHTML = `<i class="fa-solid fa-chevron-${isBourseRankingCollapsed ? 'down' : 'up'}"></i>`;
+}
+function toggleBourseRanking(force) {
+    isBourseRankingCollapsed = typeof force === 'boolean' ? force : !isBourseRankingCollapsed;
+    localStorage.setItem('bourse_ranking_collapsed', isBourseRankingCollapsed ? '1' : '0');
+    syncBourseRankingState();
+}
 function renderBourseRanking(stocks) {
     const list = document.getElementById('bourse-ranking-list');
     if(!list) return;
+    syncBourseRankingState();
     if(!stocks || !stocks.length) { list.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">Aucune entreprise.</div>'; return; }
     const sorted = [...stocks].sort((a,b) => (b.revenue||0) - (a.revenue||0));
     list.innerHTML = sorted.map((s, i) => {
@@ -4216,6 +4235,22 @@ let adminUsersCache = [];
 let adminCompaniesCache = [];
 let pendingAdminStockSelection = null;
 let currentAdminTab = 'overview';
+function getFilteredAdminUsers(query) {
+    const q = (query || '').toLowerCase();
+    if(!q) return adminUsersCache;
+    return adminUsersCache.filter(u => {
+        if((u.username || '').toLowerCase().includes(q)) return true;
+        return (u.characters || []).some(char =>
+            (char.name || '').toLowerCase().includes(q) ||
+            (char.role || '').toLowerCase().includes(q)
+        );
+    });
+}
+function toggleAdminUserExpand(userId) {
+    if(expandedAdminUsers.has(userId)) expandedAdminUsers.delete(userId);
+    else expandedAdminUsers.add(userId);
+    renderAdminUsers(getFilteredAdminUsers(document.getElementById('admin-user-search')?.value || ''));
+}
 function switchAdminTab(tab) {
     currentAdminTab = tab;
     ['overview', 'users', 'companies', 'site'].forEach(name => {
@@ -4273,36 +4308,47 @@ function renderAdminUsers(users) {
         const since = u.createdAt ? new Date(u.createdAt).toLocaleDateString('fr-FR') : '?';
         const adminBadge = u.isAdmin ? '<span class="admin-user-badge admin-badge-admin">admin</span>' : '<span class="admin-user-badge">user</span>';
         const chars = Array.isArray(u.characters) ? u.characters : [];
+        const isExpanded = expandedAdminUsers.has(u._id);
         const charsHtml = chars.length
             ? `<div class="admin-user-characters">${chars.map(char => `<span class="admin-char-chip"><img src="${char.avatar || ''}" class="admin-char-chip-avatar" alt=""><button class="admin-char-chip-main" onclick="openProfileById('${char._id}')"><span class="admin-char-chip-name" style="color:${char.color || 'white'}">${escapeHtml(char.name || '')}</span><span class="admin-char-chip-role">${escapeHtml(char.role || '')}</span></button><button class="admin-char-chip-action" onclick="event.stopPropagation(); openProfileById('${char._id}')" title="Profil"><i class="fa-solid fa-user"></i></button><button class="admin-char-chip-action" onclick="event.stopPropagation(); prepareEditAnyCharacter('${char._id}')" title="Modifier"><i class="fa-solid fa-pen"></i></button></span>`).join('')}</div>`
             : '<div class="admin-user-nochars">Aucun personnage</div>';
         return `<div class="admin-user-row">
-            <div class="admin-user-info">
-                <span class="admin-user-name">${escapeHtml(u.username)}</span>
-                ${adminBadge}
-                <span class="admin-user-since">depuis ${since}</span>
+            <div class="admin-user-summary ${isExpanded ? 'is-open' : ''}" role="button" tabindex="0" onclick="toggleAdminUserExpand('${u._id}')" onkeydown="if(event.key==='Enter' || event.key===' '){ event.preventDefault(); toggleAdminUserExpand('${u._id}'); }">
+                <div class="admin-user-info">
+                    <span class="admin-user-name">${escapeHtml(u.username)}</span>
+                    ${adminBadge}
+                    <span class="admin-user-since">depuis ${since}</span>
+                    <span class="admin-user-count">${chars.length} perso${chars.length > 1 ? 's' : ''}</span>
+                </div>
+                <div class="admin-user-actions">
+                    <button class="btn-secondary" type="button" style="padding:4px 8px;font-size:0.75rem;" onclick="event.stopPropagation(); adminToggleAdmin('${u._id}',${!u.isAdmin})">
+                        ${u.isAdmin ? '<i class="fa-solid fa-user-minus"></i> Retirer admin' : '<i class="fa-solid fa-user-plus"></i> Rendre admin'}
+                    </button>
+                    <button type="button" style="background:rgba(218,55,60,0.13);color:#da373c;border:1px solid rgba(218,55,60,0.25);padding:4px 8px;font-size:0.75rem;border-radius:var(--radius-sm);cursor:pointer;" onclick="event.stopPropagation(); adminDeleteUser('${u._id}','${escapeHtml(u.username)}')">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                    <span class="admin-user-chevron"><i class="fa-solid fa-chevron-${isExpanded ? 'up' : 'down'}"></i></span>
+                </div>
             </div>
-            ${charsHtml}
-            <div class="admin-user-actions">
-                <button class="btn-secondary" style="padding:4px 8px;font-size:0.75rem;" onclick="adminToggleAdmin('${u._id}',${!u.isAdmin})">
-                    ${u.isAdmin ? '<i class="fa-solid fa-user-minus"></i> Retirer admin' : '<i class="fa-solid fa-user-plus"></i> Rendre admin'}
-                </button>
-                <button style="background:rgba(218,55,60,0.13);color:#da373c;border:1px solid rgba(218,55,60,0.25);padding:4px 8px;font-size:0.75rem;border-radius:var(--radius-sm);cursor:pointer;" onclick="adminDeleteUser('${u._id}','${escapeHtml(u.username)}')">
-                    <i class="fa-solid fa-trash"></i>
-                </button>
+            <div class="admin-user-details ${isExpanded ? '' : 'hidden'}">
+                ${charsHtml}
             </div>
         </div>`;
     }).join('');
 }
 function filterAdminUsers(query) {
     const q = (query||'').toLowerCase();
-    renderAdminUsers(q ? adminUsersCache.filter(u => {
-        if((u.username || '').toLowerCase().includes(q)) return true;
-        return (u.characters || []).some(char =>
-            (char.name || '').toLowerCase().includes(q) ||
-            (char.role || '').toLowerCase().includes(q)
-        );
-    }) : adminUsersCache);
+    if(q) {
+        adminUsersCache.forEach(u => {
+            if((u.username || '').toLowerCase().includes(q) || (u.characters || []).some(char =>
+                (char.name || '').toLowerCase().includes(q) ||
+                (char.role || '').toLowerCase().includes(q)
+            )) {
+                expandedAdminUsers.add(u._id);
+            }
+        });
+    }
+    renderAdminUsers(getFilteredAdminUsers(query));
 }
 function resetAdminCompanyEditor() {
     ['admin-company-char-id', 'admin-company-index', 'admin-company-old-name', 'admin-company-name', 'admin-company-role', 'admin-company-hq', 'admin-company-revenue', 'admin-company-logo', 'admin-company-description'].forEach(id => {
