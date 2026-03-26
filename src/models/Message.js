@@ -12,4 +12,10 @@ const MessageSchema = new mongoose.Schema({
     senderCharId: String, targetCharId: String
 });
 
+MessageSchema.index({ roomId: 1, timestamp: -1 });
+MessageSchema.index({ isCharDm: 1, roomId: 1, timestamp: -1 });
+MessageSchema.index({ roomId: 1, senderName: 1, targetName: 1, timestamp: -1 });
+MessageSchema.index({ isCharDm: 1, senderCharId: 1, timestamp: -1 });
+MessageSchema.index({ isCharDm: 1, targetCharId: 1, timestamp: -1 });
+
 module.exports = mongoose.model('Message', MessageSchema);

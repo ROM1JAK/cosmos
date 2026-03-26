@@ -69,7 +69,49 @@ const CITIES_SEED = [
     { name: 'Pagoas Sud',  archipel: 'Archipel Sableuse' },
     { name: 'Pagoas Nord', archipel: 'Archipel Sableuse' },
 ];
+
+async function getRecentMessages(query, limit = 200) {
+    const messages = await Message.find(query).sort({ timestamp: -1 }).limit(limit).lean();
+    return messages.reverse();
+}
+
+function mergeMessagesByTimestampDesc(left, right) {
+    const merged = [];
+    let leftIndex = 0;
+    let rightIndex = 0;
+
+    while(leftIndex < left.length && rightIndex < right.length) {
+        const leftTime = new Date(left[leftIndex].timestamp || 0).getTime();
+        const rightTime = new Date(right[rightIndex].timestamp || 0).getTime();
+        if(leftTime >= rightTime) {
+            merged.push(left[leftIndex]);
+            leftIndex += 1;
+        } else {
+            merged.push(right[rightIndex]);
+            rightIndex += 1;
+        }
+    }
+
+    while(leftIndex < left.length) {
+        merged.push(left[leftIndex]);
+        leftIndex += 1;
+    }
+
+    while(rightIndex < right.length) {
+        merged.push(right[rightIndex]);
+        rightIndex += 1;
+    }
+
+    return merged;
+}
+
 mongoose.connection.once('open', async () => {
+    try {
+        await Message.createIndexes();
+    } catch (error) {
+        console.error('Erreur lors de la création des index Message:', error);
+    }
+
     for(const c of CITIES_SEED) {
         const exists = await City.findOne({ name: c.name });
         if(!exists) await City.create({ ...c, baseEDC: 1000000000000, historyEDC: [{ value: 1000000000000 }] });
@@ -608,46 +650,54 @@ io.on('connection', async (socket) => {
 
   socket.on('request_char_dm_history', async ({ senderCharId, targetCharId }) => {
       const roomId = `char_dm_${[senderCharId, targetCharId].sort().join('_')}`;
-      const msgs = await Message.find({ roomId, isCharDm: true }).sort({ timestamp: 1 }).limit(200);
+      const msgs = await getRecentMessages({ roomId, isCharDm: true });
       socket.emit('char_dm_history', { roomId, senderCharId, targetCharId, msgs });
   });
 
   // Récupérer tous les interlocuteurs d'un perso donné
   socket.on('request_my_char_convos', async ({ myCharIds }) => {
       if(!myCharIds || !myCharIds.length) return socket.emit('my_char_convos', []);
-      // Chercher tous les messages impliquant n'importe lequel de mes persos
-      const msgs = await Message.find({
-          isCharDm: true,
-          $or: [
-              { senderCharId: { $in: myCharIds } },
-              { targetCharId: { $in: myCharIds } }
-          ]
-      }).sort({ timestamp: 1 });
+      const normalizedCharIds = myCharIds.map(String);
+      const charDmProjection = 'content timestamp senderName senderAvatar senderColor senderRole ownerId targetName targetOwnerId senderCharId targetCharId';
+      const [sentMsgs, receivedMsgs] = await Promise.all([
+          Message.find({ isCharDm: true, senderCharId: { $in: normalizedCharIds } })
+              .select(charDmProjection)
+              .sort({ timestamp: -1 })
+              .lean(),
+          Message.find({ isCharDm: true, targetCharId: { $in: normalizedCharIds } })
+              .select(charDmProjection)
+              .sort({ timestamp: -1 })
+              .lean()
+      ]);
+      const msgs = mergeMessagesByTimestampDesc(sentMsgs, receivedMsgs);
 
       // Regrouper par paire (monCharId, autreCharId) → dernière info utile
       const convMap = {}; // clé: "myCharId|otherCharId"
       const otherCharIds = new Set();
+      const seenMessageIds = new Set();
       for(const m of msgs) {
-          const myId   = myCharIds.includes(String(m.senderCharId)) ? String(m.senderCharId) : String(m.targetCharId);
-          const othId  = myCharIds.includes(String(m.senderCharId)) ? String(m.targetCharId) : String(m.senderCharId);
+          const messageId = String(m._id);
+          if(seenMessageIds.has(messageId)) continue;
+          seenMessageIds.add(messageId);
+
+          const senderIsMine = normalizedCharIds.includes(String(m.senderCharId));
+          const myId   = senderIsMine ? String(m.senderCharId) : String(m.targetCharId);
+          const othId  = senderIsMine ? String(m.targetCharId) : String(m.senderCharId);
           const key    = `${myId}|${othId}`;
           otherCharIds.add(othId);
           if(!convMap[key]) {
               convMap[key] = {
                   myCharId:      myId,
                   otherCharId:   othId,
-                  otherName:     myCharIds.includes(String(m.senderCharId)) ? m.targetName   : m.senderName,
-                  otherAvatar:   myCharIds.includes(String(m.senderCharId)) ? (m.targetAvatar || '') : (m.senderAvatar || ''),
-                  otherColor:    myCharIds.includes(String(m.senderCharId)) ? (m.targetColor  || '') : (m.senderColor  || ''),
-                  otherRole:     myCharIds.includes(String(m.senderCharId)) ? (m.targetRole   || '') : (m.senderRole   || ''),
-                  otherOwnerId:  myCharIds.includes(String(m.senderCharId)) ? m.targetOwnerId : m.ownerId,
-                  otherOwnerUsername: myCharIds.includes(String(m.senderCharId)) ? (m.targetOwnerUsername || '') : (m.senderOwnerUsername || ''),
+                  otherName:     senderIsMine ? m.targetName : m.senderName,
+                  otherAvatar:   senderIsMine ? '' : (m.senderAvatar || ''),
+                  otherColor:    senderIsMine ? '' : (m.senderColor || ''),
+                  otherRole:     senderIsMine ? '' : (m.senderRole || ''),
+                  otherOwnerId:  senderIsMine ? m.targetOwnerId : m.ownerId,
+                  otherOwnerUsername: '',
                   lastDate:      m.timestamp,
                   lastContent:   m.content
               };
-          } else {
-              convMap[key].lastDate    = m.timestamp;
-              convMap[key].lastContent = m.content;
           }
       }
       const chars = await Character.find({ _id: { $in: [...otherCharIds] } }).select('_id name avatar color role ownerId ownerUsername');
@@ -699,10 +749,10 @@ io.on('connection', async (socket) => {
       const query = { roomId: roomId };
       if (requesterId) query.$or = [ { targetName: { $exists: false } }, { targetName: "" }, { ownerId: requesterId }, { targetOwnerId: requesterId } ];
       else query.$or = [{ targetName: { $exists: false } }, { targetName: "" }];
-      socket.emit('history_data', await Message.find(query).sort({ timestamp: 1 }).limit(200));
+      socket.emit('history_data', await getRecentMessages(query));
   });
   socket.on('request_dm_history', async ({ myUsername, targetUsername }) => {
-      const messages = await Message.find({ roomId: 'dm', $or: [ { senderName: myUsername, targetName: targetUsername }, { senderName: targetUsername, targetName: myUsername } ] }).sort({ timestamp: 1 });
+      const messages = await getRecentMessages({ roomId: 'dm', $or: [ { senderName: myUsername, targetName: targetUsername }, { senderName: targetUsername, targetName: myUsername } ] });
       socket.emit('dm_history_data', { target: targetUsername, history: messages });
   });
   socket.on('request_dm_contacts', async (username) => {
