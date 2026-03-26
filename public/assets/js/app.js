@@ -1325,80 +1325,284 @@ function submitAdminStats() {
 */
 
 let charDmTarget = null;
-let charMpConversations = {}; // { "myCharId|otherCharId": { myChar, otherChar, msgs[], unread, lastContent } }
-let charMpCurrentKey    = null;
+let charMpConversations = {};
+let charMpCurrentKey = null;
+let charMpArchiveConversations = {};
+let charMpArchiveCurrentKey = null;
+let charMpArchiveLoaded = false;
+let charMpArchiveInView = false;
+let charMpTypingTimeout = null;
+let charMpTypingState = { roomId: null, label: '' };
+let charMpRemoteTypers = new Map();
 
-function mpKey(a, b)  { return `${a}|${b}`; }
+function mpKey(a, b) { return `${a}|${b}`; }
 function mpParse(key) { const [a, b] = key.split('|'); return { myCharId: a, otherCharId: b }; }
+function getCharDmRoomId(senderCharId, targetCharId) { return `char_dm_${[senderCharId, targetCharId].sort().join('_')}`; }
 function isCharMpVisible() {
     const panel = document.getElementById('reseau-panel-mp');
     return currentView === 'reseau' && !!panel && !panel.classList.contains('hidden');
 }
-
-// ── Charger toutes les convos existantes depuis le serveur ──
+function isCharMpTabActive() {
+    return isCharMpVisible() && localStorage.getItem('last_reseau_tab') === 'mp';
+}
+function getCharMpConversation(key) { return charMpConversations[key] || null; }
+function getArchivedCharMpConversation(key) { return charMpArchiveConversations[key] || null; }
+function getMessageTimeValue(msg) {
+    if(msg?.timestamp) {
+        const value = new Date(msg.timestamp).getTime();
+        if(!Number.isNaN(value)) return value;
+    }
+    return 0;
+}
+function setCharMpArchiveMode(enabled) {
+    charMpArchiveInView = enabled;
+    const liveEmpty = document.getElementById('char-mp-empty');
+    const liveConvo = document.getElementById('char-mp-convo');
+    const archives = document.getElementById('char-mp-archives');
+    if(!liveEmpty || !liveConvo || !archives) return;
+    if(enabled) {
+        liveEmpty.classList.add('hidden');
+        liveConvo.classList.add('hidden');
+        archives.classList.remove('hidden');
+        return;
+    }
+    archives.classList.add('hidden');
+    if(charMpCurrentKey && charMpConversations[charMpCurrentKey]) {
+        liveConvo.classList.remove('hidden');
+        liveConvo.style.display = 'flex';
+        liveEmpty.classList.add('hidden');
+    } else {
+        liveConvo.classList.add('hidden');
+        liveEmpty.classList.remove('hidden');
+    }
+}
+function hideCharMpTypingUI() {
+    const mainTyping = document.getElementById('char-mp-typing');
+    const modalTyping = document.getElementById('char-dm-typing');
+    if(mainTyping) {
+        mainTyping.textContent = '';
+        mainTyping.classList.add('hidden');
+    }
+    if(modalTyping) {
+        modalTyping.textContent = '';
+        modalTyping.classList.add('hidden');
+    }
+}
+function updateCharMpTypingUI() {
+    const mainTyping = document.getElementById('char-mp-typing');
+    const modalTyping = document.getElementById('char-dm-typing');
+    const mainRoomId = charMpCurrentKey ? getCharDmRoomId(...Object.values(mpParse(charMpCurrentKey))) : null;
+    const modalSenderId = document.getElementById('charDmSenderSelect')?.value || null;
+    const modalRoomId = (charDmTarget && modalSenderId) ? getCharDmRoomId(modalSenderId, charDmTarget._id) : null;
+    const mainLabel = mainRoomId ? charMpRemoteTypers.get(mainRoomId) : '';
+    const modalLabel = modalRoomId ? charMpRemoteTypers.get(modalRoomId) : '';
+    if(mainTyping) {
+        if(mainLabel && !charMpArchiveInView) {
+            mainTyping.textContent = `${mainLabel} écrit...`;
+            mainTyping.classList.remove('hidden');
+        } else {
+            mainTyping.textContent = '';
+            mainTyping.classList.add('hidden');
+        }
+    }
+    if(modalTyping) {
+        if(modalLabel && charDmTarget) {
+            modalTyping.textContent = `${modalLabel} écrit...`;
+            modalTyping.classList.remove('hidden');
+        } else {
+            modalTyping.textContent = '';
+            modalTyping.classList.add('hidden');
+        }
+    }
+}
+function stopCharMpTyping() {
+    if(charMpTypingState.roomId) {
+        socket.emit('char_dm_typing_stop', { roomId: charMpTypingState.roomId, label: charMpTypingState.label });
+    }
+    charMpTypingState = { roomId: null, label: '' };
+    if(charMpTypingTimeout) {
+        clearTimeout(charMpTypingTimeout);
+        charMpTypingTimeout = null;
+    }
+}
+function emitCharMpTyping(roomId, label) {
+    if(!roomId || !label) return;
+    charMpTypingState = { roomId, label };
+    socket.emit('char_dm_typing_start', { roomId, label });
+    if(charMpTypingTimeout) clearTimeout(charMpTypingTimeout);
+    charMpTypingTimeout = setTimeout(() => {
+        socket.emit('char_dm_typing_stop', { roomId, label });
+        charMpTypingState = { roomId: null, label: '' };
+        charMpTypingTimeout = null;
+    }, 1200);
+}
+function handleCharMpInputTyping() {
+    if(!charMpCurrentKey) return;
+    const conv = getCharMpConversation(charMpCurrentKey);
+    const input = document.getElementById('charMpInput');
+    if(!conv || !input) return;
+    const roomId = getCharDmRoomId(conv.myChar._id, conv.otherChar._id);
+    if(!input.value.trim()) {
+        stopCharMpTyping();
+        return;
+    }
+    emitCharMpTyping(roomId, conv.myChar.name || USERNAME || 'Quelqu’un');
+}
+function handleCharDmModalTyping() {
+    if(!charDmTarget) return;
+    const input = document.getElementById('charDmInput');
+    const senderId = document.getElementById('charDmSenderSelect')?.value || null;
+    const senderChar = myCharacters.find(char => String(char._id) === String(senderId));
+    if(!input || !senderChar) return;
+    const roomId = getCharDmRoomId(senderChar._id, charDmTarget._id);
+    if(!input.value.trim()) {
+        stopCharMpTyping();
+        return;
+    }
+    emitCharMpTyping(roomId, senderChar.name || USERNAME || 'Quelqu’un');
+}
+function bindCharMpInputs() {
+    const mainInput = document.getElementById('charMpInput');
+    if(mainInput && mainInput.dataset.typingBound !== '1') {
+        mainInput.dataset.typingBound = '1';
+        mainInput.addEventListener('input', handleCharMpInputTyping);
+    }
+    const modalInput = document.getElementById('charDmInput');
+    if(modalInput && modalInput.dataset.typingBound !== '1') {
+        modalInput.dataset.typingBound = '1';
+        modalInput.addEventListener('input', handleCharDmModalTyping);
+    }
+}
+function groupCharMessages(messages, myCharId) {
+    const groups = [];
+    messages.forEach(msg => {
+        const isSelf = String(msg.senderCharId) === String(myCharId);
+        const lastGroup = groups[groups.length - 1];
+        const canAppend = lastGroup
+            && lastGroup.isSelf === isSelf
+            && String(lastGroup.senderCharId) === String(msg.senderCharId)
+            && Math.abs(getMessageTimeValue(msg) - lastGroup.lastTimestamp) <= 5 * 60 * 1000;
+        if(canAppend) {
+            lastGroup.items.push(msg);
+            lastGroup.lastTimestamp = getMessageTimeValue(msg);
+            return;
+        }
+        groups.push({
+            isSelf,
+            senderCharId: msg.senderCharId,
+            senderName: msg.senderName || '',
+            senderAvatar: msg.senderAvatar || '',
+            senderColor: msg.senderColor || 'var(--accent)',
+            items: [msg],
+            lastTimestamp: getMessageTimeValue(msg)
+        });
+    });
+    return groups;
+}
+function renderGroupedCharMessages(containerId, messages, myCharId, scrollMode = 'bottom') {
+    const container = document.getElementById(containerId);
+    if(!container) return;
+    const previousHeight = container.scrollHeight;
+    const previousTop = container.scrollTop;
+    const fragment = document.createDocumentFragment();
+    groupCharMessages(messages, myCharId).forEach(group => {
+        const block = document.createElement('div');
+        block.className = `cmp-block ${group.isSelf ? 'cmp-block-self' : 'cmp-block-other'}`;
+        block.innerHTML = `
+            <img src="${group.senderAvatar}" class="cmp-block-avatar" title="${escapeHtml(group.senderName)}" onerror="this.style.opacity=0">
+            <div class="cmp-block-body" style="--sender-color:${group.senderColor};">
+                <div class="cmp-block-head">${escapeHtml(group.senderName)}</div>
+                <div class="cmp-block-stack"></div>
+            </div>`;
+        const stack = block.querySelector('.cmp-block-stack');
+        group.items.forEach(item => {
+            const entry = document.createElement('div');
+            entry.className = 'cmp-block-entry';
+            entry.innerHTML = `
+                <div class="cmp-block-text">${formatText(item.content || '')}</div>
+                <span class="cmp-block-time">${escapeHtml(item.date || '')}</span>`;
+            stack.appendChild(entry);
+        });
+        fragment.appendChild(block);
+    });
+    container.innerHTML = '';
+    container.appendChild(fragment);
+    if(scrollMode === 'preserve') {
+        container.scrollTop = container.scrollHeight - previousHeight + previousTop;
+    } else if(scrollMode === 'top') {
+        container.scrollTop = 0;
+    } else {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+function renderCharMpThread(key, scrollMode = 'bottom') {
+    const conv = getCharMpConversation(key);
+    if(!conv) return;
+    renderGroupedCharMessages('char-mp-messages', conv.msgs || [], conv.myChar._id, scrollMode);
+}
+function renderCharDmModalMessages() {
+    if(!charDmTarget) return;
+    const senderId = document.getElementById('charDmSenderSelect')?.value || null;
+    const key = senderId ? mpKey(senderId, charDmTarget._id) : null;
+    const conv = key ? getCharMpConversation(key) : null;
+    if(!conv) return;
+    renderGroupedCharMessages('char-dm-messages', conv.msgs || [], conv.myChar._id, 'bottom');
+}
 function loadMyCharConvos() {
     const ids = myCharacters.map(c => c._id);
     if(!ids.length) return;
     socket.emit('request_my_char_convos', { myCharIds: ids });
 }
-
-socket.on('my_char_convos', (convos) => {
-    convos.forEach(c => {
-        const myChar = myCharacters.find(ch => String(ch._id) === String(c.myCharId));
-        if(!myChar) return;
-        const key = mpKey(c.myCharId, c.otherCharId);
-        if(!charMpConversations[key]) {
-            charMpConversations[key] = {
-                myChar,
-                otherChar: { _id: c.otherCharId, name: c.otherName, avatar: c.otherAvatar||'', color: c.otherColor||'', role: c.otherRole||'', ownerId: c.otherOwnerId||'', ownerUsername: c.otherOwnerUsername||'' },
-                msgs: [], unread: false, lastContent: c.lastContent || ''
-            };
-        }
+function loadArchivedCharMpConvos(forceReload = false) {
+    if(charMpArchiveLoaded && !forceReload) return;
+    const ids = myCharacters.map(c => c._id);
+    if(!ids.length) return;
+    socket.emit('request_archived_char_convos', { myCharIds: ids });
+}
+function buildCharMpGroups(source, activeKey) {
+    const groups = {};
+    Object.entries(source).forEach(([key, conv]) => {
+        const myId = String(conv.myChar._id);
+        if(!groups[myId]) groups[myId] = { myChar: conv.myChar, convos: [] };
+        groups[myId].convos.push({ key, ...conv });
     });
-    renderCharMpSidebar();
-});
-
-// ── Sidebar : grouper par MON perso ──
+    Object.values(groups).forEach(group => group.convos.sort((a, b) => getMessageTimeValue({ timestamp: b.lastDate }) - getMessageTimeValue({ timestamp: a.lastDate })));
+    return groups;
+}
 function renderCharMpSidebar() {
     const list = document.getElementById('char-mp-convo-list');
     if(!list) return;
     list.innerHTML = '';
-    const groups = {};
-    Object.entries(charMpConversations).forEach(([key, conv]) => {
-        const id = conv.myChar._id;
-        if(!groups[id]) groups[id] = { myChar: conv.myChar, convos: [] };
-        groups[id].convos.push({ key, ...conv });
-    });
+    const groups = buildCharMpGroups(charMpConversations, charMpCurrentKey);
     if(!Object.keys(groups).length) {
         list.innerHTML = `<div class="char-mp-empty-list"><i class="fa-solid fa-inbox"></i><span>Aucun message</span></div>`;
         return;
     }
     myCharacters.forEach(myChar => {
-        const group = groups[myChar._id];
+        const group = groups[String(myChar._id)];
         if(!group) return;
         const groupEl = document.createElement('div');
         groupEl.className = 'char-mp-group';
-        const header = document.createElement('div');
-        header.className = 'char-mp-group-header';
-        header.innerHTML = `
-            <img src="${myChar.avatar||''}" class="char-mp-group-avatar" onerror="this.style.opacity=0">
-            <div class="char-mp-group-info">
-                <span class="char-mp-group-name" style="color:${myChar.color||'white'};">${myChar.name}</span>
-                <span class="char-mp-group-role">${myChar.role||''}</span>
+        groupEl.innerHTML = `
+            <div class="char-mp-group-header">
+                <img src="${myChar.avatar || ''}" class="char-mp-group-avatar" onerror="this.style.opacity=0">
+                <div class="char-mp-group-info">
+                    <span class="char-mp-group-name" style="color:${myChar.color || 'white'};">${myChar.name}</span>
+                    <span class="char-mp-group-role">${myChar.role || ''}</span>
+                </div>
             </div>`;
-        groupEl.appendChild(header);
         const convList = document.createElement('div');
         convList.className = 'char-mp-group-convos';
         group.convos.forEach(conv => {
-            const isActive = charMpCurrentKey === conv.key;
             const item = document.createElement('div');
+            const isActive = charMpCurrentKey === conv.key && !charMpArchiveInView;
             item.className = `char-mp-conv-item${isActive ? ' active' : ''}${conv.unread ? ' unread' : ''}`;
             item.onclick = () => openCharMpConvo(conv.key);
             item.innerHTML = `
-                <img src="${conv.otherChar.avatar||''}" class="char-mp-conv-avatar" onerror="this.style.opacity=0">
+                <img src="${conv.otherChar.avatar || ''}" class="char-mp-conv-avatar" onerror="this.style.opacity=0">
                 <div class="char-mp-conv-info">
-                    <div class="char-mp-conv-name" style="color:${conv.otherChar.color||'var(--text-normal)'};">${conv.otherChar.name}</div>
-                    <div class="char-mp-conv-last">${conv.lastContent ? (conv.lastContent.length>32 ? conv.lastContent.slice(0,32)+'…' : conv.lastContent) : ''}</div>
+                    <div class="char-mp-conv-name" style="color:${conv.otherChar.color || 'var(--text-normal)'};">${conv.otherChar.name || 'Inconnu'}</div>
+                    <div class="char-mp-conv-last">${conv.lastContent ? (conv.lastContent.length > 40 ? `${conv.lastContent.slice(0, 40)}…` : conv.lastContent) : ''}</div>
                 </div>
                 ${conv.unread ? '<span class="char-mp-unread-dot"></span>' : ''}`;
             convList.appendChild(item);
@@ -1407,43 +1611,130 @@ function renderCharMpSidebar() {
         list.appendChild(groupEl);
     });
 }
-
-// ── Ouvrir une conversation ──
+function renderArchivedCharMpList() {
+    const list = document.getElementById('char-mp-archive-list');
+    if(!list) return;
+    list.innerHTML = '';
+    const groups = buildCharMpGroups(charMpArchiveConversations, charMpArchiveCurrentKey);
+    if(!Object.keys(groups).length) {
+        list.innerHTML = `<div class="char-mp-empty-list"><i class="fa-solid fa-box-archive"></i><span>Aucune archive trouvée</span></div>`;
+        return;
+    }
+    myCharacters.forEach(myChar => {
+        const group = groups[String(myChar._id)];
+        if(!group) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'char-mp-group';
+        wrap.innerHTML = `
+            <div class="char-mp-group-header">
+                <img src="${myChar.avatar || ''}" class="char-mp-group-avatar" onerror="this.style.opacity=0">
+                <div class="char-mp-group-info">
+                    <span class="char-mp-group-name" style="color:${myChar.color || 'white'};">${myChar.name}</span>
+                    <span class="char-mp-group-role">Archives</span>
+                </div>
+            </div>`;
+        const convList = document.createElement('div');
+        convList.className = 'char-mp-group-convos';
+        group.convos.forEach(conv => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = `char-mp-conv-item char-mp-archive-item${charMpArchiveCurrentKey === conv.key ? ' active' : ''}`;
+            item.onclick = () => openArchivedCharMpConvo(conv.key);
+            item.innerHTML = `
+                <img src="${conv.otherChar.avatar || ''}" class="char-mp-conv-avatar" onerror="this.style.opacity=0">
+                <div class="char-mp-conv-info">
+                    <div class="char-mp-conv-name" style="color:${conv.otherChar.color || 'var(--text-normal)'};">${conv.otherChar.name || 'Inconnu'}</div>
+                    <div class="char-mp-conv-last">${conv.lastContent ? (conv.lastContent.length > 40 ? `${conv.lastContent.slice(0, 40)}…` : conv.lastContent) : ''}</div>
+                </div>`;
+            convList.appendChild(item);
+        });
+        wrap.appendChild(convList);
+        list.appendChild(wrap);
+    });
+}
+function hydrateCharMpHeader(conv) {
+    document.getElementById('mpMySenderAvatar').src = conv.myChar.avatar || '';
+    document.getElementById('mpMySenderName').textContent = conv.myChar.name || '';
+    document.getElementById('mpMySenderRole').textContent = conv.myChar.role || '';
+    document.getElementById('mpTargetAvatar').src = conv.otherChar.avatar || '';
+    document.getElementById('mpTargetName').textContent = conv.otherChar.name || '';
+    document.getElementById('mpTargetRole').textContent = conv.otherChar.role || '';
+    document.getElementById('mpMySenderAvatar').style.borderColor = conv.myChar.color || 'var(--border)';
+    document.getElementById('mpTargetAvatar').style.borderColor = conv.otherChar.color || 'var(--border)';
+    const inputAv = document.getElementById('mpInputSenderAvatar');
+    if(inputAv) {
+        inputAv.src = conv.myChar.avatar || '';
+        inputAv.title = conv.myChar.name || '';
+    }
+}
 function openCharMpConvo(key) {
+    stopCharMpTyping();
     charMpCurrentKey = key;
-    const conv = charMpConversations[key];
+    setCharMpArchiveMode(false);
+    const conv = getCharMpConversation(key);
     if(!conv) return;
     conv.unread = false;
-    document.getElementById('char-mp-empty').classList.add('hidden');
-    const el = document.getElementById('char-mp-convo');
-    el.classList.remove('hidden'); el.style.display = 'flex';
-    document.getElementById('mpMySenderAvatar').src  = conv.myChar.avatar||'';
-    document.getElementById('mpMySenderName').textContent = conv.myChar.name;
-    document.getElementById('mpMySenderRole').textContent = conv.myChar.role||'';
-    document.getElementById('mpTargetAvatar').src    = conv.otherChar.avatar||'';
-    document.getElementById('mpTargetName').textContent   = conv.otherChar.name;
-    document.getElementById('mpTargetRole').textContent   = conv.otherChar.role||'';
-    document.getElementById('mpMySenderAvatar').style.borderColor  = conv.myChar.color||'var(--border)';
-    document.getElementById('mpTargetAvatar').style.borderColor    = conv.otherChar.color||'var(--border)';
-    const inputAv = document.getElementById('mpInputSenderAvatar');
-    if(inputAv) { inputAv.src = conv.myChar.avatar||''; inputAv.title = conv.myChar.name; }
+    hydrateCharMpHeader(conv);
     renderCharMpSidebar();
+    renderCharMpThread(key, 'bottom');
+    hideCharMpTypingUI();
     const { myCharId, otherCharId } = mpParse(key);
     socket.emit('request_char_dm_history', { senderCharId: myCharId, targetCharId: otherCharId });
 }
-
+function openCharMpArchivePage() {
+    setCharMpArchiveMode(true);
+    stopCharMpTyping();
+    loadArchivedCharMpConvos(true);
+    renderArchivedCharMpList();
+}
+function closeCharMpArchivePage() {
+    setCharMpArchiveMode(false);
+    renderCharMpSidebar();
+}
+function openArchivedCharMpConvo(key) {
+    charMpArchiveCurrentKey = key;
+    const conv = getArchivedCharMpConversation(key);
+    if(!conv) return;
+    conv.msgs = [];
+    conv.page = -1;
+    conv.hasMore = false;
+    conv.total = 0;
+    document.getElementById('char-mp-archive-empty').classList.add('hidden');
+    document.getElementById('char-mp-archive-thread').classList.remove('hidden');
+    document.getElementById('char-mp-archive-thread-title').textContent = `${conv.myChar.name} -> ${conv.otherChar.name}`;
+    document.getElementById('char-mp-archive-thread-meta').textContent = 'Archives paginées';
+    renderArchivedCharMpList();
+    socket.emit('request_archived_char_dm_history', { senderCharId: conv.myChar._id, targetCharId: conv.otherChar._id, page: 0 });
+}
+function loadMoreArchivedCharMpMessages() {
+    if(!charMpArchiveCurrentKey) return;
+    const conv = getArchivedCharMpConversation(charMpArchiveCurrentKey);
+    if(!conv || !conv.hasMore) return;
+    socket.emit('request_archived_char_dm_history', {
+        senderCharId: conv.myChar._id,
+        targetCharId: conv.otherChar._id,
+        page: (conv.page || 0) + 1
+    });
+}
+function renderArchivedCharMpThread(key, scrollMode = 'bottom') {
+    const conv = getArchivedCharMpConversation(key);
+    if(!conv) return;
+    renderGroupedCharMessages('char-mp-archive-messages', conv.msgs || [], conv.myChar._id, scrollMode);
+    const moreBtn = document.getElementById('char-mp-archive-more');
+    if(moreBtn) moreBtn.classList.toggle('hidden', !conv.hasMore);
+    const meta = document.getElementById('char-mp-archive-thread-meta');
+    if(meta) meta.textContent = `${conv.total || 0} message(s) archivés`;
+}
 function openProfileFromMp() {
     if(!charMpCurrentKey) return;
     const conv = charMpConversations[charMpCurrentKey];
     if(conv) openProfile(conv.otherChar.name);
 }
-
-// ── Envoyer ──
 function sendCharMpMessage() {
     if(!charMpCurrentKey || !PLAYER_ID) return;
     const content = document.getElementById('charMpInput').value.trim();
     if(!content) return;
-    const conv = charMpConversations[charMpCurrentKey];
+    const conv = getCharMpConversation(charMpCurrentKey);
     if(!conv) return;
     socket.emit('send_char_dm', {
         senderCharId: conv.myChar._id, senderCharName: conv.myChar.name,
@@ -1451,90 +1742,150 @@ function sendCharMpMessage() {
         senderOwnerUsername: USERNAME,
         targetCharId: conv.otherChar._id, targetCharName: conv.otherChar.name,
         targetAvatar: conv.otherChar.avatar || '', targetColor: conv.otherChar.color || '', targetRole: conv.otherChar.role || '',
-        targetOwnerId: conv.otherChar.ownerId, targetOwnerUsername: conv.otherChar.ownerUsername||'',
+        targetOwnerId: conv.otherChar.ownerId, targetOwnerUsername: conv.otherChar.ownerUsername || '',
         ownerId: PLAYER_ID, content,
-        date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+        date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     });
     document.getElementById('charMpInput').value = '';
+    stopCharMpTyping();
 }
-
-// ── Afficher un message ──
-function appendCharMpMsg(msg) {
-    const c = document.getElementById('char-mp-messages');
-    if(!c || !charMpCurrentKey) return;
-    const { myCharId } = mpParse(charMpCurrentKey);
-    const isSelf = String(msg.senderCharId) === String(myCharId);
-    const div = document.createElement('div');
-    div.className = `cmp-msg ${isSelf ? 'cmp-msg-self' : 'cmp-msg-other'}`;
-    div.innerHTML = `
-        <img src="${msg.senderAvatar||''}" class="cmp-msg-avatar" title="${escapeHtml(msg.senderName||'')}">
-        <div class="cmp-msg-bubble" style="--sender-color:${msg.senderColor||'var(--accent)'};">
-            <span class="cmp-msg-name">${escapeHtml(msg.senderName||'')}</span>
-            <span class="cmp-msg-text">${formatText(msg.content)}</span>
-            <span class="cmp-msg-time">${msg.date||''}</span>
-        </div>`;
-    c.appendChild(div);
-    c.scrollTop = c.scrollHeight;
-}
-
-// ── Historique ──
+socket.on('my_char_convos', (convos) => {
+    convos.forEach(c => {
+        const myChar = myCharacters.find(ch => String(ch._id) === String(c.myCharId));
+        if(!myChar) return;
+        const key = mpKey(String(c.myCharId), String(c.otherCharId));
+        const existing = charMpConversations[key] || { msgs: [], unread: false };
+        charMpConversations[key] = {
+            ...existing,
+            myChar,
+            otherChar: {
+                _id: c.otherCharId,
+                name: c.otherName,
+                avatar: c.otherAvatar || '',
+                color: c.otherColor || '',
+                role: c.otherRole || '',
+                ownerId: c.otherOwnerId || '',
+                ownerUsername: c.otherOwnerUsername || ''
+            },
+            lastContent: c.lastContent || existing.lastContent || '',
+            lastDate: c.lastDate || existing.lastDate || null
+        };
+    });
+    renderCharMpSidebar();
+});
+socket.on('archived_char_convos', (convos) => {
+    charMpArchiveLoaded = true;
+    charMpArchiveConversations = {};
+    convos.forEach(c => {
+        const myChar = myCharacters.find(ch => String(ch._id) === String(c.myCharId));
+        if(!myChar) return;
+        const key = mpKey(String(c.myCharId), String(c.otherCharId));
+        charMpArchiveConversations[key] = {
+            myChar,
+            otherChar: {
+                _id: c.otherCharId,
+                name: c.otherName,
+                avatar: c.otherAvatar || '',
+                color: c.otherColor || '',
+                role: c.otherRole || '',
+                ownerId: c.otherOwnerId || '',
+                ownerUsername: c.otherOwnerUsername || ''
+            },
+            msgs: [],
+            page: -1,
+            hasMore: false,
+            total: 0,
+            lastContent: c.lastContent || '',
+            lastDate: c.lastDate || null
+        };
+    });
+    renderArchivedCharMpList();
+});
 socket.on('char_dm_history', ({ senderCharId, targetCharId, msgs }) => {
-    if(isCharMpVisible() && charMpCurrentKey) {
-        const { myCharId, otherCharId } = mpParse(charMpCurrentKey);
-        const match = (String(senderCharId)===String(myCharId) && String(targetCharId)===String(otherCharId))
-                   || (String(senderCharId)===String(otherCharId) && String(targetCharId)===String(myCharId));
-        if(match) { const c=document.getElementById('char-mp-messages'); if(c){c.innerHTML=''; msgs.forEach(m=>appendCharMpMsg(m)); c.scrollTop = c.scrollHeight;} }
+    const keys = [mpKey(String(senderCharId), String(targetCharId)), mpKey(String(targetCharId), String(senderCharId))];
+    const activeKey = keys.find(key => charMpConversations[key]);
+    if(activeKey) {
+        charMpConversations[activeKey].msgs = Array.isArray(msgs) ? msgs : [];
+        charMpConversations[activeKey].lastContent = msgs?.length ? msgs[msgs.length - 1].content : (charMpConversations[activeKey].lastContent || '');
+        charMpConversations[activeKey].lastDate = msgs?.length ? (msgs[msgs.length - 1].timestamp || null) : (charMpConversations[activeKey].lastDate || null);
+        if(charMpCurrentKey === activeKey) renderCharMpThread(activeKey, 'bottom');
+        renderCharMpSidebar();
     }
     const modal = document.getElementById('char-dm-modal');
-    if(modal && !modal.classList.contains('hidden')) {
-        const c = document.getElementById('char-dm-messages');
-        if(c) { c.innerHTML=''; msgs.forEach(m=>appendCharDmMsg(m)); c.scrollTop=c.scrollHeight; }
-    }
+    if(modal && !modal.classList.contains('hidden')) renderCharDmModalMessages();
 });
-
-// ── Réception nouveau MP ──
+socket.on('archived_char_dm_history', ({ senderCharId, targetCharId, page, total, hasMore, msgs }) => {
+    const key = mpKey(String(senderCharId), String(targetCharId));
+    const conv = getArchivedCharMpConversation(key);
+    if(!conv) return;
+    conv.msgs = Number(page) > 0 ? [...(msgs || []), ...(conv.msgs || [])] : (msgs || []);
+    conv.page = Number(page) || 0;
+    conv.total = Number(total) || 0;
+    conv.hasMore = !!hasMore;
+    renderArchivedCharMpThread(key, Number(page) > 0 ? 'preserve' : 'bottom');
+});
+socket.on('display_char_dm_typing', ({ roomId, label }) => {
+    if(!roomId) return;
+    charMpRemoteTypers.set(roomId, label || 'Quelqu’un');
+    updateCharMpTypingUI();
+});
+socket.on('hide_char_dm_typing', ({ roomId }) => {
+    if(!roomId) return;
+    charMpRemoteTypers.delete(roomId);
+    updateCharMpTypingUI();
+});
 socket.on('receive_char_dm', (msg) => {
-    const isForMe = msg.targetOwnerId===PLAYER_ID || msg.ownerId===PLAYER_ID;
+    const isForMe = msg.targetOwnerId === PLAYER_ID || msg.ownerId === PLAYER_ID;
     if(!isForMe) return;
-    const myCharIds = myCharacters.map(c=>String(c._id));
-    const isISender  = myCharIds.includes(String(msg.senderCharId));
-    const myCharId   = isISender ? String(msg.senderCharId) : String(msg.targetCharId);
-    const othCharId  = isISender ? String(msg.targetCharId) : String(msg.senderCharId);
-    const key = mpKey(myCharId, othCharId);
+    const myCharIds = myCharacters.map(c => String(c._id));
+    const isSenderMine = myCharIds.includes(String(msg.senderCharId));
+    const myCharId = isSenderMine ? String(msg.senderCharId) : String(msg.targetCharId);
+    const otherCharId = isSenderMine ? String(msg.targetCharId) : String(msg.senderCharId);
+    const key = mpKey(myCharId, otherCharId);
     if(!charMpConversations[key]) {
-        const myChar = myCharacters.find(c=>String(c._id)===myCharId);
+        const myChar = myCharacters.find(c => String(c._id) === myCharId);
         if(!myChar) return;
         charMpConversations[key] = {
             myChar,
             otherChar: {
-                _id: othCharId,
-                name: isISender ? msg.targetName : msg.senderName,
-                avatar: isISender ? (msg.targetAvatar || '') : (msg.senderAvatar || ''),
-                color: isISender ? (msg.targetColor || '') : (msg.senderColor || ''),
-                role: isISender ? (msg.targetRole || '') : (msg.senderRole || ''),
-                ownerId: isISender ? msg.targetOwnerId : msg.ownerId,
-                ownerUsername: isISender ? (msg.targetOwnerUsername || '') : (msg.senderOwnerUsername || '')
+                _id: otherCharId,
+                name: isSenderMine ? msg.targetName : msg.senderName,
+                avatar: isSenderMine ? (msg.targetAvatar || '') : (msg.senderAvatar || ''),
+                color: isSenderMine ? (msg.targetColor || '') : (msg.senderColor || ''),
+                role: isSenderMine ? (msg.targetRole || '') : (msg.senderRole || ''),
+                ownerId: isSenderMine ? msg.targetOwnerId : msg.ownerId,
+                ownerUsername: isSenderMine ? (msg.targetOwnerUsername || '') : (msg.senderOwnerUsername || '')
             },
-            msgs:[], unread:false
+            msgs: [],
+            unread: false,
+            lastContent: '',
+            lastDate: null
         };
     }
-    charMpConversations[key].lastContent = msg.content;
-    charMpConversations[key].msgs.push(msg);
-    if(isCharMpVisible() && charMpCurrentKey===key) { appendCharMpMsg(msg); }
-    const isOnMp = (currentView === 'reseau' && localStorage.getItem('last_reseau_tab') === 'mp');
+    const conv = charMpConversations[key];
+    conv.msgs = [...(conv.msgs || []), msg];
+    conv.lastContent = msg.content || '';
+    conv.lastDate = msg.timestamp || null;
+    if(isCharMpTabActive() && charMpCurrentKey === key && !charMpArchiveInView) {
+        renderCharMpThread(key, 'bottom');
+    }
+    const isOnMp = isCharMpTabActive();
     if(!isOnMp && msg.ownerId !== PLAYER_ID) {
-        charMpConversations[key].unread = true;
+        conv.unread = true;
         const badge = document.getElementById('char-mp-badge');
-        if(badge) { badge.classList.remove('hidden'); badge.textContent = '!'; }
+        if(badge) {
+            badge.classList.remove('hidden');
+            badge.textContent = '!';
+        }
         const reseauBtn = document.getElementById('btn-view-reseau');
         if(reseauBtn) reseauBtn.classList.add('nav-char-mp-unread');
-        renderCharMpSidebar();
     }
-    const modal=document.getElementById('char-dm-modal');
-    if(charDmTarget && charDmTarget._id===othCharId && modal && !modal.classList.contains('hidden')) {
-        appendCharDmMsg(msg); const c=document.getElementById('char-dm-messages'); if(c)c.scrollTop=c.scrollHeight;
+    renderCharMpSidebar();
+    const modal = document.getElementById('char-dm-modal');
+    if(charDmTarget && String(charDmTarget._id) === String(otherCharId) && modal && !modal.classList.contains('hidden')) {
+        renderCharDmModalMessages();
     }
-    if(notificationsEnabled && msg.ownerId!==PLAYER_ID) notifSound.play().catch(()=>{});
+    if(notificationsEnabled && msg.ownerId !== PLAYER_ID) notifSound.play().catch(() => {});
 });
 
 // ── Modale nouvelle conversation ──
@@ -1577,7 +1928,7 @@ function startNewCharMpConvoFromModal(othId, othName, othAvatar, othColor, othRo
     if(!myChar) return;
     const otherChar = { _id:othId, name:othName, avatar:othAvatar, color:othColor, role:othRole, ownerId:othOwnerId, ownerUsername:othOwnerUsername };
     const key = mpKey(myCharId, othId);
-    if(!charMpConversations[key]) charMpConversations[key] = { myChar, otherChar, msgs:[], unread:false, lastContent:'' };
+    if(!charMpConversations[key]) charMpConversations[key] = { myChar, otherChar, msgs:[], unread:false, lastContent:'', lastDate:null };
     switchView('char-mp');
     openCharMpConvo(key);
 }
@@ -1593,9 +1944,10 @@ function openCharDmModal(targetChar) {
     document.getElementById('char-dm-modal').classList.remove('hidden');
     if(sel) sel.onchange = loadCharDmHistory;
 }
-function closeCharDmModal() { document.getElementById('char-dm-modal').classList.add('hidden'); charDmTarget=null; }
+function closeCharDmModal() { document.getElementById('char-dm-modal').classList.add('hidden'); charDmTarget=null; stopCharMpTyping(); hideCharMpTypingUI(); }
 
 function loadCharDmHistory() {
+    stopCharMpTyping();
     if(!charDmTarget) return;
     const sel = document.getElementById('charDmSenderSelect');
     const myCharId = sel ? sel.value : (myCharacters[0]?myCharacters[0]._id:null);
@@ -1603,7 +1955,7 @@ function loadCharDmHistory() {
     const key = mpKey(myCharId, charDmTarget._id);
     if(!charMpConversations[key]) {
         const myChar = myCharacters.find(c=>c._id===myCharId);
-        if(myChar) charMpConversations[key]={ myChar, otherChar:charDmTarget, msgs:[], unread:false };
+        if(myChar) charMpConversations[key]={ myChar, otherChar:charDmTarget, msgs:[], unread:false, lastContent:'', lastDate:null };
     }
     socket.emit('request_char_dm_history', { senderCharId:myCharId, targetCharId:charDmTarget._id });
 }
@@ -1619,26 +1971,10 @@ function sendCharDm() {
         ownerId:PLAYER_ID, content, date:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
     });
     document.getElementById('charDmInput').value='';
+    stopCharMpTyping();
 }
 
-function appendCharDmMsg(msg) {
-    const c = document.getElementById('char-dm-messages'); if(!c) return;
-    const sel = document.getElementById('charDmSenderSelect');
-    const myCharId = sel ? sel.value : null;
-    const isSelf = String(msg.senderCharId)===String(myCharId);
-    const div = document.createElement('div');
-    div.className = `cmp-msg ${isSelf?'cmp-msg-self':'cmp-msg-other'}`;
-    div.innerHTML = `
-        <img src="${msg.senderAvatar||''}" class="cmp-msg-avatar" title="${escapeHtml(msg.senderName||'')}">
-        <div class="cmp-msg-bubble" style="--sender-color:${msg.senderColor||'var(--accent)'};">
-            <span class="cmp-msg-name">${escapeHtml(msg.senderName||'')}</span>
-            <span class="cmp-msg-text">${formatText(msg.content)}</span>
-            <span class="cmp-msg-time">${msg.date||''}</span>
-        </div>`;
-    c.appendChild(div);
-}
-
-function initCharMpView() { loadMyCharConvos(); renderCharMpSidebar(); }
+function initCharMpView() { bindCharMpInputs(); loadMyCharConvos(); renderCharMpSidebar(); renderArchivedCharMpList(); }
 
 
 socket.on('followers_list_data', (followers) => {

@@ -21,6 +21,7 @@ const User =         require('./src/models/User');
 const Character =    require('./src/models/Character');
 const Alert =        require('./src/models/Alert');
 const Message =      require('./src/models/Message');
+const MessageArchive = require('./src/models/MessageArchive');
 const Room =         require('./src/models/Room');
 const Post =         require('./src/models/Post');
 const OmbraMessage = require('./src/models/OmbraMessage');
@@ -37,6 +38,11 @@ const Stock = require('./src/models/Stock');
 
 // ========== [WIKI] ==========
 const WikiPage = require('./src/models/WikiPage');
+
+const MESSAGE_ARCHIVE_AFTER_DAYS = Math.max(1, Number(process.env.MESSAGE_ARCHIVE_AFTER_DAYS || 45));
+const MESSAGE_ARCHIVE_BATCH_SIZE = Math.max(100, Number(process.env.MESSAGE_ARCHIVE_BATCH_SIZE || 500));
+const MESSAGE_ARCHIVE_INTERVAL_MS = Math.max(60 * 60 * 1000, Number(process.env.MESSAGE_ARCHIVE_INTERVAL_MS || 6 * 60 * 60 * 1000));
+const MESSAGE_ARCHIVE_PAGE_SIZE = Math.max(20, Number(process.env.MESSAGE_ARCHIVE_PAGE_SIZE || 50));
 
 const CITIES_SEED = [
     { name: 'Aguerta',    archipel: 'Archipel Pacifique' },
@@ -75,6 +81,91 @@ async function getRecentMessages(query, limit = 200) {
     return messages.reverse();
 }
 
+async function getLatestCharConversations(Model, myCharIds) {
+    if(!myCharIds || !myCharIds.length) return [];
+    const normalizedCharIds = myCharIds.map(String);
+    return Model.aggregate([
+        {
+            $match: {
+                isCharDm: true,
+                $or: [
+                    { senderCharId: { $in: normalizedCharIds } },
+                    { targetCharId: { $in: normalizedCharIds } }
+                ]
+            }
+        },
+        {
+            $addFields: {
+                myCharId: {
+                    $cond: [
+                        { $in: ['$senderCharId', normalizedCharIds] },
+                        '$senderCharId',
+                        '$targetCharId'
+                    ]
+                },
+                otherCharId: {
+                    $cond: [
+                        { $in: ['$senderCharId', normalizedCharIds] },
+                        '$targetCharId',
+                        '$senderCharId'
+                    ]
+                },
+                otherNameSnapshot: {
+                    $cond: [
+                        { $in: ['$senderCharId', normalizedCharIds] },
+                        '$targetName',
+                        '$senderName'
+                    ]
+                },
+                otherOwnerIdSnapshot: {
+                    $cond: [
+                        { $in: ['$senderCharId', normalizedCharIds] },
+                        '$targetOwnerId',
+                        '$ownerId'
+                    ]
+                }
+            }
+        },
+        { $sort: { timestamp: -1 } },
+        {
+            $group: {
+                _id: { myCharId: '$myCharId', otherCharId: '$otherCharId' },
+                myCharId: { $first: '$myCharId' },
+                otherCharId: { $first: '$otherCharId' },
+                otherName: { $first: '$otherNameSnapshot' },
+                otherOwnerId: { $first: '$otherOwnerIdSnapshot' },
+                lastDate: { $first: '$timestamp' },
+                lastContent: { $first: '$content' }
+            }
+        },
+        { $sort: { lastDate: -1 } }
+    ]);
+}
+
+async function getArchivedCharDmPage(senderCharId, targetCharId, page = 0, pageSize = MESSAGE_ARCHIVE_PAGE_SIZE) {
+    const roomId = `char_dm_${[senderCharId, targetCharId].sort().join('_')}`;
+    const safePage = Math.max(0, Number(page) || 0);
+    const safePageSize = Math.max(20, Math.min(100, Number(pageSize) || MESSAGE_ARCHIVE_PAGE_SIZE));
+    const query = { roomId, isCharDm: true };
+    const [items, total] = await Promise.all([
+        MessageArchive.find(query)
+            .sort({ timestamp: -1 })
+            .skip(safePage * safePageSize)
+            .limit(safePageSize)
+            .lean(),
+        MessageArchive.countDocuments(query)
+    ]);
+
+    return {
+        roomId,
+        items: items.reverse(),
+        total,
+        page: safePage,
+        pageSize: safePageSize,
+        hasMore: (safePage + 1) * safePageSize < total
+    };
+}
+
 function mergeMessagesByTimestampDesc(left, right) {
     const merged = [];
     let leftIndex = 0;
@@ -105,12 +196,66 @@ function mergeMessagesByTimestampDesc(left, right) {
     return merged;
 }
 
+let messageArchiveInProgress = false;
+
+async function archiveOldMessages() {
+    if(messageArchiveInProgress) return;
+
+    messageArchiveInProgress = true;
+    try {
+        const cutoff = new Date(Date.now() - (MESSAGE_ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000));
+        let archivedCount = 0;
+
+        while(true) {
+            const oldMessages = await Message.find({ timestamp: { $lt: cutoff } })
+                .sort({ timestamp: 1 })
+                .limit(MESSAGE_ARCHIVE_BATCH_SIZE)
+                .lean();
+
+            if(!oldMessages.length) break;
+
+            const archiveStamp = new Date();
+            const archiveOperations = oldMessages.map(({ _id, ...message }) => ({
+                updateOne: {
+                    filter: { originalMessageId: String(_id) },
+                    update: {
+                        $setOnInsert: {
+                            ...message,
+                            originalMessageId: String(_id),
+                            archivedAt: archiveStamp
+                        }
+                    },
+                    upsert: true
+                }
+            }));
+
+            await MessageArchive.bulkWrite(archiveOperations, { ordered: false });
+            await Message.deleteMany({ _id: { $in: oldMessages.map(message => message._id) } });
+            archivedCount += oldMessages.length;
+
+            if(oldMessages.length < MESSAGE_ARCHIVE_BATCH_SIZE) break;
+        }
+
+        if(archivedCount > 0) {
+            console.log(`[messages] ${archivedCount} message(s) archivés avant ${cutoff.toISOString()}`);
+        }
+    } catch (error) {
+        console.error('Erreur archivage messages:', error);
+    } finally {
+        messageArchiveInProgress = false;
+    }
+}
+
 mongoose.connection.once('open', async () => {
     try {
         await Message.createIndexes();
+        await MessageArchive.createIndexes();
     } catch (error) {
-        console.error('Erreur lors de la création des index Message:', error);
+        console.error('Erreur lors de la création des index de messages:', error);
     }
+
+    setTimeout(() => { archiveOldMessages(); }, 10 * 1000);
+    setInterval(() => { archiveOldMessages(); }, MESSAGE_ARCHIVE_INTERVAL_MS);
 
     for(const c of CITIES_SEED) {
         const exists = await City.findOne({ name: c.name });
@@ -654,65 +799,77 @@ io.on('connection', async (socket) => {
       socket.emit('char_dm_history', { roomId, senderCharId, targetCharId, msgs });
   });
 
+  socket.on('request_archived_char_convos', async ({ myCharIds }) => {
+      if(!myCharIds || !myCharIds.length) return socket.emit('archived_char_convos', []);
+      const convos = await getLatestCharConversations(MessageArchive, myCharIds);
+      const otherCharIds = [...new Set(convos.map(conv => String(conv.otherCharId)).filter(Boolean))];
+      const chars = await Character.find({ _id: { $in: otherCharIds } }).select('_id name avatar color role ownerId ownerUsername');
+      const charMap = new Map(chars.map(char => [String(char._id), char]));
+      const enriched = convos.map(conv => {
+          const otherChar = charMap.get(String(conv.otherCharId));
+          return {
+              myCharId: conv.myCharId,
+              otherCharId: conv.otherCharId,
+              otherName: otherChar?.name || conv.otherName || 'Inconnu',
+              otherAvatar: otherChar?.avatar || '',
+              otherColor: otherChar?.color || '',
+              otherRole: otherChar?.role || '',
+              otherOwnerId: otherChar?.ownerId || conv.otherOwnerId || '',
+              otherOwnerUsername: otherChar?.ownerUsername || '',
+              lastDate: conv.lastDate,
+              lastContent: conv.lastContent || ''
+          };
+      });
+      socket.emit('archived_char_convos', enriched);
+  });
+
+  socket.on('request_archived_char_dm_history', async ({ senderCharId, targetCharId, page = 0, pageSize = MESSAGE_ARCHIVE_PAGE_SIZE }) => {
+      if(!senderCharId || !targetCharId) return;
+      const result = await getArchivedCharDmPage(senderCharId, targetCharId, page, pageSize);
+      socket.emit('archived_char_dm_history', {
+          senderCharId,
+          targetCharId,
+          page: result.page,
+          pageSize: result.pageSize,
+          total: result.total,
+          hasMore: result.hasMore,
+          msgs: result.items
+      });
+  });
+
   // Récupérer tous les interlocuteurs d'un perso donné
   socket.on('request_my_char_convos', async ({ myCharIds }) => {
       if(!myCharIds || !myCharIds.length) return socket.emit('my_char_convos', []);
-      const normalizedCharIds = myCharIds.map(String);
-      const charDmProjection = 'content timestamp senderName senderAvatar senderColor senderRole ownerId targetName targetOwnerId senderCharId targetCharId';
-      const [sentMsgs, receivedMsgs] = await Promise.all([
-          Message.find({ isCharDm: true, senderCharId: { $in: normalizedCharIds } })
-              .select(charDmProjection)
-              .sort({ timestamp: -1 })
-              .lean(),
-          Message.find({ isCharDm: true, targetCharId: { $in: normalizedCharIds } })
-              .select(charDmProjection)
-              .sort({ timestamp: -1 })
-              .lean()
-      ]);
-      const msgs = mergeMessagesByTimestampDesc(sentMsgs, receivedMsgs);
-
-      // Regrouper par paire (monCharId, autreCharId) → dernière info utile
-      const convMap = {}; // clé: "myCharId|otherCharId"
-      const otherCharIds = new Set();
-      const seenMessageIds = new Set();
-      for(const m of msgs) {
-          const messageId = String(m._id);
-          if(seenMessageIds.has(messageId)) continue;
-          seenMessageIds.add(messageId);
-
-          const senderIsMine = normalizedCharIds.includes(String(m.senderCharId));
-          const myId   = senderIsMine ? String(m.senderCharId) : String(m.targetCharId);
-          const othId  = senderIsMine ? String(m.targetCharId) : String(m.senderCharId);
-          const key    = `${myId}|${othId}`;
-          otherCharIds.add(othId);
-          if(!convMap[key]) {
-              convMap[key] = {
-                  myCharId:      myId,
-                  otherCharId:   othId,
-                  otherName:     senderIsMine ? m.targetName : m.senderName,
-                  otherAvatar:   senderIsMine ? '' : (m.senderAvatar || ''),
-                  otherColor:    senderIsMine ? '' : (m.senderColor || ''),
-                  otherRole:     senderIsMine ? '' : (m.senderRole || ''),
-                  otherOwnerId:  senderIsMine ? m.targetOwnerId : m.ownerId,
-                  otherOwnerUsername: '',
-                  lastDate:      m.timestamp,
-                  lastContent:   m.content
-              };
-          }
-      }
-      const chars = await Character.find({ _id: { $in: [...otherCharIds] } }).select('_id name avatar color role ownerId ownerUsername');
+      const convos = await getLatestCharConversations(Message, myCharIds);
+      const otherCharIds = [...new Set(convos.map(conv => String(conv.otherCharId)).filter(Boolean))];
+      const chars = await Character.find({ _id: { $in: otherCharIds } }).select('_id name avatar color role ownerId ownerUsername');
       const charMap = new Map(chars.map(char => [String(char._id), char]));
-      Object.values(convMap).forEach(conv => {
+      const enriched = convos.map(conv => {
           const otherChar = charMap.get(String(conv.otherCharId));
-          if(!otherChar) return;
-          conv.otherName = otherChar.name || conv.otherName;
-          conv.otherAvatar = otherChar.avatar || conv.otherAvatar;
-          conv.otherColor = otherChar.color || conv.otherColor;
-          conv.otherRole = otherChar.role || conv.otherRole;
-          conv.otherOwnerId = otherChar.ownerId || conv.otherOwnerId;
-          conv.otherOwnerUsername = otherChar.ownerUsername || conv.otherOwnerUsername;
+          return {
+              myCharId: conv.myCharId,
+              otherCharId: conv.otherCharId,
+              otherName: otherChar?.name || conv.otherName || 'Inconnu',
+              otherAvatar: otherChar?.avatar || '',
+              otherColor: otherChar?.color || '',
+              otherRole: otherChar?.role || '',
+              otherOwnerId: otherChar?.ownerId || conv.otherOwnerId || '',
+              otherOwnerUsername: otherChar?.ownerUsername || '',
+              lastDate: conv.lastDate,
+              lastContent: conv.lastContent || ''
+          };
       });
-      socket.emit('my_char_convos', Object.values(convMap));
+      socket.emit('my_char_convos', enriched);
+  });
+
+  socket.on('char_dm_typing_start', (data) => {
+      if(!data || !data.roomId) return;
+      socket.broadcast.emit('display_char_dm_typing', data);
+  });
+
+  socket.on('char_dm_typing_stop', (data) => {
+      if(!data || !data.roomId) return;
+      socket.broadcast.emit('hide_char_dm_typing', data);
   });
 
   socket.on('follow_character', async ({ followerCharId, targetCharId }) => {

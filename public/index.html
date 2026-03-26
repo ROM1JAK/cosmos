@@ -231,6 +231,7 @@
                 <select id="charDmSenderSelect" style="background:var(--bg-tertiary); border:1px solid var(--border); color:white; padding:4px 8px; border-radius:var(--radius-sm); font-family:var(--font-main); font-size:0.82rem;"></select>
             </div>
             <div id="char-dm-messages" style="flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:8px;"></div>
+            <div id="char-dm-typing" class="char-mp-typing hidden" style="padding:0 16px 8px;"></div>
             <div style="padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px;">
                 <input id="charDmInput" type="text" class="modal-input" placeholder="Message..." style="flex:1; margin:0;" onkeyup="if(event.key==='Enter') sendCharDm()">
                 <button class="btn-primary" onclick="sendCharDm()"><i class="fa-solid fa-paper-plane"></i></button>
@@ -492,10 +493,14 @@
                                         <span>Messages Persos</span>
                                     </div>
 
-                                    <!-- Bouton nouvelle conversation -->
-                                    <button class="char-mp-new-btn" onclick="openNewConvModal()">
-                                        <i class="fa-solid fa-plus"></i> Nouvelle conversation
-                                    </button>
+                                    <div class="char-mp-sidebar-actions">
+                                        <button class="char-mp-new-btn" onclick="openNewConvModal()">
+                                            <i class="fa-solid fa-plus"></i> Nouvelle conversation
+                                        </button>
+                                        <button class="char-mp-archive-btn" onclick="openCharMpArchivePage()">
+                                            <i class="fa-solid fa-box-archive"></i> Archives
+                                        </button>
+                                    </div>
 
                                     <!-- Liste des conversations, groupées par MES persos -->
                                     <div id="char-mp-convo-list" class="char-mp-convo-list"></div>
@@ -534,12 +539,45 @@
 
                                         <!-- Messages -->
                                         <div id="char-mp-messages" class="char-mp-messages"></div>
+                                        <div id="char-mp-typing" class="char-mp-typing hidden"></div>
 
                                         <!-- Zone d'envoi -->
                                         <div class="char-mp-input-bar">
                                             <img id="mpInputSenderAvatar" src="" class="char-mp-input-avatar">
                                             <input id="charMpInput" type="text" class="char-input" placeholder="Écrire en tant que…" style="flex:1;" onkeyup="if(event.key==='Enter')sendCharMpMessage()">
                                             <button class="btn-primary" onclick="sendCharMpMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+                                        </div>
+                                    </div>
+
+                                    <div id="char-mp-archives" class="char-mp-archives hidden">
+                                        <div class="char-mp-archives-header">
+                                            <div>
+                                                <div class="char-mp-archives-title"><i class="fa-solid fa-box-archive"></i> Messages archivés</div>
+                                                <div class="char-mp-archives-subtitle">Consultation à la demande pour garder le réseau fluide</div>
+                                            </div>
+                                            <button class="btn-secondary" onclick="closeCharMpArchivePage()">Retour aux conversations</button>
+                                        </div>
+                                        <div class="char-mp-archives-layout">
+                                            <div class="char-mp-archive-sidebar">
+                                                <div id="char-mp-archive-list" class="char-mp-archive-list"></div>
+                                            </div>
+                                            <div class="char-mp-archive-main">
+                                                <div id="char-mp-archive-empty" class="char-mp-empty">
+                                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                                                    <p>Sélectionne une conversation archivée</p>
+                                                    <span>Les archives ne sont chargées que quand tu les ouvres.</span>
+                                                </div>
+                                                <div id="char-mp-archive-thread" class="hidden char-mp-archive-thread">
+                                                    <div class="char-mp-archive-thread-header">
+                                                        <div>
+                                                            <div id="char-mp-archive-thread-title" class="char-mp-header-name"></div>
+                                                            <div id="char-mp-archive-thread-meta" class="char-mp-header-role"></div>
+                                                        </div>
+                                                        <button id="char-mp-archive-more" class="btn-secondary" onclick="loadMoreArchivedCharMpMessages()">Charger plus ancien</button>
+                                                    </div>
+                                                    <div id="char-mp-archive-messages" class="char-mp-messages char-mp-archive-messages"></div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
