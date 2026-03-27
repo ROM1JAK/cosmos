@@ -5278,6 +5278,7 @@ function renderAdminUsers(users) {
         const adminBadge = u.isAdmin ? '<span class="admin-user-badge admin-badge-admin">admin</span>' : '<span class="admin-user-badge">user</span>';
         const chars = Array.isArray(u.characters) ? u.characters : [];
         const isExpanded = expandedAdminUserId === u._id;
+        const safeUsername = String(u.username || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         const charsHtml = chars.length
             ? `<div class="admin-user-characters">${chars.map(char => `<span class="admin-char-chip"><img src="${char.avatar || ''}" class="admin-char-chip-avatar" alt=""><button class="admin-char-chip-main" onclick="openProfileById('${char._id}')"><span class="admin-char-chip-name" style="color:${char.color || 'white'}">${escapeHtml(char.name || '')}</span><span class="admin-char-chip-role">${escapeHtml(char.role || '')}</span></button><button class="admin-char-chip-action" onclick="event.stopPropagation(); openProfileById('${char._id}')" title="Profil"><i class="fa-solid fa-user"></i></button><button class="admin-char-chip-action" onclick="event.stopPropagation(); prepareEditAnyCharacter('${char._id}')" title="Modifier"><i class="fa-solid fa-pen"></i></button></span>`).join('')}</div>`
             : '<div class="admin-user-nochars">Aucun personnage</div>';
@@ -5293,14 +5294,19 @@ function renderAdminUsers(users) {
                     <button class="btn-secondary" type="button" style="padding:4px 8px;font-size:0.75rem;" onclick="event.stopPropagation(); adminToggleAdmin('${u._id}',${!u.isAdmin})">
                         ${u.isAdmin ? '<i class="fa-solid fa-user-minus"></i> Retirer admin' : '<i class="fa-solid fa-user-plus"></i> Rendre admin'}
                     </button>
-                    <button type="button" style="background:rgba(218,55,60,0.13);color:#da373c;border:1px solid rgba(218,55,60,0.25);padding:4px 8px;font-size:0.75rem;border-radius:var(--radius-sm);cursor:pointer;" onclick="event.stopPropagation(); adminDeleteUser('${u._id}','${escapeHtml(u.username)}')">
-                        <i class="fa-solid fa-trash"></i>
-    ['admin-company-char-id', 'admin-company-index', 'admin-company-old-name', 'admin-company-name', 'admin-company-role', 'admin-company-hq', 'admin-company-revenue', 'admin-company-logo', 'admin-company-description'].forEach(id => {
-        const el = document.getElementById(id);
-        if(el) el.value = '';
-    });
-    const hint = document.getElementById('admin-company-editor-hint');
-    if(hint) hint.textContent = 'Sélectionne une entreprise dans la liste pour la modifier.';
+                    <button type="button" style="background:rgba(218,55,60,0.13);color:#da373c;border:1px solid rgba(218,55,60,0.25);padding:4px 8px;font-size:0.75rem;border-radius:var(--radius-sm);cursor:pointer;" onclick="event.stopPropagation(); adminDeleteUser('${u._id}','${safeUsername}')">
+                        <i class="fa-solid fa-trash"></i> Supprimer
+                    </button>
+                    <span class="admin-user-chevron"><i class="fa-solid fa-chevron-down"></i></span>
+                </div>
+            </div>
+            <div class="admin-user-details">
+                <div class="admin-user-details-inner">
+                    ${charsHtml}
+                </div>
+            </div>
+        </div>`;
+    }).join('');
 }
 function renderAdminCompanies(companies) {
     const list = document.getElementById('admin-companies-list');
