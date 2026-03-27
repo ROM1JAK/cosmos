@@ -960,7 +960,32 @@
                         <button class="bourse-filter-btn" data-filter="losers" onclick="setBourseFilter('losers')">En baisse</button>
                         <button class="bourse-filter-btn" data-filter="topRevenue" onclick="setBourseFilter('topRevenue')">Top CA</button>
                     </div>
-                    <div id="bourse-filter-meta" class="bourse-filter-meta">Affichage complet</div>
+                    <div class="bourse-toolbar-side">
+                        <div class="bourse-layout-toggle" aria-label="Mode d'affichage de la bourse">
+                            <button class="bourse-layout-btn active" data-layout="cards" onclick="setBourseLayout('cards')" title="Vue cartes">
+                                <i class="fa-solid fa-grid-2"></i>
+                            </button>
+                            <button class="bourse-layout-btn" data-layout="compact" onclick="setBourseLayout('compact')" title="Vue compacte">
+                                <i class="fa-solid fa-table-list"></i>
+                            </button>
+                        </div>
+                        <label class="bourse-sort-wrap" for="bourse-sort-select">
+                            <span>Tri</span>
+                            <select id="bourse-sort-select" class="bourse-sort-select" onchange="setBourseSort(this.value)">
+                                <option value="marketCapDesc">Capitalisation décroissante</option>
+                                <option value="marketCapAsc">Capitalisation croissante</option>
+                                <option value="perfDesc">Performance décroissante</option>
+                                <option value="perfAsc">Performance croissante</option>
+                                <option value="revenueDesc">Chiffre d'affaires</option>
+                                <option value="alpha">Ordre alphabétique</option>
+                            </select>
+                        </label>
+                        <div id="bourse-filter-meta" class="bourse-filter-meta">Affichage complet</div>
+                    </div>
+                </div>
+
+                <div class="bourse-results-bar">
+                    <div id="bourse-results-count" class="bourse-results-count">0 résultat</div>
                 </div>
 
                 <!-- Classement entreprises / CA -->
@@ -976,6 +1001,7 @@
 
                 <!-- Stocks grid -->
                 <div id="bourse-stocks-grid" class="bourse-stocks-grid"></div>
+                <div id="bourse-pagination" class="bourse-pagination hidden"></div>
 
                 <!-- Graphique comparatif top 10 -->
                 <div id="bourse-comp-chart" class="bourse-comp-chart-wrap"></div>

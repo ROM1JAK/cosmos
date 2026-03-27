@@ -4028,6 +4028,43 @@ let stocksData = [];
 let bourseSearch = '';
 let currentStockEdit = null;
 let currentStockDetailId = null;
+let bourseSort = localStorage.getItem('bourse_sort') || 'marketCapDesc';
+let boursePage = 1;
+let bourseLayout = localStorage.getItem('bourse_layout') || 'cards';
+
+const BOURSE_PAGE_SIZE = 12;
+
+function getStockDeltaPct(stock) {
+    const hist = stock.history || [];
+    const prev = hist.length >= 2 ? hist[hist.length - 2].value : stock.currentValue;
+    return prev ? ((stock.currentValue - prev) / prev) * 100 : 0;
+}
+
+function getBourseSortedStocks(stocks) {
+    const sorted = [...stocks];
+    const sorters = {
+        marketCapDesc: (a, b) => (b.currentValue || 0) - (a.currentValue || 0),
+        marketCapAsc: (a, b) => (a.currentValue || 0) - (b.currentValue || 0),
+        perfDesc: (a, b) => getStockDeltaPct(b) - getStockDeltaPct(a),
+        perfAsc: (a, b) => getStockDeltaPct(a) - getStockDeltaPct(b),
+        revenueDesc: (a, b) => (b.revenue || 0) - (a.revenue || 0),
+        alpha: (a, b) => String(a.companyName || '').localeCompare(String(b.companyName || ''), 'fr', { sensitivity: 'base' })
+    };
+    sorted.sort(sorters[bourseSort] || sorters.marketCapDesc);
+    return sorted;
+}
+
+function getVisibleBourseStocks(stocks) {
+    const source = applyBourseFilter(stocks);
+    const query = bourseSearch;
+    const filtered = query ? source.filter(s =>
+        (s.companyName || '').toLowerCase().includes(query) ||
+        (s.charName || '').toLowerCase().includes(query) ||
+        (s.description || '').toLowerCase().includes(query) ||
+        (s.headquarters || '').toLowerCase().includes(query)
+    ) : source;
+    return getBourseSortedStocks(filtered);
+}
 
 function applyBourseFilter(stocks) {
     if(bourseFilter === 'gainers') return [...stocks].filter(s => {
@@ -4054,6 +4091,11 @@ function syncBourseFilterUI() {
     document.querySelectorAll('.bourse-filter-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.filter === bourseFilter);
     });
+    const sortSelect = document.getElementById('bourse-sort-select');
+    if(sortSelect) sortSelect.value = bourseSort;
+    document.querySelectorAll('.bourse-layout-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.layout === bourseLayout);
+    });
     const meta = document.getElementById('bourse-filter-meta');
     if(meta) {
         meta.textContent = ({
@@ -4068,8 +4110,150 @@ function syncBourseFilterUI() {
 function setBourseFilter(filter) {
     bourseFilter = filter;
     localStorage.setItem('bourse_filter', filter);
+    boursePage = 1;
     syncBourseFilterUI();
     renderStockGrid(stocksData);
+}
+
+function setBourseSort(sortKey) {
+    bourseSort = sortKey || 'marketCapDesc';
+    localStorage.setItem('bourse_sort', bourseSort);
+    boursePage = 1;
+    syncBourseFilterUI();
+    renderStockGrid(stocksData);
+}
+
+function setBourseLayout(layout) {
+    bourseLayout = layout === 'compact' ? 'compact' : 'cards';
+    localStorage.setItem('bourse_layout', bourseLayout);
+    syncBourseFilterUI();
+    renderStockGrid(stocksData);
+}
+
+function changeBoursePage(nextPage) {
+    if(nextPage === boursePage || nextPage < 1) return;
+    boursePage = nextPage;
+    renderStockGrid(stocksData);
+    const container = document.getElementById('bourse-stocks-grid');
+    if(container) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderBoursePagination(totalPages) {
+    const pagination = document.getElementById('bourse-pagination');
+    if(!pagination) return;
+    if(totalPages <= 1) {
+        pagination.innerHTML = '';
+        pagination.classList.add('hidden');
+        return;
+    }
+    const startPage = Math.max(1, boursePage - 2);
+    const endPage = Math.min(totalPages, startPage + 4);
+    const pages = [];
+    for(let page = startPage; page <= endPage; page += 1) pages.push(page);
+    pagination.classList.remove('hidden');
+    pagination.innerHTML = `
+        <button class="bourse-page-btn" ${boursePage === 1 ? 'disabled' : ''} onclick="changeBoursePage(${boursePage - 1})">
+            <i class="fa-solid fa-chevron-left"></i>
+        </button>
+        ${pages.map(page => `
+            <button class="bourse-page-btn ${page === boursePage ? 'active' : ''}" onclick="changeBoursePage(${page})">${page}</button>
+        `).join('')}
+        <button class="bourse-page-btn" ${boursePage === totalPages ? 'disabled' : ''} onclick="changeBoursePage(${boursePage + 1})">
+            <i class="fa-solid fa-chevron-right"></i>
+        </button>
+    `;
+}
+
+function buildStockAdminControls(stock, compact = false) {
+    if(!IS_ADMIN) return '';
+    const rowClass = compact ? 'stock-admin-row stock-admin-row-compact' : 'stock-admin-row';
+    const inputClass = compact ? 'stock-pct-input stock-pct-input-compact' : 'stock-pct-input';
+    return `
+        <div class="${rowClass}">
+            <button class="stock-trend-btn stock-trend-up2" onclick="event.stopPropagation(); adminStockTrend('${stock._id}','croissance_forte')" title="+1.3~1.6%"><i class="fa-solid fa-angles-up"></i></button>
+            <button class="stock-trend-btn stock-trend-up1" onclick="event.stopPropagation(); adminStockTrend('${stock._id}','croissance')" title="+0.5~0.9%"><i class="fa-solid fa-angle-up"></i></button>
+            <button class="stock-trend-btn stock-trend-stable" onclick="event.stopPropagation(); adminStockTrend('${stock._id}','stable')" title="±0.1%"><i class="fa-solid fa-minus"></i></button>
+            <button class="stock-trend-btn stock-trend-down1" onclick="event.stopPropagation(); adminStockTrend('${stock._id}','baisse')" title="-0.5~0.9%"><i class="fa-solid fa-angle-down"></i></button>
+            <button class="stock-trend-btn stock-trend-down2" onclick="event.stopPropagation(); adminStockTrend('${stock._id}','chute')" title="-1.2~1.6%"><i class="fa-solid fa-angles-down"></i></button>
+            <input type="number" id="cpct-${stock._id}" class="${inputClass}" placeholder="%" step="0.1" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter'){event.stopPropagation();applyCustomPctCard('${stock._id}');}">
+            <button class="stock-trend-btn" onclick="event.stopPropagation(); applyCustomPctCard('${stock._id}')" title="Appliquer %" style="background:rgba(108,99,255,0.2);color:var(--accent);border-color:rgba(108,99,255,0.3);"><i class="fa-solid fa-percent"></i></button>
+            <button class="stock-trend-btn stock-admin-reset" onclick="event.stopPropagation(); if(confirm('Réinitialiser l\'historique de cette action ?')) adminResetStockHistory('${stock._id}')" title="Réinitialiser l'historique"><i class="fa-solid fa-clock-rotate-left"></i></button>
+            <button class="stock-admin-edit" onclick="event.stopPropagation(); openStockEditModal('${stock._id}')" title="Modifier"><i class="fa-solid fa-pen"></i></button>
+            <button class="stock-admin-del" onclick="event.stopPropagation(); if(confirm('Supprimer cette action ?')) adminDeleteStock('${stock._id}')" title="Supprimer"><i class="fa-solid fa-trash"></i></button>
+        </div>`;
+}
+
+function renderStockCard(stock, index) {
+    const hist = stock.history || [];
+    const prev = hist.length >= 2 ? hist[hist.length - 2].value : stock.currentValue;
+    const pct = prev ? ((stock.currentValue - prev) / prev * 100) : 0;
+    const isUp = pct > 0;
+    const isDown = pct < 0;
+    const hist7 = hist.slice(-7);
+    const hi7 = hist7.length ? Math.max(...hist7.map(h => h.value)) : null;
+    const lo7 = hist7.length ? Math.min(...hist7.map(h => h.value)) : null;
+    const card = document.createElement('div');
+    card.className = `stock-card ${isUp ? 'stock-up' : isDown ? 'stock-down' : 'stock-neutral'}`;
+    card.id = `stock-${stock._id}`;
+    card.style.animationDelay = `${index * 0.05}s`;
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', () => openStockDetail(String(stock._id)));
+    card.innerHTML = `
+        <div class="stock-header">
+            <div class="stock-logo-wrap" style="border-color:${stock.stockColor || 'var(--accent)'}">
+                ${stock.companyLogo ? `<img src="${stock.companyLogo}" class="stock-logo" alt="">` : `<i class="fa-solid fa-building"></i>`}
+                ${stock.companyLogo ? `<div class="stock-logo-popup"><img src="${stock.companyLogo}" alt="${escapeHtml(stock.companyName)}"></div>` : ''}
+            </div>
+            <div class="stock-info">
+                <div class="stock-name">${escapeHtml(stock.companyName)}</div>
+                <div class="stock-char" style="color:${stock.charColor || 'var(--text-muted)'}"><i class="fa-solid fa-user"></i> ${escapeHtml(stock.charName || '')}${stock.headquarters ? ` <span class="stock-hq"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(stock.headquarters)}</span>` : ''}</div>
+            </div>
+            <div class="stock-badge ${isUp ? 'badge-up' : isDown ? 'badge-down' : 'badge-neutral'}">
+                ${isUp ? '▲' : isDown ? '▼' : '—'} ${Math.abs(pct).toFixed(2)}%
+            </div>
+        </div>
+        <div class="stock-value-row">
+            <span class="stock-current-value" style="color:${isUp ? '#23a559' : isDown ? '#da373c' : 'white'}">${formatStockValue(stock.currentValue)}</span>
+            <span class="stock-prev-value">Préc: ${formatStockValue(prev)}</span>
+        </div>
+        ${(hi7 !== null && lo7 !== null) ? `<div class="stock-highlow-row"><span class="stock-low7"><i class="fa-solid fa-arrow-down"></i> ${formatStockValue(lo7)}</span><span class="stock-hl-label">7j bas/haut</span><span class="stock-high7"><i class="fa-solid fa-arrow-up"></i> ${formatStockValue(hi7)}</span></div>` : ''}
+        <div class="stock-chart-container" id="schart-${stock._id}"></div>
+        ${stock.description ? `<div class="stock-desc">${escapeHtml(stock.description)}</div>` : ''}
+        <div class="stock-trend-badge ${trendClass(stock.trend)}">${trendLabel(stock.trend)}</div>
+        ${buildStockAdminControls(stock)}
+    `;
+    return { element: card, history: hist.slice(-7), currentValue: stock.currentValue, color: stock.stockColor || '#6c63ff', isPositive: pct >= 0 };
+}
+
+function renderCompactStockRow(stock, index) {
+    const hist = stock.history || [];
+    const prev = hist.length >= 2 ? hist[hist.length - 2].value : stock.currentValue;
+    const pct = prev ? ((stock.currentValue - prev) / prev * 100) : 0;
+    const isUp = pct > 0;
+    const isDown = pct < 0;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = `stock-row ${isUp ? 'stock-up' : isDown ? 'stock-down' : 'stock-neutral'}`;
+    row.id = `stock-${stock._id}`;
+    row.style.animationDelay = `${index * 0.03}s`;
+    row.addEventListener('click', () => openStockDetail(String(stock._id)));
+    row.innerHTML = `
+        <span class="stock-row-main">
+            <span class="stock-row-logo" style="border-color:${stock.stockColor || 'var(--accent)'}">
+                ${stock.companyLogo ? `<img src="${stock.companyLogo}" class="stock-row-logo-img" alt="">` : `<i class="fa-solid fa-building"></i>`}
+            </span>
+            <span class="stock-row-ident">
+                <span class="stock-row-name">${escapeHtml(stock.companyName)}</span>
+                <span class="stock-row-meta" style="color:${stock.charColor || 'var(--text-muted)'}">${escapeHtml(stock.charName || 'Sans dirigeant')}${stock.headquarters ? ` · ${escapeHtml(stock.headquarters)}` : ''}</span>
+            </span>
+        </span>
+        <span class="stock-row-trend ${isUp ? 'is-up' : isDown ? 'is-down' : 'is-flat'}">${isUp ? '▲' : isDown ? '▼' : '—'} ${Math.abs(pct).toFixed(2)}%</span>
+        <span class="stock-row-value">${formatStockValue(stock.currentValue)}</span>
+        <span class="stock-row-revenue">${stock.revenue ? formatStockValue(stock.revenue) : '—'}</span>
+        <span class="stock-row-badge ${trendClass(stock.trend)}">${trendLabel(stock.trend)}</span>
+        ${IS_ADMIN ? `<span class="stock-row-admin-wrap">${buildStockAdminControls(stock, true)}</span>` : ''}
+    `;
+    return row;
 }
 
 function loadBourse() { socket.emit('request_stocks'); }
@@ -4193,24 +4377,31 @@ function renderBourseSummary(stocks) {
 
 function renderStockGrid(stocks) {
     const grid = document.getElementById('bourse-stocks-grid');
+    const count = document.getElementById('bourse-results-count');
     if(!grid) return;
     const _bq = bourseSearch;
-    const source = applyBourseFilter(stocks);
+    const filtered = getVisibleBourseStocks(stocks);
     syncBourseFilterUI();
-    const filtered = _bq ? source.filter(s =>
-        (s.companyName||'').toLowerCase().includes(_bq) ||
-        (s.charName||'').toLowerCase().includes(_bq) ||
-        (s.description||'').toLowerCase().includes(_bq) ||
-        (s.headquarters||'').toLowerCase().includes(_bq)
-    ) : source;
+    grid.classList.toggle('compact', bourseLayout === 'compact');
     if(!filtered.length) {
+        if(count) count.textContent = '0 résultat';
+        renderBoursePagination(0);
         grid.innerHTML = _bq
             ? '<div class="bourse-empty"><i class="fa-solid fa-magnifying-glass"></i><p>Aucune action ne correspond à votre recherche.</p></div>'
             : '<div class="bourse-empty"><i class="fa-solid fa-chart-line"></i><p>Aucune action cotée.</p><span>Un admin peut coter les entreprises des personnages.</span></div>';
         return;
     }
+    const totalPages = Math.max(1, Math.ceil(filtered.length / BOURSE_PAGE_SIZE));
+    if(boursePage > totalPages) boursePage = totalPages;
+    const startIndex = (boursePage - 1) * BOURSE_PAGE_SIZE;
+    const visibleStocks = filtered.slice(startIndex, startIndex + BOURSE_PAGE_SIZE);
+    if(count) {
+        const rangeStart = startIndex + 1;
+        const rangeEnd = startIndex + visibleStocks.length;
+        count.textContent = `${filtered.length} résultat${filtered.length > 1 ? 's' : ''} · ${rangeStart}-${rangeEnd}`;
+    }
     grid.innerHTML = '';
-    filtered.forEach((s, idx) => {
+    visibleStocks.forEach((s, idx) => {
         const hist = s.history || [];
         const prev = hist.length >= 2 ? hist[hist.length - 2].value : s.currentValue;
         const pct = prev ? ((s.currentValue - prev) / prev * 100) : 0;
@@ -4266,6 +4457,7 @@ function renderStockGrid(stocks) {
         grid.appendChild(card);
         renderStockMiniChart(hist.slice(-7), s.currentValue, `schart-${s._id}`, s.stockColor || '#6c63ff', pct >= 0);
     });
+    renderBoursePagination(totalPages);
 }
 
 function renderStockMiniChart(history, liveValue, containerId, color, isUp) {
@@ -4498,6 +4690,7 @@ function adminStockTrend(stockId, trend) {
 function onBourseSearch(val) {
     bourseSearch = val.toLowerCase().trim();
     localStorage.setItem('bourse_search', val || '');
+    boursePage = 1;
     renderStockGrid(stocksData);
 }
 
@@ -5154,32 +5347,6 @@ function renderAdminUsers(users) {
                     </button>
                     <button type="button" style="background:rgba(218,55,60,0.13);color:#da373c;border:1px solid rgba(218,55,60,0.25);padding:4px 8px;font-size:0.75rem;border-radius:var(--radius-sm);cursor:pointer;" onclick="event.stopPropagation(); adminDeleteUser('${u._id}','${escapeHtml(u.username)}')">
                         <i class="fa-solid fa-trash"></i>
-                    </button>
-                    <span class="admin-user-chevron"><i class="fa-solid fa-chevron-${isExpanded ? 'up' : 'down'}"></i></span>
-                </div>
-            </div>
-            <div class="admin-user-details" aria-hidden="${isExpanded ? 'false' : 'true'}">
-                <div class="admin-user-details-inner">
-                    ${charsHtml}
-                </div>
-            </div>
-        </div>`;
-    }).join('');
-}
-function filterAdminUsers(query) {
-    const filtered = getFilteredAdminUsers(query);
-    const input = document.getElementById('admin-user-search');
-    if(input) localStorage.setItem('admin_user_search', input.value || '');
-    if(filtered.length) {
-        if(!filtered.some(u => u._id === expandedAdminUserId)) expandedAdminUserId = filtered[0]._id;
-        localStorage.setItem('admin_expanded_user_id', expandedAdminUserId);
-    } else if(query) {
-        expandedAdminUserId = null;
-        localStorage.removeItem('admin_expanded_user_id');
-    }
-    renderAdminUsers(filtered);
-}
-function resetAdminCompanyEditor() {
     ['admin-company-char-id', 'admin-company-index', 'admin-company-old-name', 'admin-company-name', 'admin-company-role', 'admin-company-hq', 'admin-company-revenue', 'admin-company-logo', 'admin-company-description'].forEach(id => {
         const el = document.getElementById(id);
         if(el) el.value = '';
@@ -5309,6 +5476,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const bourseInput = document.getElementById('bourse-search-input');
     if(bourseInput) bourseInput.value = localStorage.getItem('bourse_search') || '';
     bourseSearch = (localStorage.getItem('bourse_search') || '').trim().toLowerCase();
+    bourseSort = localStorage.getItem('bourse_sort') || 'marketCapDesc';
 
     const adminUserSearch = document.getElementById('admin-user-search');
     if(adminUserSearch) adminUserSearch.value = localStorage.getItem('admin_user_search') || '';
@@ -5328,6 +5496,6 @@ function adminSetAlertQuick(active) {
     socket.emit('admin_set_alert', { active, message: msg, color });
 }
 function adminNextTradingDay() {
-    if(!confirm('Avancer au prochain jour de trading pour la bourse ?')) return;
+    if(!confirm('Avancer au prochain jour de trading ? Les actions non modifiées recevront automatiquement une variation stable entre -0,1% et 0,1%.')) return;
     socket.emit('admin_next_trading_day');
 }

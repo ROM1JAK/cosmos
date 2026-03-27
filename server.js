@@ -198,6 +198,18 @@ function mergeMessagesByTimestampDesc(left, right) {
 
 let messageArchiveInProgress = false;
 
+const BOURSE_LOG_ACTION_TYPES = [
+    'stock_created',
+    'stock_updated',
+    'stock_trend_applied',
+    'stock_custom_applied',
+    'stock_deleted',
+    'stock_history_reset',
+    'trading_day_advanced',
+    'company_revenue_set',
+    'company_updated'
+];
+
 async function archiveOldMessages() {
     if(messageArchiveInProgress) return;
 
@@ -246,10 +258,21 @@ async function archiveOldMessages() {
     }
 }
 
+async function purgeBourseAdminLogs() {
+    await AdminLog.deleteMany({
+        $or: [
+            { timelineType: 'market' },
+            { actionType: { $in: BOURSE_LOG_ACTION_TYPES } },
+            { 'meta.redirectView': 'bourse' }
+        ]
+    });
+}
+
 mongoose.connection.once('open', async () => {
     try {
         await Message.createIndexes();
         await MessageArchive.createIndexes();
+        await purgeBourseAdminLogs();
     } catch (error) {
         console.error('Erreur lors de la création des index de messages:', error);
     }
@@ -394,7 +417,7 @@ async function getFeedPosts(limit = 50) {
 }
 
 async function getRecentAdminLogs(limit = 18) {
-    return AdminLog.find().sort({ createdAt: -1 }).limit(limit);
+    return AdminLog.find({ timelineType: { $ne: 'market' } }).sort({ createdAt: -1 }).limit(limit);
 }
 
 async function broadcastAdminLogs() {
@@ -406,7 +429,7 @@ async function buildWorldTimeline(limit = 28) {
         Post.find({ isArticle: { $ne: true } }).sort({ timestamp: -1 }).limit(12),
         Post.find({ isArticle: true }).sort({ isHeadline: -1, timestamp: -1 }).limit(10),
         Event.find().sort({ timestamp: -1, _id: -1 }).limit(10),
-        AdminLog.find({ includeInTimeline: true }).sort({ createdAt: -1 }).limit(12)
+        AdminLog.find({ includeInTimeline: true, timelineType: { $ne: 'market' } }).sort({ createdAt: -1 }).limit(12)
     ]);
 
     const items = [
@@ -1465,18 +1488,6 @@ io.on('connection', async (socket) => {
       await stock.save();
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
-      await logAdminAction({
-          actorUser: user,
-          actionType: isCreation ? 'stock_created' : 'stock_updated',
-          targetType: 'stock',
-          targetId: String(stock._id),
-          targetLabel: stock.companyName || companyName || 'Action',
-          message: `${user.username} a ${isCreation ? 'coté' : 'mis à jour'} l'action ${stock.companyName || companyName}`,
-          meta: { redirectView: 'bourse', redirectData: { stockId: String(stock._id) } },
-          includeInTimeline: true,
-          timelineType: 'market',
-          timelineTone: 'market'
-      });
   });
 
   socket.on('admin_apply_stock_trend', async ({ stockId, trend }) => {
@@ -1505,18 +1516,6 @@ io.on('connection', async (socket) => {
       await applyStockValueChange(stock, oldTrendVal, newVal);
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
-      await logAdminAction({
-          actorUser: user,
-          actionType: 'stock_trend_applied',
-          targetType: 'stock',
-          targetId: String(stock._id),
-          targetLabel: stock.companyName || 'Action',
-          message: `${user.username} a appliqué la tendance ${trend} à ${stock.companyName || 'une action'} (${oldTrendVal} → ${newVal})`,
-          meta: { redirectView: 'bourse', redirectData: { stockId: String(stock._id) }, trend, oldValue: oldTrendVal, newValue: newVal },
-          includeInTimeline: true,
-          timelineType: 'market',
-          timelineTone: newVal >= oldTrendVal ? 'up' : 'down'
-      });
   });
 
   socket.on('admin_apply_stock_custom', async ({ stockId, pct }) => {
@@ -1535,18 +1534,6 @@ io.on('connection', async (socket) => {
       await applyStockValueChange(stock, oldCustomVal, newVal);
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
-      await logAdminAction({
-          actorUser: user,
-          actionType: 'stock_custom_applied',
-          targetType: 'stock',
-          targetId: String(stock._id),
-          targetLabel: stock.companyName || 'Action',
-          message: `${user.username} a appliqué ${Number(pct).toFixed(2)}% à ${stock.companyName || 'une action'}`,
-          meta: { redirectView: 'bourse', redirectData: { stockId: String(stock._id) }, pct, oldValue: oldCustomVal, newValue: newVal },
-          includeInTimeline: true,
-          timelineType: 'market',
-          timelineTone: newVal >= oldCustomVal ? 'up' : 'down'
-      });
   });
 
   socket.on('admin_delete_stock', async ({ stockId }) => {
@@ -1557,17 +1544,6 @@ io.on('connection', async (socket) => {
       await Stock.findByIdAndDelete(stockId);
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
-      if(stock) {
-          await logAdminAction({
-              actorUser: user,
-              actionType: 'stock_deleted',
-              targetType: 'stock',
-              targetId: String(stock._id),
-              targetLabel: stock.companyName || 'Action',
-              message: `${user.username} a supprimé l'action ${stock.companyName || ''}`,
-              meta: { redirectView: 'bourse', redirectData: { stockId: String(stock._id) } }
-          });
-      }
   });
 
   socket.on('admin_reset_stock_history', async ({ stockId }) => {
@@ -1581,15 +1557,6 @@ io.on('connection', async (socket) => {
       await stock.save();
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
-      await logAdminAction({
-          actorUser: user,
-          actionType: 'stock_history_reset',
-          targetType: 'stock',
-          targetId: String(stock._id),
-          targetLabel: stock.companyName || 'Action',
-          message: `${user.username} a réinitialisé l'historique de ${stock.companyName || 'une action'}`,
-          meta: { redirectView: 'bourse', redirectData: { stockId: String(stock._id) } }
-      });
   });
 
   // Boost bourse via publication pub (Feed / Presse)
@@ -1617,25 +1584,27 @@ io.on('connection', async (socket) => {
       if(!user || !user.isAdmin) return;
       const allStocks = await Stock.find();
       const now = new Date();
+      const STABLE_RANGE = [-0.1, 0.1];
       for(const stock of allStocks) {
+          const lastCommitted = stock.history && stock.history.length ? stock.history[stock.history.length - 1].value : null;
+          const oldValue = stock.currentValue;
+          const hasPendingChange = lastCommitted === null ? false : Math.abs((stock.currentValue || 0) - lastCommitted) > 0.001;
+          if(!hasPendingChange) {
+              const randPct = parseFloat((STABLE_RANGE[0] + Math.random() * (STABLE_RANGE[1] - STABLE_RANGE[0])).toFixed(2));
+              const mult = 1 + randPct / 100;
+              stock.currentValue = Math.max(0, Math.round(stock.currentValue * mult * 100) / 100);
+              stock.trend = 'stable';
+          }
           stock.history.push({ value: stock.currentValue, date: now });
           if(stock.history.length > 30) stock.history.shift();
           stock.updatedAt = now;
+          if(Math.abs((stock.currentValue || 0) - oldValue) > 0.001) {
+              await applyStockValueChange(stock, oldValue, stock.currentValue);
+          }
           await stock.save();
       }
       const stocks = await getEnrichedStocks();
       io.emit('stocks_updated', stocks);
-      await logAdminAction({
-          actorUser: user,
-          actionType: 'trading_day_advanced',
-          targetType: 'market',
-          targetLabel: 'Bourse de ConvSmos',
-          message: `${user.username} a validé le jour de cotation suivant pour ${allStocks.length} action(s)`,
-          meta: { redirectView: 'bourse', redirectData: null, stockCount: allStocks.length },
-          includeInTimeline: true,
-          timelineType: 'market',
-          timelineTone: 'market'
-      });
   });
 
   // Admin — définir le chiffre d'affaires d'une entreprise
@@ -1657,18 +1626,6 @@ io.on('connection', async (socket) => {
       io.emit('char_profile_data', charData);
       const stocksRefresh = await getEnrichedStocks();
       io.emit('stocks_updated', stocksRefresh);
-      await logAdminAction({
-          actorUser: user,
-          actionType: 'company_revenue_set',
-          targetType: 'company',
-          targetId: String(char._id),
-          targetLabel: companyName,
-          message: `${user.username} a fixé le chiffre d'affaires de ${companyName} à ${Math.max(0, Number(revenue) || 0)}`,
-          meta: { redirectView: 'bourse', redirectData: { stockId: stocksRefresh.find(stock => String(stock.charId) === String(char._id) && stock.companyName === companyName)?._id || null } },
-          includeInTimeline: true,
-          timelineType: 'market',
-          timelineTone: 'market'
-      });
   });
 
   socket.on('admin_update_company', async ({ charId, companyIndex, company, oldCompanyName }) => {
@@ -1715,18 +1672,6 @@ io.on('connection', async (socket) => {
       io.emit('char_profile_data', charData);
       io.emit('stocks_updated', await getEnrichedStocks());
       socket.emit('admin_action_result', { success: true, msg: 'Entreprise mise à jour.' });
-      await logAdminAction({
-          actorUser: user,
-          actionType: 'company_updated',
-          targetType: 'company',
-          targetId: String(char._id),
-          targetLabel: nextCompany.name,
-          message: `${user.username} a mis à jour l'entreprise ${nextCompany.name} de ${char.name}`,
-          meta: { redirectView: 'bourse', redirectData: null },
-          includeInTimeline: true,
-          timelineType: 'market',
-          timelineTone: 'market'
-      });
   });
   // ========== [FIN BOURSE SOCKET] ==========
   // ========== [WIKI] SOCKET EVENTS ==========
