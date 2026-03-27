@@ -4402,60 +4402,13 @@ function renderStockGrid(stocks) {
     }
     grid.innerHTML = '';
     visibleStocks.forEach((s, idx) => {
-        const hist = s.history || [];
-        const prev = hist.length >= 2 ? hist[hist.length - 2].value : s.currentValue;
-        const pct = prev ? ((s.currentValue - prev) / prev * 100) : 0;
-        const isUp = pct > 0, isDown = pct < 0;
-        const hist7 = hist.slice(-7);
-        const hi7 = hist7.length ? Math.max(...hist7.map(h => h.value)) : null;
-        const lo7 = hist7.length ? Math.min(...hist7.map(h => h.value)) : null;
-        const card = document.createElement('div');
-        card.className = `stock-card ${isUp ? 'stock-up' : isDown ? 'stock-down' : 'stock-neutral'}`;
-        card.id = `stock-${s._id}`;
-        card.style.animationDelay = `${idx * 0.05}s`;
-        card.style.cursor = 'pointer';
-        card.addEventListener('click', () => openStockDetail(String(s._id)));
-
-        const adminBtns = IS_ADMIN ? `
-            <div class="stock-admin-row">
-                <button class="stock-trend-btn stock-trend-up2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','croissance_forte')" title="+1.3~1.6%"><i class="fa-solid fa-angles-up"></i></button>
-                <button class="stock-trend-btn stock-trend-up1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','croissance')" title="+0.5~0.9%"><i class="fa-solid fa-angle-up"></i></button>
-                <button class="stock-trend-btn stock-trend-stable" onclick="event.stopPropagation(); adminStockTrend('${s._id}','stable')" title="±0.1%"><i class="fa-solid fa-minus"></i></button>
-                <button class="stock-trend-btn stock-trend-down1" onclick="event.stopPropagation(); adminStockTrend('${s._id}','baisse')" title="-0.5~0.9%"><i class="fa-solid fa-angle-down"></i></button>
-                <button class="stock-trend-btn stock-trend-down2" onclick="event.stopPropagation(); adminStockTrend('${s._id}','chute')" title="-1.2~1.6%"><i class="fa-solid fa-angles-down"></i></button>
-                <input type="number" id="cpct-${s._id}" class="stock-pct-input" placeholder="%" step="0.1" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter'){event.stopPropagation();applyCustomPctCard('${s._id}');}">
-                <button class="stock-trend-btn" onclick="event.stopPropagation(); applyCustomPctCard('${s._id}')" title="Appliquer %" style="background:rgba(108,99,255,0.2);color:var(--accent);border-color:rgba(108,99,255,0.3);"><i class="fa-solid fa-percent"></i></button>
-                <button class="stock-trend-btn stock-admin-reset" onclick="event.stopPropagation(); if(confirm('Réinitialiser l\'historique de cette action ?')) adminResetStockHistory('${s._id}')" title="Réinitialiser l'historique"><i class="fa-solid fa-clock-rotate-left"></i></button>
-                <button class="stock-admin-edit" onclick="event.stopPropagation(); openStockEditModal('${s._id}')" title="Modifier"><i class="fa-solid fa-pen"></i></button>
-                <button class="stock-admin-del" onclick="event.stopPropagation(); if(confirm('Supprimer cette action ?')) adminDeleteStock('${s._id}')" title="Supprimer"><i class="fa-solid fa-trash"></i></button>
-            </div>` : '';
-
-        card.innerHTML = `
-            <div class="stock-header">
-                <div class="stock-logo-wrap" style="border-color:${s.stockColor||'var(--accent)'}">
-                    ${s.companyLogo ? `<img src="${s.companyLogo}" class="stock-logo" alt="">` : `<i class="fa-solid fa-building"></i>`}
-                    ${s.companyLogo ? `<div class="stock-logo-popup"><img src="${s.companyLogo}" alt="${escapeHtml(s.companyName)}"></div>` : ''}
-                </div>
-                <div class="stock-info">
-                    <div class="stock-name">${escapeHtml(s.companyName)}</div>
-                    <div class="stock-char" style="color:${s.charColor||'var(--text-muted)'}"><i class="fa-solid fa-user"></i> ${escapeHtml(s.charName||'')}${s.headquarters ? ` <span class="stock-hq"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(s.headquarters)}</span>` : ''}</div>
-                </div>
-                <div class="stock-badge ${isUp ? 'badge-up' : isDown ? 'badge-down' : 'badge-neutral'}">
-                    ${isUp ? '▲' : isDown ? '▼' : '—'} ${Math.abs(pct).toFixed(2)}%
-                </div>
-            </div>
-            <div class="stock-value-row">
-                <span class="stock-current-value" style="color:${isUp?'#23a559':isDown?'#da373c':'white'}">${formatStockValue(s.currentValue)}</span>
-                <span class="stock-prev-value">Préc: ${formatStockValue(prev)}</span>
-            </div>
-            ${(hi7 !== null && lo7 !== null) ? `<div class="stock-highlow-row"><span class="stock-low7"><i class="fa-solid fa-arrow-down"></i> ${formatStockValue(lo7)}</span><span class="stock-hl-label">7j bas/haut</span><span class="stock-high7"><i class="fa-solid fa-arrow-up"></i> ${formatStockValue(hi7)}</span></div>` : ''}
-            <div class="stock-chart-container" id="schart-${s._id}"></div>
-            ${s.description ? `<div class="stock-desc">${escapeHtml(s.description)}</div>` : ''}
-            <div class="stock-trend-badge ${trendClass(s.trend)}">${trendLabel(s.trend)}</div>
-            ${adminBtns}
-        `;
-        grid.appendChild(card);
-        renderStockMiniChart(hist.slice(-7), s.currentValue, `schart-${s._id}`, s.stockColor || '#6c63ff', pct >= 0);
+        if(bourseLayout === 'compact') {
+            grid.appendChild(renderCompactStockRow(s, idx));
+            return;
+        }
+        const rendered = renderStockCard(s, idx);
+        grid.appendChild(rendered.element);
+        renderStockMiniChart(rendered.history, rendered.currentValue, `schart-${s._id}`, rendered.color, rendered.isPositive);
     });
     renderBoursePagination(totalPages);
 }
@@ -4741,11 +4694,6 @@ function adminResetStockHistory(stockId) {
     socket.emit('admin_reset_stock_history', { stockId });
     closeStockDetail();
     showToast('Historique réinitialisé !');
-}
-
-function adminNextTradingDay() {
-    if(!IS_ADMIN) return;
-    socket.emit('admin_next_trading_day');
 }
 function applyCustomPctCard(stockId) {
     const input = document.getElementById(`cpct-${stockId}`);
