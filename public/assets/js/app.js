@@ -4251,9 +4251,22 @@ function renderCompactStockRow(stock, index) {
         <span class="stock-row-value">${formatStockValue(stock.currentValue)}</span>
         <span class="stock-row-revenue">${stock.revenue ? formatStockValue(stock.revenue) : '—'}</span>
         <span class="stock-row-badge ${trendClass(stock.trend)}">${trendLabel(stock.trend)}</span>
-        ${IS_ADMIN ? `<span class="stock-row-admin-wrap">${buildStockAdminControls(stock, true)}</span>` : ''}
+        <span class="stock-row-admin-wrap">${IS_ADMIN ? buildStockAdminControls(stock, true) : '<span class="stock-row-admin-placeholder"></span>'}</span>
     `;
     return row;
+}
+
+function renderCompactStockHeader() {
+    return `
+        <div class="stock-row stock-row-header" aria-hidden="true">
+            <span class="stock-row-head stock-row-head-main">Entreprise</span>
+            <span class="stock-row-head">Perf.</span>
+            <span class="stock-row-head">Cours</span>
+            <span class="stock-row-head">CA</span>
+            <span class="stock-row-head">Tendance</span>
+            <span class="stock-row-head stock-row-head-admin">${IS_ADMIN ? 'Admin' : ''}</span>
+        </div>
+    `;
 }
 
 function loadBourse() { socket.emit('request_stocks'); }
@@ -4378,11 +4391,17 @@ function renderBourseSummary(stocks) {
 function renderStockGrid(stocks) {
     const grid = document.getElementById('bourse-stocks-grid');
     const count = document.getElementById('bourse-results-count');
+    const compactHead = document.getElementById('bourse-compact-head');
     if(!grid) return;
     const _bq = bourseSearch;
     const filtered = getVisibleBourseStocks(stocks);
     syncBourseFilterUI();
     grid.classList.toggle('compact', bourseLayout === 'compact');
+    if(compactHead) {
+        const compactEnabled = bourseLayout === 'compact' && filtered.length > 0;
+        compactHead.classList.toggle('hidden', !compactEnabled);
+        compactHead.innerHTML = compactEnabled ? renderCompactStockHeader() : '';
+    }
     if(!filtered.length) {
         if(count) count.textContent = '0 résultat';
         renderBoursePagination(0);
