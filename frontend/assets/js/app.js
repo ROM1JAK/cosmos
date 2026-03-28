@@ -77,27 +77,6 @@ let actuRequestPending = false;
 
 const COMMON_EMOJIS = ["😀", "😂", "😉", "😍", "😎", "🥳", "😭", "😡", "🤔", "👍", "👎", "❤️", "💔", "🔥", "✨", "🎉", "💩", "👻", "💀", "👽", "🤖", "👋", "🙌", "🙏", "💪", "👀", "🍕", "🍻", "🚀", "💯"];
 
-async function uploadToCloudinary(file, resourceType) {
-    if (!file) return null;
-    if (!resourceType) {
-        if (file.type.startsWith('image/')) resourceType = 'image';
-        else if (file.type.startsWith('video/') || file.type.startsWith('audio/')) resourceType = 'video';
-        else resourceType = 'auto';
-    }
-    const formData = new FormData();
-    if (file instanceof Blob && !file.name) {
-        const ext = file.type.split('/')[1] || 'dat';
-        formData.append('file', file, `upload.${ext}`);
-    } else { formData.append('file', file); }
-    formData.append('upload_preset', CLOUDINARY_PRESET);
-    const uploadUrl = `${CLOUDINARY_BASE_URL}/${resourceType}/upload`;
-    try {
-        const response = await fetch(uploadUrl, { method: 'POST', body: formData });
-        if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`);
-        const data = await response.json(); return data.secure_url; 
-    } catch (error) { console.error("Erreur Upload:", error); alert("Erreur envoi média : " + error.message); return null; }
-}
-
 function switchView(view) {
     if(view === 'admin' && !IS_ADMIN) {
         switchView('accueil');
@@ -191,45 +170,6 @@ function restorePersistentScroll(storageKey, elementId) {
     if(!target) return;
     const saved = Number(localStorage.getItem(storageKey) || 0);
     requestAnimationFrame(() => { target.scrollTop = Number.isFinite(saved) ? saved : 0; });
-}
-
-function objectIdToDate(id) {
-    if(!id || typeof id !== 'string' || id.length < 8) return null;
-    const timestamp = parseInt(id.slice(0, 8), 16);
-    if(Number.isNaN(timestamp)) return null;
-    return new Date(timestamp * 1000);
-}
-
-function extractArticleTitle(content = '') {
-    const match = String(content).match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
-    if(match) return match[1].trim();
-    return String(content).split(/\s+/).slice(0, 10).join(' ').trim();
-}
-
-function extractTextPreview(text = '', length = 120) {
-    return String(text).replace(/\[TITRE\].*?\[\/TITRE\]\n?/g, '').replace(/\s+/g, ' ').trim().slice(0, length);
-}
-
-function formatRelativeDate(date) {
-    if(!date) return 'date inconnue';
-    const diffMs = Date.now() - date.getTime();
-    const minutes = Math.max(1, Math.round(diffMs / 60000));
-    if(minutes < 60) return `il y a ${minutes} min`;
-    const hours = Math.round(minutes / 60);
-    if(hours < 24) return `il y a ${hours} h`;
-    const days = Math.round(hours / 24);
-    if(days < 7) return `il y a ${days} j`;
-    return date.toLocaleDateString('fr-FR');
-}
-
-function renderConsoleList(targetId, items, emptyText) {
-    const target = document.getElementById(targetId);
-    if(!target) return;
-    if(!items.length) {
-        target.innerHTML = `<div class="admin-console-empty">${emptyText}</div>`;
-        return;
-    }
-    target.innerHTML = items.join('');
 }
 
 function saveFeedFilters() {
@@ -368,14 +308,6 @@ function toggleAccueilTimeline(force) {
     syncAccueilTimelineUI();
 }
 
-function previewImg(input, previewId) {
-    const preview = document.getElementById(previewId);
-    if(!preview || !input.files || !input.files[0]) return;
-    const reader = new FileReader();
-    reader.onload = e => { preview.src = e.target.result; preview.classList.remove('hidden'); };
-    reader.readAsDataURL(input.files[0]);
-}
-
 async function toggleRecording(source) { 
     const btn = document.getElementById(`btn-record-${source}`); if (!btn) return; 
     if (!isRecording) {
@@ -448,187 +380,6 @@ document.getElementById('txtInput').addEventListener('input', function(e) {
     } else { suggestionsBox.classList.add('hidden'); }
 });
 
-function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mobile-overlay').classList.toggle('open'); }
-function toggleCreateForm() { openCharModal('create'); }
-
-// [NOUVEAU] Navigation onglets modale perso
-function switchCharTab(mode, tab) {
-    const prefix = mode === 'create' ? 'create' : 'edit';
-    document.querySelectorAll(`#char-modal-${mode} .char-tab-content`).forEach(el => el.classList.remove('active-tab'));
-    document.querySelectorAll(`#char-modal-${mode} .char-tab`).forEach(el => el.classList.remove('active'));
-    const content = document.getElementById(`${prefix}-tab-${tab}`);
-    if(content) content.classList.add('active-tab');
-    // Activer le bouton correspondant
-    const tabs = document.querySelectorAll(`#char-modal-${mode} .char-tab`);
-    const tabNames = ['identite','parti','entreprises','capital'];
-    const idx = tabNames.indexOf(tab);
-    if(tabs[idx]) tabs[idx].classList.add('active');
-}
-
-// [NOUVEAU] Modales centrées pour création/édition de personnage
-// ==================== [UNSAVED GUARD] ====================
-let _formSnaps = {};
-let _unsavedBypass = false;
-let _pendingCloseFn = null;
-
-function snapForm(modalId) {
-    const el = document.getElementById(modalId);
-    if(!el) return;
-    const snap = {};
-    el.querySelectorAll('input:not([type=hidden]):not([type=file]):not([type=submit]):not([type=button]):not([type=color]):not([type=range]), textarea, select').forEach(f => {
-        const key = f.id || f.getAttribute('name');
-        if(key) snap[key] = f.value;
-    });
-    _formSnaps[modalId] = snap;
-}
-
-function isFormDirty(modalId) {
-    const el = document.getElementById(modalId);
-    const snap = _formSnaps[modalId];
-    if(!el || !snap) return false;
-    const fields = el.querySelectorAll('input:not([type=hidden]):not([type=file]):not([type=submit]):not([type=button]):not([type=color]):not([type=range]), textarea, select');
-    for(const f of fields) {
-        const key = f.id || f.getAttribute('name');
-        if(key && snap[key] !== undefined && snap[key] !== f.value) return true;
-    }
-    return false;
-}
-
-function guardClose(modalId, closeFn) {
-    if(_unsavedBypass || !isFormDirty(modalId)) {
-        _unsavedBypass = false;
-        closeFn();
-        return;
-    }
-    _pendingCloseFn = closeFn;
-    const modal = document.getElementById('unsaved-modal');
-    if(modal) modal.classList.remove('hidden');
-    else if(confirm('Quitter sans enregistrer ?')) closeFn();
-}
-
-function unsavedConfirm() {
-    document.getElementById('unsaved-modal').classList.add('hidden');
-    if(_pendingCloseFn) { _pendingCloseFn(); _pendingCloseFn = null; }
-}
-
-function unsavedCancel() {
-    document.getElementById('unsaved-modal').classList.add('hidden');
-    _pendingCloseFn = null;
-    _unsavedBypass = false;
-}
-// ==================== [FIN UNSAVED GUARD] ====================
-
-function openCharModal(mode) {
-    document.getElementById('char-modal').classList.remove('hidden');
-    if(mode === 'create') {
-        document.getElementById('char-modal-title').textContent = '✨ Nouveau Personnage';
-        document.getElementById('char-modal-create').classList.remove('hidden');
-        document.getElementById('char-modal-edit').classList.add('hidden');
-    } else {
-        document.getElementById('char-modal-title').textContent = '✏️ Modifier le Personnage';
-        document.getElementById('char-modal-create').classList.add('hidden');
-        document.getElementById('char-modal-edit').classList.remove('hidden');
-    }
-    snapForm('char-modal');
-}
-function closeCharModal() {
-    guardClose('char-modal', () => {
-        document.getElementById('char-modal').classList.add('hidden');
-        newCharCompanies = [];
-        const list = document.getElementById('newCharCompaniesList');
-        if(list) list.innerHTML = '';
-        editCharCompanies = [];
-        const editList = document.getElementById('editCharCompaniesList');
-        if(editList) editList.innerHTML = '';
-    });
-}
-function toggleNotifications() {
-    notificationsEnabled = !notificationsEnabled; const btn = document.getElementById('btn-notif-toggle');
-    if(btn) { btn.innerHTML = notificationsEnabled ? '<i class="fa-solid fa-bell"></i> Notifs : ON' : '<i class="fa-solid fa-bell-slash"></i> Notifs : OFF'; btn.style.opacity = notificationsEnabled ? "1" : "0.5"; }
-}
-function openAccountUI() { if (PLAYER_ID) openUserSettingsModal(); else openLoginModal(); }
-function openLoginModal() { document.getElementById('login-modal').classList.remove('hidden'); document.getElementById('login-error-msg').style.display = "none"; }
-function closeLoginModal() { document.getElementById('login-modal').classList.add('hidden'); }
-function submitLogin() { const pseudo = document.getElementById('loginPseudoInput').value.trim(); const code = document.getElementById('loginCodeInput').value.trim(); if (pseudo && code) socket.emit('login_request', { username: pseudo, code: code }); }
-function logoutUser() { if(confirm("Déconnexion ?")) { localStorage.removeItem('rp_username'); localStorage.removeItem('rp_code'); localStorage.removeItem('saved_char_id'); location.reload(); } }
-
-function openUserSettingsModal() { 
-    document.getElementById('settingsUsernameInput').value = USERNAME || ""; 
-    document.getElementById('settingsCodeInput').value = PLAYER_ID || ""; 
-    document.getElementById('settings-msg').textContent = ""; 
-    // [FIX] Afficher bouton alerte admin directement ici (sans redéfinition)
-    const w = document.getElementById('admin-alert-btn-wrapper');
-    if(w) { if(IS_ADMIN) w.classList.remove('hidden'); else w.classList.add('hidden'); }
-    document.getElementById('user-settings-modal').classList.remove('hidden'); 
-}
-function closeUserSettingsModal() { document.getElementById('user-settings-modal').classList.add('hidden'); }
-function toggleSecretVisibility() { const i = document.getElementById('settingsCodeInput'); i.type = (i.type === "password") ? "text" : "password"; }
-function submitUsernameChange() {
-    const newName = document.getElementById('settingsUsernameInput').value.trim();
-    if (newName && newName !== USERNAME) socket.emit('change_username', { userId: PLAYER_ID, newUsername: newName });
-    else document.getElementById('settings-msg').textContent = "Pas de changement.";
-}
-
-// THEMES LOGIC
-function changeTheme(themeName) {
-    if(themeName === 'ombra') {
-        openOmbra();
-        return;
-    }
-    document.body.setAttribute('data-theme', themeName);
-    document.querySelectorAll('.theme-swatch').forEach(btn => btn.classList.remove('active'));
-    
-    let activeColor = '#6c63ff'; 
-    if(themeName === 'matrix') activeColor = '#00d4aa';
-    if(themeName === 'blood') activeColor = '#ff4757';
-    if(themeName === 'cyber') activeColor = '#f9ca24';
-
-    const activeBtn = Array.from(document.querySelectorAll('.theme-swatch')).find(b => b.style.getPropertyValue('--swatch').trim() === activeColor);
-    if(activeBtn) activeBtn.classList.add('active');
-
-    if(PLAYER_ID) socket.emit('save_theme', { userId: PLAYER_ID, theme: themeName });
-}
-
-// OMBRA DARKWEB
-function handleOmbraOverlayClick(e) { if(e.target === document.getElementById('ombra-modal')) closeOmbra(); }
-function openOmbra() {
-    document.getElementById('ombra-modal').classList.remove('hidden');
-    socket.emit('ombra_join', { alias: ombraAlias });
-}
-function closeOmbra() {
-    document.getElementById('ombra-modal').classList.add('hidden');
-    socket.emit('ombra_leave', { alias: ombraAlias });
-}
-function sendOmbraMessage() {
-    const input = document.getElementById('ombraInput');
-    const content = input.value.trim();
-    if(!content) return;
-    socket.emit('ombra_message', { alias: ombraAlias, content, ownerId: PLAYER_ID, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) });
-    input.value = '';
-}
-function appendOmbraMessage(id, alias, content, date, isSelf) {
-    const messages = document.getElementById('ombra-messages');
-    const div = document.createElement('div');
-    div.className = `ombra-msg ${isSelf ? 'ombra-self' : ''}`;
-    div.id = `ombra-${id}`;
-    const canDel = isSelf || IS_ADMIN;
-    const delBtn = canDel ? `<button class="ombra-del-btn" onclick="deleteOmbraMsg('${id}')" title="Supprimer"><i class="fa-solid fa-trash"></i></button>` : '';
-    div.innerHTML = `<span class="ombra-alias">${alias}</span><span class="ombra-content">${escapeHtml(content)}</span><span class="ombra-time">${date}</span>${delBtn}`;
-    messages.appendChild(div);
-    messages.scrollTop = messages.scrollHeight;
-}
-function deleteOmbraMsg(id) {
-    if(!confirm('Supprimer ce message Ombra ?')) return;
-    socket.emit('ombra_delete_message', { msgId: id, requesterId: PLAYER_ID });
-}
-function escapeHtml(text) { const d = document.createElement('div'); d.appendChild(document.createTextNode(text)); return d.innerHTML; }
-
-function syncAdminNavVisibility() {
-    const adminBtn = document.getElementById('btn-view-admin');
-    if(!adminBtn) return;
-    adminBtn.classList.toggle('hidden', !IS_ADMIN);
-}
-
 socket.on('ombra_message', (data) => { appendOmbraMessage(data._id, data.alias, data.content, data.date, data.alias === ombraAlias); });
 socket.on('ombra_history', (history) => {
     const messages = document.getElementById('ombra-messages');
@@ -660,11 +411,6 @@ socket.on('login_success', (data) => {
 socket.on('login_error', (msg) => { const el = document.getElementById('login-error-msg'); el.textContent = msg; el.style.display = 'block'; });
 socket.on('username_change_success', (newName) => { USERNAME = newName; localStorage.setItem('rp_username', newName); document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`; document.getElementById('settings-msg').textContent = "OK !"; });
 socket.on('username_change_error', (msg) => { document.getElementById('settings-msg').textContent = msg; });
-
-function checkAutoLogin() {
-    const savedUser = localStorage.getItem('rp_username'); const savedCode = localStorage.getItem('rp_code');
-    if (savedUser && savedCode) socket.emit('login_request', { username: savedUser, code: savedCode }); else openLoginModal();
-}
 
 socket.on('connect', () => { checkAutoLogin(); setupEmojiPicker(); });
 socket.on('update_user_list', (users) => {
