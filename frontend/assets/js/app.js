@@ -1,4 +1,5 @@
-var socket = io();
+const backendUrl = (window.APP_CONFIG && window.APP_CONFIG.BACKEND_URL) || window.location.origin;
+var socket = io(backendUrl, { transports: ['websocket', 'polling'] });
 const notifSound = new Audio('https://cdn.discordapp.com/attachments/1323488087288053821/1443747694408503446/notif.mp3?ex=692adb11&is=69298991&hm=8e0c05da67995a54740ace96a2e4630c367db762c538c2dffc11410e79678ed5&'); 
 
 const CLOUDINARY_BASE_URL = 'https://api.cloudinary.com/v1_1/dllr3ugxz'; 

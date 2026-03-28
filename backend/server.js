@@ -2,10 +2,29 @@ const express = require('express');
 const path = require('path');
 const app = express();
 const http = require('http').createServer(app);
-const io = require('socket.io')(http, { maxHttpBufferSize: 10e6 });
 const mongoose = require('mongoose');
 
+const FRONTEND_URL = process.env.FRONTEND_URL;
+const allowedOrigins = [
+	FRONTEND_URL,
+	'http://localhost:3000',
+	'http://127.0.0.1:3000'
+].filter(Boolean);
+
+const io = require('socket.io')(http, {
+	maxHttpBufferSize: 10e6,
+	cors: {
+		origin(origin, callback) {
+			if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+			return callback(new Error('Origin non autorisee par Socket.IO'));
+		},
+		methods: ['GET', 'POST'],
+		credentials: true
+	}
+});
+
 app.use(express.static(path.join(__dirname, '../frontend')));
+app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
 
 // CONFIGURATION
 const ADMIN_CODE = 'ADMIN';

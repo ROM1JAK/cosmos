@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: cosmos-api
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+  - type: static
+    name: cosmos-front
+    plan: free
+    buildCommand: npm install && npm run build:frontend
+    staticPublishPath: ./frontend
+    envVars:
+      - key: BACKEND_URL
+        sync: false

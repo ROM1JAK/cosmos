@@ -4,7 +4,8 @@
   "description": "RP avec MongoDB",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build:frontend": "node scripts/build-frontend-config.js"
   },
   "dependencies": {
     "express": "^4.17.1",
