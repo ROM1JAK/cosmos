@@ -25,6 +25,15 @@ const io = require('socket.io')(http, {
 
 app.use(express.static(path.join(__dirname, '../frontend')));
 app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
+app.get('/api/ping', (_req, res) => {
+	res.status(200).json({
+		ok: true,
+		service: 'cosmos-api',
+		timestamp: new Date().toISOString(),
+		uptimeSeconds: Math.round(process.uptime()),
+		mongoReadyState: mongoose.connection.readyState
+	});
+});
 
 // CONFIGURATION
 const ADMIN_CODE = 'ADMIN';
