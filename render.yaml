@@ -1,7 +1,7 @@
 services:
   - type: web
     name: cosmos-api
-    env: node
+    runtime: node
     plan: free
     buildCommand: npm install
     startCommand: npm start
@@ -11,8 +11,9 @@ services:
       - key: FRONTEND_URL
         sync: false
 
-  - type: static
+  - type: web
     name: cosmos-front
+    runtime: static
     plan: free
     buildCommand: npm install && npm run build:frontend
     staticPublishPath: ./frontend
