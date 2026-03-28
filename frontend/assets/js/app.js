@@ -181,10 +181,55 @@ function knownCompanyNames() {
     return [...new Set(stocksData.map(stock => stock.companyName).filter(Boolean))];
 }
 
+function escapeRegExp(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeMentionName(value) {
+    return String(value || '')
+        .replace(/^@/, '')
+        .replace(/[^\wÀ-ÿ\s'-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function extractMentionCandidates(text) {
+    if(!text || !String(text).includes('@')) return [];
+    const words = String(text).split(/\s+/).filter(Boolean);
+    const mentions = [];
+    for(let i = 0; i < words.length; i++) {
+        if(!words[i].startsWith('@')) continue;
+        for(let len = 3; len >= 1; len--) {
+            if(i + len > words.length) continue;
+            const candidate = normalizeMentionName(words.slice(i, i + len).join(' '));
+            if(!candidate) continue;
+            mentions.push(candidate);
+            i += len - 1;
+            break;
+        }
+    }
+    return mentions;
+}
+
+function textMentionsCurrentUser(text) {
+    const mentions = extractMentionCandidates(text);
+    if(!mentions.length) return false;
+    const ownedNames = new Set(
+        [USERNAME, ...myCharacters.map(char => char.name)]
+            .map(normalizeMentionName)
+            .filter(Boolean)
+    );
+    return mentions.some(name => ownedNames.has(name));
+}
+
 function isCompanyRelatedPost(post) {
-    if(post.linkedCompanyName || (post.authorCompanyNames || []).length) return true;
-    const haystack = [post.content, post.journalName].filter(Boolean).join(' ').toLowerCase();
-    return knownCompanyNames().some(name => haystack.includes(String(name).toLowerCase()));
+    if(post.linkedCompanyName || post.isSponsored) return true;
+    const companyNames = [...new Set([...knownCompanyNames(), ...(post.authorCompanyNames || [])].map(name => String(name || '').trim()).filter(Boolean))];
+    if(!companyNames.length) return false;
+    const haystack = [post.content, post.journalName].filter(Boolean).join(' ');
+    if(!haystack.trim()) return false;
+    return companyNames.some(name => new RegExp(`(^|[^\\wÀ-ÿ])${escapeRegExp(name)}(?=$|[^\\wÀ-ÿ])`, 'i').test(haystack));
 }
 
 function getFilteredFeedPosts() {
@@ -1790,18 +1835,20 @@ socket.on('message_updated', (data) => { const el = document.getElementById(`con
 
 function formatText(text) { 
     if(!text) return ""; 
+    const sourceText = String(text);
     // Détecter les messages cryptés AVANT tout autre traitement
-    if(text.includes('[CRYPTO]')) {
-        return text.replace(/\[CRYPTO\](.*?)\|(.*?)\[\/CRYPTO\]/g, (match, enc, glitch) => {
-            const safeEnc = enc.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-            return `<div class="crypto-message"><span class="crypto-icon"><i class="fa-solid fa-lock"></i></span><span class="crypto-glitch">${glitch}…</span><button class="crypto-unlock-btn" onclick="openDecryptModal(null,'${safeEnc}')"><i class="fa-solid fa-key"></i> Déchiffrer</button></div>`;
+    if(sourceText.includes('[CRYPTO]')) {
+        return sourceText.replace(/\[CRYPTO\](.*?)\|(.*?)\[\/CRYPTO\]/g, (match, enc, glitch) => {
+            const safeEnc = escapeHtml(enc).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const safeGlitch = escapeHtml(glitch);
+            return `<div class="crypto-message"><span class="crypto-icon"><i class="fa-solid fa-lock"></i></span><span class="crypto-glitch">${safeGlitch}…</span><button class="crypto-unlock-btn" onclick="openDecryptModal(null,'${safeEnc}')"><i class="fa-solid fa-key"></i> Déchiffrer</button></div>`;
         });
     }
-    return text
+    return escapeHtml(sourceText)
+        .replace(/@([\wÀ-ÿ][\wÀ-ÿ'-]*(?: [\wÀ-ÿ][\wÀ-ÿ'-]*){0,2})(?=$|[^\wÀ-ÿ'-])/g, '<span class="mention">@$1</span>')
         .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
         .replace(/\*(.*?)\*/g, '<i>$1</i>')
-        .replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>')
-        .replace(/@([\wÀ-ÿ][\wÀ-ÿ]*(?: [\wÀ-ÿ][\wÀ-ÿ]*)*)/g, '<span class="mention">@$1</span>');
+        .replace(/\|\|(.*?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
 }
 function getYoutubeId(url) { const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/); return (match && match[2].length === 11) ? match[2] : null; }
 
@@ -1821,7 +1868,7 @@ function displayMessage(msg, isDm = false) {
     let senderName, senderAvatar, senderColor, senderRole, canEdit = false, canDelete = false;
     if (isDm) { senderName = msg.sender || msg.senderName; senderAvatar = `https://ui-avatars.com/api/?name=${senderName}&background=random&color=fff&size=64`; senderColor = "#dbdee1"; senderRole = "Utilisateur"; } 
     else { senderName = msg.senderName; senderAvatar = msg.senderAvatar; senderColor = msg.senderColor; senderRole = msg.senderRole; canEdit = (msg.ownerId === PLAYER_ID); canDelete = (msg.ownerId === PLAYER_ID) || IS_ADMIN; }
-    if (!isDm && USERNAME && msg.content && typeof msg.content === 'string' && msg.content.includes(`@${USERNAME}`)) { div.classList.add('mentioned'); }
+    if (!isDm && textMentionsCurrentUser(msg.content)) { div.classList.add('mentioned'); }
     const msgTime = new Date(msg.timestamp || Date.now()).getTime(); const timeDiff = msgTime - lastMessageData.time;
     const isGroup = (!isDm && !msg.replyTo && senderName === lastMessageData.author && timeDiff < 120000 && msg.type !== 'image' && msg.type !== 'video'); 
     if (isGroup) { div.classList.add('msg-group-followup'); const stamp = document.createElement('span'); stamp.className = 'group-timestamp'; stamp.innerText = msg.date.substring(0, 5); div.appendChild(stamp); } 
@@ -2095,7 +2142,7 @@ function generateCommentsHTML(comments, postId) {
             if(c.mediaType === 'video') mediaHtml = `<video src="${c.mediaUrl}" controls class="comment-media"></video>`;
             if(c.mediaType === 'audio') mediaHtml = `<audio src="${c.mediaUrl}" controls style="width:100%; margin-top:5px;"></audio>`;
         }
-        html += `<div class="comment-item"><img src="${c.authorAvatar}" class="comment-avatar" onclick="openProfile('${c.authorName.replace(/'/g, "\\'")}')"><div class="comment-bubble"><div class="comment-meta"><span class="comment-author">${c.authorName}</span><span class="comment-time">${c.date}</span>${delBtn}</div><div class="comment-text">${c.content}${mediaHtml}</div></div></div>`;
+        html += `<div class="comment-item"><img src="${c.authorAvatar}" class="comment-avatar" onclick="openProfile('${c.authorName.replace(/'/g, "\\'")}')"><div class="comment-bubble"><div class="comment-meta"><span class="comment-author">${c.authorName}</span><span class="comment-time">${c.date}</span>${delBtn}</div><div class="comment-text">${formatText(c.content)}${mediaHtml}</div></div></div>`;
     });
     return html;
 }
@@ -2281,6 +2328,7 @@ function openNotificationTarget(notificationId) {
         return;
     }
     if(notification.redirectView === 'chat') {
+        switchView('chat');
         joinRoom(notification.redirectData?.roomId || 'global');
         return;
     }
