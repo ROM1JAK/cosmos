@@ -17,6 +17,7 @@
     AdminLog,
     City,
     CityRelation,
+    MapMarker,
     Stock,
     WikiPage,
     onlineUsers,
@@ -505,7 +506,7 @@
             if (words[i].startsWith('@')) {
                 for (let len = 3; len >= 1; len--) {
                     if (i + len > words.length) continue;
-                    const potentialName = words.slice(i, i + len).join(' ').replace(/^@/, '').replace(/[^\wÃ€-Ã¿\s]/g, '').trim();
+                        const potentialName = words.slice(i, i + len).join(' ').replace(/^@/, '').replace(/[^\w\u00C0-\u00FF\s]/g, '').trim();
                     if (!potentialName) continue;
                     const mc = await Character.findOne({ name: new RegExp(`^${potentialName}$`, 'i') });
                     if (mc && mc.ownerId !== msgData.ownerId && !notifiedOwners.has(mc.ownerId)) {
@@ -554,7 +555,7 @@
               if (words[i].startsWith('@')) {
                   for (let len = 3; len >= 1; len--) {
                       if (i + len > words.length) continue;
-                      const potentialName = words.slice(i, i + len).join(' ').replace(/^@/, '').replace(/[^\wÃ€-Ã¿\s]/g, '').trim();
+                      const potentialName = words.slice(i, i + len).join(' ').replace(/^@/, '').replace(/[^\w\u00C0-\u00FF\s]/g, '').trim();
                       if (!potentialName) continue;
                       const mc = await Character.findOne({ name: new RegExp(`^${potentialName}$`, 'i') });
                       if (mc && mc.ownerId !== postData.ownerId && !notifiedOwners.has(mc.ownerId)) {
@@ -934,6 +935,68 @@
       io.emit('city_relations_data', relations);
   });
   // ========== [FIN DIPLOMATIE SOCKET] ==========
+
+  // ========== [CARTES] SOCKET EVENTS ==========
+  async function emitMapMarkers(target) {
+      const markers = await MapMarker.find()
+          .populate('cityId', 'name flag archipel')
+          .sort({ updatedAt: -1, createdAt: -1 });
+      target.emit('map_markers_data', markers);
+  }
+
+  socket.on('request_map_markers', async () => {
+      await emitMapMarkers(socket);
+  });
+
+  socket.on('admin_save_map_marker', async ({ markerId, mapKey, title, description, x, y, imageUrl, cityId }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+
+      const allowedMaps = new Set(['archipel-pacifique', 'ancienne-archipel']);
+      const safeMapKey = String(mapKey || '').trim();
+      const safeTitle = String(title || '').trim();
+      const safeDescription = String(description || '').trim();
+      const parsedX = Number(x);
+      const parsedY = Number(y);
+
+      if(!allowedMaps.has(safeMapKey)) return;
+      if(!safeTitle) return;
+      if(!Number.isFinite(parsedX) || !Number.isFinite(parsedY)) return;
+
+      let marker = null;
+      if(markerId) marker = await MapMarker.findById(markerId);
+      if(!marker) {
+          marker = new MapMarker({
+              createdBy: user.username,
+              updatedBy: user.username
+          });
+      }
+
+      marker.mapKey = safeMapKey;
+      marker.title = safeTitle;
+      marker.description = safeDescription;
+      marker.x = Math.max(0, Math.min(100, parsedX));
+      marker.y = Math.max(0, Math.min(100, parsedY));
+      marker.imageUrl = String(imageUrl || '').trim();
+      marker.cityId = cityId || null;
+      marker.updatedBy = user.username;
+
+      await marker.save();
+      socket.emit('map_marker_save_success', { markerId: String(marker._id) });
+      await emitMapMarkers(io);
+  });
+
+  socket.on('admin_delete_map_marker', async ({ markerId }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      if(!markerId) return;
+
+      await MapMarker.findByIdAndDelete(markerId);
+      await emitMapMarkers(io);
+  });
+  // ========== [FIN CARTES] SOCKET EVENTS ==========
 
   // ========== [BOURSE] SOCKET EVENTS ==========
   socket.on('request_stocks', async () => {

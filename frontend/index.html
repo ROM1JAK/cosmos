@@ -34,6 +34,7 @@
             <span id="actu-badge" class="nav-unread-dot hidden"></span>
         </button>
         <button class="nav-btn" id="btn-view-cites" onclick="switchView('cites')"><i class="fa-solid fa-city"></i><span class="nav-label"> Cités</span></button>
+        <button class="nav-btn" id="btn-view-map" onclick="switchView('map')"><i class="fa-solid fa-map-location-dot"></i><span class="nav-label"> Map</span></button>
         <button class="nav-btn" id="btn-view-bourse" onclick="switchView('bourse')"><i class="fa-solid fa-chart-line"></i><span class="nav-label"> Bourse</span></button>
         <button class="nav-btn" id="btn-view-wiki" onclick="switchView('wiki')"><i class="fa-solid fa-book-open"></i><span class="nav-label"> Wiki</span></button>
         <button class="nav-btn" id="btn-view-mes-persos" onclick="switchView('mes-persos')"><i class="fa-solid fa-id-card"></i><span class="nav-label"> Mes Persos</span></button>
@@ -723,100 +724,104 @@
             </div>
         </div>
 
-        <!-- ===== [CITÉS] VUE ===== -->
-        <div id="view-cites" class="view-section hidden">
+        <div id="city-detail-overlay" class="modal-overlay hidden" onclick="closeCityDetail()"></div>
+        <div id="city-detail-panel" class="city-detail-panel">
+            <button onclick="closeCityDetail()" class="btn-close-profile"><i class="fa-solid fa-xmark"></i></button>
 
-            <!-- Panneau détail latéral -->
-            <div id="city-detail-overlay" class="modal-overlay hidden" onclick="closeCityDetail()"></div>
-            <div id="city-detail-panel" class="city-detail-panel">
-                <button onclick="closeCityDetail()" class="btn-close-profile"><i class="fa-solid fa-xmark"></i></button>
-
-                <div class="city-hero" id="cityDetailHero">
-                    <img id="cityDetailFlag" src="" class="city-detail-flag" style="display:none;" alt="drapeau">
-                    <div>
-                        <div class="city-hero-name" id="cityDetailName">—</div>
-                        <div class="city-hero-archipel" id="cityDetailArchipel">—</div>
-                    </div>
-                </div>
-
-                <div class="city-stats-row">
-                    <div class="city-stat-card">
-                        <div class="city-stat-value" id="cityDetailPop">—</div>
-                        <div class="city-stat-label"><i class="fa-solid fa-users"></i> Population</div>
-                    </div>
-                    <div class="city-stat-card city-stat-edc">
-                        <div class="city-stat-value" id="cityDetailEDC">—</div>
-                        <div class="city-stat-label">EDC</div>
-                        <div id="cityDetailEvol" class="city-edc-evol"></div>
-                    </div>
-                    <div class="city-stat-card">
-                        <div class="city-stat-value" id="cityDetailTrend">—</div>
-                        <div class="city-stat-label">Tendance</div>
-                    </div>
-                </div>
-
-                <div class="city-section">
-                    <div class="city-section-title"><i class="fa-solid fa-landmark"></i> Capitale</div>
-                    <div class="city-president" id="cityDetailCapitale" style="color:var(--accent-soft)">—</div>
-                </div>
-
-                <div class="city-section">
-                    <div class="city-section-title"><i class="fa-solid fa-user-tie"></i> Dirigeant</div>
-                    <div class="city-president" id="cityDetailPresident">—</div>
-                </div>
-
-                <div class="city-section">
-                    <div class="city-section-title"><i class="fa-solid fa-chart-line"></i> Historique EDC</div>
-                    <div id="cityEDCChart" class="city-edc-chart"></div>
-                </div>
-
-                <!-- Panneau Admin -->
-                <div id="cityAdminPanel" class="city-admin-panel hidden">
-                    <div class="city-section-title" style="color:#f59e0b;"><i class="fa-solid fa-sliders"></i> Contrôle Admin</div>
-                    <input type="hidden" id="adminCityId">
-
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-                        <div><label class="cfl">Président</label><input type="text" id="adminCityPresident" class="char-input" placeholder="Nom du perso..."></div>
-                        <div><label class="cfl">Capitale</label><input type="text" id="adminCityCapitale" class="char-input" placeholder="Ex: Quartier Central..."></div>
-                        <div><label class="cfl">Population</label><input type="number" id="adminCityPop" class="char-input" placeholder="500000"></div>
-                    </div>
-                    <div style="margin-bottom:10px;">
-                        <label class="cfl">EDC de base (valeur brute en milliards)</label>
-                        <input type="number" id="adminCityEDC" class="char-input" placeholder="ex: 1000000000000">
-                    </div>
-
-                    <!-- Upload drapeau -->
-                    <div style="margin-bottom:12px;">
-                        <label class="cfl">Drapeau</label>
-                        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-                            <img id="adminFlagPreview" src="" style="width:52px;height:34px;object-fit:cover;border-radius:4px;border:1px solid var(--border);display:none;" alt="flag">
-                            <label class="file-upload-label" style="flex:1;margin:0;"><span><i class="fa-solid fa-flag"></i> Choisir image</span><input type="file" id="adminFlagFile" accept="image/*" onchange="previewImg(this,'adminFlagPreview');document.getElementById('adminFlagPreview').style.display='block';"></label>
-                            <button id="adminFlagUploadBtn" class="btn-secondary" onclick="adminUploadFlag()" style="white-space:nowrap;padding:8px 12px;font-size:0.78rem;">📤 Uploader</button>
-                        </div>
-                    </div>
-
-                    <button class="btn-secondary full-width" style="margin-bottom:8px;" onclick="adminSaveCityInfo()"><i class="fa-solid fa-floppy-disk"></i> Enregistrer infos</button>
-                    <div id="cityAdminSaveMsg" class="city-save-success hidden">✅ Bien enregistré !</div>
-
-                    <div class="city-trend-btns">
-                        <button class="city-trend-btn trend-up2"    onclick="adminApplyTrend('croissance_forte')"><i class="fa-solid fa-angles-up"></i> +1,5 %</button>
-                        <button class="city-trend-btn trend-up1"    onclick="adminApplyTrend('croissance')"><i class="fa-solid fa-angle-up"></i> +0,7 %</button>
-                        <button class="city-trend-btn trend-stable" onclick="adminApplyTrend('stable')"><i class="fa-solid fa-minus"></i> Stable (0 %)</button>
-                        <button class="city-trend-btn trend-down1"  onclick="adminApplyTrend('baisse')"><i class="fa-solid fa-angle-down"></i> −0,7 %</button>
-                        <button class="city-trend-btn trend-down2"  onclick="adminApplyTrend('chute')"><i class="fa-solid fa-angles-down"></i> −1,5 %</button>
-                    </div>
-                    <!-- Variation personnalisée -->
-                    <div class="city-custom-pct-row">
-                        <label class="cfl" style="white-space:nowrap;">Variation précise</label>
-                        <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
-                            <input type="number" id="adminCustomPct" class="char-input" placeholder="ex: 3.5" min="-100" max="100" step="0.1" style="flex:1;text-align:center;">
-                            <span style="color:var(--text-muted);font-size:0.88rem;white-space:nowrap;">%</span>
-                            <button class="btn-primary" style="white-space:nowrap;padding:8px 12px;font-size:0.78rem;" onclick="adminApplyCustomPct()"><i class="fa-solid fa-percent"></i> Appliquer</button>
-                        </div>
-                        <div style="font-size:0.65rem;color:var(--text-muted);margin-top:4px;">Entre −100 et +100, décimales acceptées (ex: −2.5)</div>
-                    </div>
+            <div class="city-hero" id="cityDetailHero">
+                <img id="cityDetailFlag" src="" class="city-detail-flag" style="display:none;" alt="drapeau">
+                <div>
+                    <div class="city-hero-name" id="cityDetailName">—</div>
+                    <div class="city-hero-archipel" id="cityDetailArchipel">—</div>
                 </div>
             </div>
+
+            <div class="city-stats-row">
+                <div class="city-stat-card">
+                    <div class="city-stat-value" id="cityDetailPop">—</div>
+                    <div class="city-stat-label"><i class="fa-solid fa-users"></i> Population</div>
+                </div>
+                <div class="city-stat-card city-stat-edc">
+                    <div class="city-stat-value" id="cityDetailEDC">—</div>
+                    <div class="city-stat-label">EDC</div>
+                    <div id="cityDetailEvol" class="city-edc-evol"></div>
+                </div>
+                <div class="city-stat-card">
+                    <div class="city-stat-value" id="cityDetailTrend">—</div>
+                    <div class="city-stat-label">Tendance</div>
+                </div>
+            </div>
+
+            <div class="city-section">
+                <div class="city-section-title"><i class="fa-solid fa-landmark"></i> Capitale</div>
+                <div class="city-president" id="cityDetailCapitale" style="color:var(--accent-soft)">—</div>
+            </div>
+
+            <div class="city-section">
+                <div class="city-section-title"><i class="fa-solid fa-user-tie"></i> Dirigeant</div>
+                <div class="city-president" id="cityDetailPresident">—</div>
+            </div>
+
+            <div class="city-section">
+                <div class="city-section-title"><i class="fa-solid fa-chart-line"></i> Historique EDC</div>
+                <div id="cityEDCChart" class="city-edc-chart"></div>
+            </div>
+
+            <div class="city-section">
+                <div class="city-section-title"><i class="fa-solid fa-handshake"></i> Relations diplomatiques</div>
+                <div id="cityDetailRelations" class="city-relations-list">
+                    <div class="city-relations-empty">Aucune relation diplomatique chargée.</div>
+                </div>
+            </div>
+
+            <div id="cityAdminPanel" class="city-admin-panel hidden">
+                <div class="city-section-title" style="color:#f59e0b;"><i class="fa-solid fa-sliders"></i> Contrôle Admin</div>
+                <input type="hidden" id="adminCityId">
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                    <div><label class="cfl">Président</label><input type="text" id="adminCityPresident" class="char-input" placeholder="Nom du perso..."></div>
+                    <div><label class="cfl">Capitale</label><input type="text" id="adminCityCapitale" class="char-input" placeholder="Ex: Quartier Central..."></div>
+                    <div><label class="cfl">Population</label><input type="number" id="adminCityPop" class="char-input" placeholder="500000"></div>
+                </div>
+                <div style="margin-bottom:10px;">
+                    <label class="cfl">EDC de base (valeur brute en milliards)</label>
+                    <input type="number" id="adminCityEDC" class="char-input" placeholder="ex: 1000000000000">
+                </div>
+
+                <div style="margin-bottom:12px;">
+                    <label class="cfl">Drapeau</label>
+                    <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                        <img id="adminFlagPreview" src="" style="width:52px;height:34px;object-fit:cover;border-radius:4px;border:1px solid var(--border);display:none;" alt="flag">
+                        <label class="file-upload-label" style="flex:1;margin:0;"><span><i class="fa-solid fa-flag"></i> Choisir image</span><input type="file" id="adminFlagFile" accept="image/*" onchange="previewImg(this,'adminFlagPreview');document.getElementById('adminFlagPreview').style.display='block';"></label>
+                        <button id="adminFlagUploadBtn" class="btn-secondary" onclick="adminUploadFlag()" style="white-space:nowrap;padding:8px 12px;font-size:0.78rem;">📤 Uploader</button>
+                    </div>
+                </div>
+
+                <button class="btn-secondary full-width" style="margin-bottom:8px;" onclick="adminSaveCityInfo()"><i class="fa-solid fa-floppy-disk"></i> Enregistrer infos</button>
+                <div id="cityAdminSaveMsg" class="city-save-success hidden">✅ Bien enregistré !</div>
+
+                <div class="city-trend-btns">
+                    <button class="city-trend-btn trend-up2" onclick="adminApplyTrend('croissance_forte')"><i class="fa-solid fa-angles-up"></i> +1,5 %</button>
+                    <button class="city-trend-btn trend-up1" onclick="adminApplyTrend('croissance')"><i class="fa-solid fa-angle-up"></i> +0,7 %</button>
+                    <button class="city-trend-btn trend-stable" onclick="adminApplyTrend('stable')"><i class="fa-solid fa-minus"></i> Stable (0 %)</button>
+                    <button class="city-trend-btn trend-down1" onclick="adminApplyTrend('baisse')"><i class="fa-solid fa-angle-down"></i> −0,7 %</button>
+                    <button class="city-trend-btn trend-down2" onclick="adminApplyTrend('chute')"><i class="fa-solid fa-angles-down"></i> −1,5 %</button>
+                </div>
+
+                <div class="city-custom-pct-row">
+                    <label class="cfl" style="white-space:nowrap;">Variation précise</label>
+                    <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+                        <input type="number" id="adminCustomPct" class="char-input" placeholder="ex: 3.5" min="-100" max="100" step="0.1" style="flex:1;text-align:center;">
+                        <span style="color:var(--text-muted);font-size:0.88rem;white-space:nowrap;">%</span>
+                        <button class="btn-primary" style="white-space:nowrap;padding:8px 12px;font-size:0.78rem;" onclick="adminApplyCustomPct()"><i class="fa-solid fa-percent"></i> Appliquer</button>
+                    </div>
+                    <div style="font-size:0.65rem;color:var(--text-muted);margin-top:4px;">Entre −100 et +100, décimales acceptées (ex: −2.5)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== [CITÉS] VUE ===== -->
+        <div id="view-cites" class="view-section hidden">
 
             <!-- Grille principale -->
             <div class="cites-main">
@@ -897,6 +902,82 @@
                     <div id="diplo-relations-grid" class="diplo-grid">
                         <div class="rank-empty" style="grid-column:1/-1;">Aucune relation diplomatique enregistrée.</div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-map" class="view-section hidden">
+            <div class="map-main">
+                <div class="map-header">
+                    <div>
+                        <h2 class="cites-title"><i class="fa-solid fa-map-location-dot"></i> Cartes interactives</h2>
+                        <div class="map-subtitle">Clique sur une cité pour ouvrir sa fiche complète et ses relations diplomatiques.</div>
+                    </div>
+                    <div class="map-tabs" role="tablist" aria-label="Choix de carte">
+                        <button id="map-tab-archipel-pacifique" class="map-tab active" onclick="switchWorldMap('archipel-pacifique')">Archipel Pacifique</button>
+                        <button id="map-tab-ancienne-archipel" class="map-tab" onclick="switchWorldMap('ancienne-archipel')">Ancienne Archipel</button>
+                    </div>
+                </div>
+
+                <div class="world-map-layout">
+                    <div class="world-map-column">
+                        <div class="world-map-stage-wrap">
+                            <div id="worldMapStage" class="world-map-stage">
+                                <div id="worldMapLoading" class="world-map-loading">Chargement de la carte…</div>
+                                <div id="worldMapCanvas" class="world-map-canvas"></div>
+                                <div id="worldMapMarkers" class="world-map-markers"></div>
+                            </div>
+                        </div>
+                        <div id="worldMapHint" class="world-map-hint">Astuce : les libellés et les territoires sont cliquables. Les marqueurs admin apparaissent par-dessus la carte.</div>
+                        <div id="mapMarkerInfo" class="map-marker-info hidden"></div>
+                    </div>
+
+                    <aside id="mapAdminPanel" class="map-admin-panel hidden">
+                        <div class="map-admin-title"><i class="fa-solid fa-location-dot"></i> Marqueurs admin</div>
+                        <div class="map-admin-copy">Clique sur “Placer sur la carte”, puis choisis un point sur la map pour positionner le marqueur.</div>
+                        <input type="hidden" id="mapMarkerId">
+                        <div class="map-admin-actions-row">
+                            <button class="btn-primary" onclick="startMapMarkerPlacement()"><i class="fa-solid fa-crosshairs"></i> Placer sur la carte</button>
+                            <button class="btn-secondary" onclick="resetMapMarkerForm()"><i class="fa-solid fa-rotate-left"></i> Nouveau</button>
+                        </div>
+                        <div class="map-admin-coords-row">
+                            <div>
+                                <label class="cfl">X</label>
+                                <input type="number" id="mapMarkerX" class="char-input" min="0" max="100" step="0.01" placeholder="0.00">
+                            </div>
+                            <div>
+                                <label class="cfl">Y</label>
+                                <input type="number" id="mapMarkerY" class="char-input" min="0" max="100" step="0.01" placeholder="0.00">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="cfl">Titre</label>
+                            <input type="text" id="mapMarkerTitle" class="char-input" maxlength="120" placeholder="Ex: Siège de la compagnie Astra">
+                        </div>
+                        <div>
+                            <label class="cfl">Cité liée (optionnel)</label>
+                            <select id="mapMarkerCity" class="diplo-select map-admin-select">
+                                <option value="">Aucune cité liée</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="cfl">Description</label>
+                            <textarea id="mapMarkerDescription" class="char-input map-admin-textarea" rows="4" placeholder="Note, contexte, utilité du lieu…"></textarea>
+                        </div>
+                        <div>
+                            <label class="cfl">Image</label>
+                            <div class="map-admin-image-row">
+                                <img id="mapMarkerImagePreview" class="img-preview hidden" alt="aperçu marqueur">
+                                <label class="file-upload-label" style="flex:1;margin:0;"><span><i class="fa-solid fa-image"></i> Choisir image</span><input type="file" id="mapMarkerImage" accept="image/*" onchange="previewImg(this,'mapMarkerImagePreview');document.getElementById('mapMarkerImagePreview').classList.remove('hidden');"></label>
+                            </div>
+                        </div>
+                        <div class="map-admin-actions-row">
+                            <button class="btn-primary" onclick="saveMapMarker()"><i class="fa-solid fa-floppy-disk"></i> Enregistrer</button>
+                            <button class="btn-secondary" id="mapMarkerDeleteBtn" onclick="deleteSelectedMapMarker()"><i class="fa-solid fa-trash"></i> Supprimer</button>
+                        </div>
+                        <div id="mapMarkerSaveMsg" class="city-save-success hidden">✅ Marqueur enregistré.</div>
+                        <div id="mapMarkerList" class="map-marker-list"></div>
+                    </aside>
                 </div>
             </div>
         </div>

@@ -101,6 +101,24 @@ function closeCharModal() {
   });
 }
 
+function loadCosmosMapModule() {
+  if (window.__cosmosMapLoaded || window.__cosmosMapLoading) return;
+  window.__cosmosMapLoading = true;
+
+  var mapScript = document.createElement('script');
+  mapScript.src = 'assets/js/map.js';
+  mapScript.onload = function () {
+    window.__cosmosMapLoaded = true;
+    window.__cosmosMapLoading = false;
+  };
+  mapScript.onerror = function () {
+    window.__cosmosMapLoading = false;
+    console.error('Unable to load map module.');
+  };
+
+  document.body.appendChild(mapScript);
+}
+
 (function loadLegacyCosmosApp() {
   if (window.__cosmosLegacyLoaded || window.__cosmosLegacyLoading) return;
   window.__cosmosLegacyLoading = true;
@@ -110,6 +128,7 @@ function closeCharModal() {
   script.onload = function () {
     window.__cosmosLegacyLoaded = true;
     window.__cosmosLegacyLoading = false;
+    loadCosmosMapModule();
   };
   script.onerror = function () {
     window.__cosmosLegacyLoading = false;
