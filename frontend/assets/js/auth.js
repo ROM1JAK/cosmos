@@ -37,6 +37,9 @@ function logoutUser() {
 		localStorage.removeItem('rp_username');
 		localStorage.removeItem('rp_code');
 		localStorage.removeItem('saved_char_id');
+		localStorage.removeItem('last_tab');
+		localStorage.removeItem('last_tab_time');
+		localStorage.removeItem('last_tab_user_id');
 		location.reload();
 	}
 }

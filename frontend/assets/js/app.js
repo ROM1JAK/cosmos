@@ -76,6 +76,8 @@ let currentPresseCharId = null;
 // ACTUALITÉS
 let actuRequestPending = false;
 
+const RECENT_VIEW_RESTORE_WINDOW_MS = Math.max(5000, Number((window.APP_CONFIG && window.APP_CONFIG.RECENT_VIEW_RESTORE_WINDOW_MS) || (2 * 60 * 1000)));
+
 const COMMON_EMOJIS = ["😀", "😂", "😉", "😍", "😎", "🥳", "😭", "😡", "🤔", "👍", "👎", "❤️", "💔", "🔥", "✨", "🎉", "💩", "👻", "💀", "👽", "🤖", "👋", "🙌", "🙏", "💪", "👀", "🍕", "🍻", "🚀", "💯"];
 
 function switchView(view) {
@@ -86,6 +88,7 @@ function switchView(view) {
     currentView = view;
     localStorage.setItem('last_tab', view);
     localStorage.setItem('last_tab_time', Date.now().toString());
+    if(PLAYER_ID) localStorage.setItem('last_tab_user_id', PLAYER_ID);
     document.querySelectorAll('.view-section').forEach(el => { el.classList.remove('active'); el.classList.add('hidden'); });
     document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
     const viewEl = document.getElementById(`view-${view}`);
@@ -292,6 +295,19 @@ function resetFeedFilters() {
     renderFeedStream();
 }
 
+function getRecentReturnView() {
+    const view = localStorage.getItem('last_tab') || 'accueil';
+    const lastSeenAt = Number(localStorage.getItem('last_tab_time') || 0);
+    const lastUserId = localStorage.getItem('last_tab_user_id') || '';
+    const isRecent = Number.isFinite(lastSeenAt) && (Date.now() - lastSeenAt) <= RECENT_VIEW_RESTORE_WINDOW_MS;
+
+    if(!isRecent) return 'accueil';
+    if(lastUserId && PLAYER_ID && lastUserId !== PLAYER_ID) return 'accueil';
+    if(view === 'admin' && !IS_ADMIN) return 'accueil';
+
+    return view;
+}
+
 function openTimelineTarget(view, data = {}) {
     if(!view) return;
     if(view === 'feed' && data.postId && getFilteredFeedPosts().every(post => String(post._id) !== String(data.postId))) {
@@ -452,7 +468,8 @@ socket.on('login_success', (data) => {
     syncAdminNavVisibility();
     closeLoginModal(); socket.emit('request_initial_data', PLAYER_ID); socket.emit('request_dm_contacts', USERNAME);
     const savedRoom = localStorage.getItem('saved_room_id'); joinRoom(savedRoom || 'global');
-    switchView('accueil');
+    localStorage.setItem('last_tab_user_id', PLAYER_ID);
+    switchView(getRecentReturnView());
 });
 socket.on('login_error', (msg) => { const el = document.getElementById('login-error-msg'); el.textContent = msg; el.style.display = 'block'; });
 socket.on('username_change_success', (newName) => { USERNAME = newName; localStorage.setItem('rp_username', newName); document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`; document.getElementById('settings-msg').textContent = "OK !"; });
@@ -5240,7 +5257,38 @@ function adminClearAllPosts() {
     socket.emit('admin_clear_all_posts');
 }
 
+function normalizeSpaButtons(root = document) {
+    if(!root || typeof root.querySelectorAll !== 'function') return;
+    root.querySelectorAll('button:not([type])').forEach((button) => {
+        button.type = 'button';
+    });
+}
+
+function preventNativeSpaReloads() {
+    normalizeSpaButtons();
+
+    document.addEventListener('submit', (event) => {
+        const form = event.target;
+        if(form instanceof HTMLFormElement && !form.hasAttribute('data-allow-native-submit')) {
+            event.preventDefault();
+        }
+    });
+
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            mutation.addedNodes.forEach((node) => {
+                if(!(node instanceof HTMLElement)) return;
+                if(node.matches('button:not([type])')) node.type = 'button';
+                normalizeSpaButtons(node);
+            });
+        });
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
 window.addEventListener('DOMContentLoaded', () => {
+    preventNativeSpaReloads();
     const bourseInput = document.getElementById('bourse-search-input');
     if(bourseInput) bourseInput.value = localStorage.getItem('bourse_search') || '';
     bourseSearch = (localStorage.getItem('bourse_search') || '').trim().toLowerCase();
