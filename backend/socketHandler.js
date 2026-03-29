@@ -18,6 +18,7 @@
     City,
     CityRelation,
     MapMarker,
+    MapOverlay,
     Stock,
     WikiPage,
     onlineUsers,
@@ -937,32 +938,66 @@
   // ========== [FIN DIPLOMATIE SOCKET] ==========
 
   // ========== [CARTES] SOCKET EVENTS ==========
+  const allowedMapKeys = new Set(['archipel-pacifique', 'ancienne-archipel', 'archipel-sableuse']);
+  const allowedMarkerCategories = new Set(['general', 'port', 'airport', 'company', 'military', 'breaking-news']);
+  const allowedOverlayModes = new Set(['territory', 'danger']);
+
+  function sanitizeHexColor(value, fallback) {
+      const normalized = String(value || '').trim();
+      return /^#[0-9a-fA-F]{6}$/.test(normalized) ? normalized : fallback;
+  }
+
+  function sanitizeOverlayTargetIds(targetIds) {
+      return [...new Set((Array.isArray(targetIds) ? targetIds : [])
+          .map(value => String(value || '').trim())
+          .filter(value => /^[A-Za-z][\w:-]{0,63}$/.test(value)))];
+  }
+
   async function emitMapMarkers(target) {
       const markers = await MapMarker.find()
           .populate('cityId', 'name flag archipel')
+          .populate('postId', '_id content isBreakingNews createdAt journalName')
           .sort({ updatedAt: -1, createdAt: -1 });
       target.emit('map_markers_data', markers);
+  }
+
+  async function emitMapOverlays(target) {
+      const overlays = await MapOverlay.find().sort({ updatedAt: -1, createdAt: -1 });
+      target.emit('map_overlays_data', overlays);
   }
 
   socket.on('request_map_markers', async () => {
       await emitMapMarkers(socket);
   });
 
-  socket.on('admin_save_map_marker', async ({ markerId, mapKey, title, description, x, y, imageUrl, cityId }) => {
+  socket.on('request_map_overlays', async () => {
+      await emitMapOverlays(socket);
+  });
+
+  socket.on('admin_save_map_marker', async ({ markerId, mapKey, category, title, description, x, y, imageUrl, cityId, postId }) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
 
-      const allowedMaps = new Set(['archipel-pacifique', 'ancienne-archipel']);
       const safeMapKey = String(mapKey || '').trim();
+      const safeCategory = String(category || 'general').trim();
       const safeTitle = String(title || '').trim();
       const safeDescription = String(description || '').trim();
       const parsedX = Number(x);
       const parsedY = Number(y);
+      const safePostId = String(postId || '').trim();
 
-      if(!allowedMaps.has(safeMapKey)) return;
+      if(!allowedMapKeys.has(safeMapKey)) return;
+      if(!allowedMarkerCategories.has(safeCategory)) return;
       if(!safeTitle) return;
       if(!Number.isFinite(parsedX) || !Number.isFinite(parsedY)) return;
+
+      let linkedPostId = null;
+      if(safePostId) {
+          const post = await Post.findById(safePostId).select('_id');
+          if(!post) return;
+          linkedPostId = post._id;
+      }
 
       let marker = null;
       if(markerId) marker = await MapMarker.findById(markerId);
@@ -974,12 +1009,14 @@
       }
 
       marker.mapKey = safeMapKey;
+    marker.category = safeCategory;
       marker.title = safeTitle;
       marker.description = safeDescription;
       marker.x = Math.max(0, Math.min(100, parsedX));
       marker.y = Math.max(0, Math.min(100, parsedY));
       marker.imageUrl = String(imageUrl || '').trim();
       marker.cityId = cityId || null;
+    marker.postId = linkedPostId;
       marker.updatedBy = user.username;
 
       await marker.save();
@@ -995,6 +1032,62 @@
 
       await MapMarker.findByIdAndDelete(markerId);
       await emitMapMarkers(io);
+  });
+
+  socket.on('admin_save_map_overlay', async ({ overlayId, mapKey, label, description, mode, targetIds, fillColor, fillOpacity, strokeColor, strokeWidth, blink }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+
+      const safeMapKey = String(mapKey || '').trim();
+      const safeLabel = String(label || '').trim();
+      const safeDescription = String(description || '').trim();
+      const safeMode = String(mode || 'territory').trim();
+      const safeTargetIds = sanitizeOverlayTargetIds(targetIds);
+      const safeFillColor = sanitizeHexColor(fillColor, '#f59e0b');
+      const safeStrokeColor = sanitizeHexColor(strokeColor, '#ef4444');
+      const safeFillOpacity = Math.max(0, Math.min(1, Number(fillOpacity)));
+      const safeStrokeWidth = Math.max(0, Math.min(12, Number(strokeWidth)));
+
+      if(!allowedMapKeys.has(safeMapKey)) return;
+      if(!allowedOverlayModes.has(safeMode)) return;
+      if(!safeLabel) return;
+      if(!safeTargetIds.length) return;
+
+      let overlay = null;
+      if(overlayId) overlay = await MapOverlay.findById(overlayId);
+      if(!overlay) {
+          overlay = new MapOverlay({
+              createdBy: user.username,
+              updatedBy: user.username
+          });
+      }
+
+      overlay.mapKey = safeMapKey;
+      overlay.label = safeLabel;
+      overlay.description = safeDescription;
+      overlay.mode = safeMode;
+      overlay.targetIds = safeTargetIds;
+      overlay.fillColor = safeFillColor;
+      overlay.fillOpacity = Number.isFinite(safeFillOpacity) ? safeFillOpacity : 0.35;
+      overlay.strokeColor = safeStrokeColor;
+      overlay.strokeWidth = Number.isFinite(safeStrokeWidth) ? safeStrokeWidth : 2;
+      overlay.blink = !!blink;
+      overlay.updatedBy = user.username;
+
+      await overlay.save();
+      socket.emit('map_overlay_save_success', { overlayId: String(overlay._id) });
+      await emitMapOverlays(io);
+  });
+
+  socket.on('admin_delete_map_overlay', async ({ overlayId }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+      if(!overlayId) return;
+
+      await MapOverlay.findByIdAndDelete(overlayId);
+      await emitMapOverlays(io);
   });
   // ========== [FIN CARTES] SOCKET EVENTS ==========
 

@@ -61,6 +61,7 @@ const AdminLog = require('./models/AdminLog');
 const City = require('./models/City');
 const CityRelation = require('./models/CityRelation');
 const MapMarker = require('./models/MapMarker');
+const MapOverlay = require('./models/MapOverlay');
 
 // ========== [BOURSE] ==========
 const Stock = require('./models/Stock');
@@ -556,6 +557,7 @@ initSocketHandlers({
 	City,
 	CityRelation,
 	MapMarker,
+	MapOverlay,
 	Stock,
 	WikiPage,
 	onlineUsers,

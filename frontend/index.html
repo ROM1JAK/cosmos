@@ -915,16 +915,26 @@
                     </div>
                     <div class="map-tabs" role="tablist" aria-label="Choix de carte">
                         <button id="map-tab-archipel-pacifique" class="map-tab active" onclick="switchWorldMap('archipel-pacifique')">Archipel Pacifique</button>
+                        <button id="map-tab-archipel-sableuse" class="map-tab" onclick="switchWorldMap('archipel-sableuse')">Archipel Sableuse</button>
                         <button id="map-tab-ancienne-archipel" class="map-tab" onclick="switchWorldMap('ancienne-archipel')">Ancienne Archipel</button>
                     </div>
                 </div>
 
                 <div class="world-map-layout">
                     <div class="world-map-column">
+                        <div class="map-filters-card">
+                            <div class="map-filters-head">
+                                <div class="map-filters-title"><i class="fa-solid fa-layer-group"></i> Couches visibles</div>
+                                <button class="btn-secondary map-filter-reset" type="button" onclick="resetMapCategoryFilters()"><i class="fa-solid fa-rotate-left"></i> Réinitialiser</button>
+                            </div>
+                            <div class="map-filters-copy">Choisis les catégories de marqueurs à afficher sur la carte.</div>
+                            <div id="mapCategoryFilters" class="map-filter-chips"></div>
+                        </div>
                         <div class="world-map-stage-wrap">
                             <div id="worldMapStage" class="world-map-stage">
                                 <div id="worldMapLoading" class="world-map-loading">Chargement de la carte…</div>
                                 <div id="worldMapCanvas" class="world-map-canvas"></div>
+                                <div id="worldMapRegionsHint" class="world-map-region-selection hidden"></div>
                                 <div id="worldMapMarkers" class="world-map-markers"></div>
                             </div>
                         </div>
@@ -951,8 +961,23 @@
                             </div>
                         </div>
                         <div>
+                            <label class="cfl">Catégorie</label>
+                            <select id="mapMarkerCategory" class="diplo-select map-admin-select">
+                                <option value="general">Repère général</option>
+                                <option value="port">Port</option>
+                                <option value="airport">Avion / aéroport</option>
+                                <option value="company">Entreprise</option>
+                                <option value="military">Militaire</option>
+                                <option value="breaking-news">Breaking News</option>
+                            </select>
+                        </div>
+                        <div>
                             <label class="cfl">Titre</label>
                             <input type="text" id="mapMarkerTitle" class="char-input" maxlength="120" placeholder="Ex: Siège de la compagnie Astra">
+                        </div>
+                        <div>
+                            <label class="cfl">Post lié (optionnel)</label>
+                            <input type="text" id="mapMarkerPostId" class="char-input" maxlength="80" placeholder="ID du post Feed à ouvrir depuis la carte">
                         </div>
                         <div>
                             <label class="cfl">Cité liée (optionnel)</label>
@@ -977,6 +1002,62 @@
                         </div>
                         <div id="mapMarkerSaveMsg" class="city-save-success hidden">✅ Marqueur enregistré.</div>
                         <div id="mapMarkerList" class="map-marker-list"></div>
+
+                        <div class="map-admin-divider"></div>
+
+                        <div class="map-admin-title"><i class="fa-solid fa-draw-polygon"></i> Zones, dangers et frontières</div>
+                        <div class="map-admin-copy">Active la sélection, puis clique sur un ou plusieurs territoires de la carte pour les colorer ou les signaler comme zone dangereuse.</div>
+                        <input type="hidden" id="mapOverlayId">
+                        <div class="map-admin-actions-row">
+                            <button class="btn-primary" onclick="startMapRegionSelection()"><i class="fa-solid fa-vector-square"></i> Sélectionner zones</button>
+                            <button class="btn-secondary" onclick="resetMapOverlayForm()"><i class="fa-solid fa-rotate-left"></i> Nouvelle zone</button>
+                        </div>
+                        <div>
+                            <label class="cfl">Nom de la zone</label>
+                            <input type="text" id="mapOverlayLabel" class="char-input" maxlength="120" placeholder="Ex: Front Hoross / Shamballa">
+                        </div>
+                        <div>
+                            <label class="cfl">Mode</label>
+                            <select id="mapOverlayMode" class="diplo-select map-admin-select" onchange="onMapOverlayModeChange()">
+                                <option value="territory">Frontière / territoire</option>
+                                <option value="danger">Zone de danger</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="cfl">Territoires ciblés</label>
+                            <textarea id="mapOverlayTargetIds" class="char-input map-admin-textarea" rows="3" placeholder="state1, state2" readonly></textarea>
+                        </div>
+                        <div>
+                            <label class="cfl">Description</label>
+                            <textarea id="mapOverlayDescription" class="char-input map-admin-textarea" rows="3" placeholder="Contexte stratégique, risque, progression…"></textarea>
+                        </div>
+                        <div class="map-admin-coords-row">
+                            <div>
+                                <label class="cfl">Couleur de fond</label>
+                                <input type="color" id="mapOverlayFillColor" class="char-input map-admin-color" value="#f59e0b">
+                            </div>
+                            <div>
+                                <label class="cfl">Opacité</label>
+                                <input type="number" id="mapOverlayFillOpacity" class="char-input" min="0" max="1" step="0.05" value="0.35">
+                            </div>
+                        </div>
+                        <div class="map-admin-coords-row">
+                            <div>
+                                <label class="cfl">Contour</label>
+                                <input type="color" id="mapOverlayStrokeColor" class="char-input map-admin-color" value="#ef4444">
+                            </div>
+                            <div>
+                                <label class="cfl">Épaisseur</label>
+                                <input type="number" id="mapOverlayStrokeWidth" class="char-input" min="0" max="12" step="0.5" value="2">
+                            </div>
+                        </div>
+                        <label class="map-admin-check"><input type="checkbox" id="mapOverlayBlink"> Clignotement actif</label>
+                        <div class="map-admin-actions-row">
+                            <button class="btn-primary" onclick="saveMapOverlay()"><i class="fa-solid fa-floppy-disk"></i> Enregistrer</button>
+                            <button class="btn-secondary" id="mapOverlayDeleteBtn" onclick="deleteSelectedMapOverlay()"><i class="fa-solid fa-trash"></i> Supprimer</button>
+                        </div>
+                        <div id="mapOverlaySaveMsg" class="city-save-success hidden">✅ Zone enregistrée.</div>
+                        <div id="mapOverlayList" class="map-marker-list"></div>
                     </aside>
                 </div>
             </div>

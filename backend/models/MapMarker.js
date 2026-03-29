@@ -4,7 +4,13 @@ const mapMarkerSchema = new mongoose.Schema({
 	mapKey: {
 		type: String,
 		required: true,
-		enum: ['archipel-pacifique', 'ancienne-archipel']
+		enum: ['archipel-pacifique', 'ancienne-archipel', 'archipel-sableuse']
+	},
+	category: {
+		type: String,
+		required: true,
+		enum: ['general', 'port', 'airport', 'company', 'military', 'breaking-news'],
+		default: 'general'
 	},
 	title: {
 		type: String,
@@ -32,6 +38,11 @@ const mapMarkerSchema = new mongoose.Schema({
 	imageUrl: {
 		type: String,
 		default: ''
+	},
+	postId: {
+		type: mongoose.Schema.Types.ObjectId,
+		ref: 'Post',
+		default: null
 	},
 	cityId: {
 		type: mongoose.Schema.Types.ObjectId,
