@@ -17,6 +17,15 @@ const PostSchema = new mongoose.Schema({
     journalName: { type: String, default: '' },
     journalLogo: { type: String, default: '' },
     urgencyLevel: { type: String, default: null },
+    articleTheme: {
+        name: { type: String, default: 'edition' },
+        label: { type: String, default: 'Édition' },
+        paper: { type: String, default: '#f5f0e8' },
+        surface: { type: String, default: '#efe4d1' },
+        ink: { type: String, default: '#1a1008' },
+        muted: { type: String, default: '#6b5c3e' },
+        accent: { type: String, default: '#c0973b' }
+    },
     poll: { question: String, options: [{ text: String, voters: [String] }] }
 });
 

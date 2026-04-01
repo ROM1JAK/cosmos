@@ -615,6 +615,13 @@
                             <label class="file-upload-label" style="margin:0;"><span><i class="fa-solid fa-image"></i> Logo du journal</span><input type="file" id="presseJournalLogoFile" accept="image/*" onchange="previewPresseJournalLogo()"></label>
                         </div>
                     </div>
+                    <div class="presse-theme-panel">
+                        <div class="presse-theme-header">
+                            <span><i class="fa-solid fa-palette"></i> Thème de fond</span>
+                            <small>Auto-généré depuis le logo, puis ajustable</small>
+                        </div>
+                        <div id="presseThemeChoices" class="presse-theme-choices"></div>
+                    </div>
                     <input type="text" id="presseTitle" placeholder="Titre de l'article..." class="presse-title-input">
                     <div class="presse-ux-row">
                         <div class="presse-preset-wrap">
@@ -635,14 +642,27 @@
                             <span id="presseReadTime">0 min de lecture</span>
                         </div>
                     </div>
-                    <div class="presse-format-toolbar">
-                        <button class="btn-secondary" onclick="applyPresseFormat('H1')">Grand titre</button>
-                        <button class="btn-secondary" onclick="applyPresseFormat('H2')">Sous-titre</button>
-                        <button class="btn-secondary" onclick="applyPresseFormat('SMALL')">Texte discret</button>
-                        <button class="btn-secondary" onclick="applyPresseFormat('QUOTE')">Citation</button>
-                        <button class="btn-secondary" onclick="applyPresseFormat('B')">Gras</button>
+                    <div class="presse-editor-shell">
+                        <div class="presse-format-toolbar">
+                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('H1', 'presseContentEditor')">Grand titre</button>
+                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('H2', 'presseContentEditor')">Sous-titre</button>
+                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('P', 'presseContentEditor')">Paragraphe</button>
+                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('QUOTE', 'presseContentEditor')">Citation</button>
+                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('B', 'presseContentEditor')">Gras</button>
+                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('I', 'presseContentEditor')">Italique</button>
+                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('U', 'presseContentEditor')">Souligné</button>
+                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('SMALL', 'presseContentEditor')">Petit</button>
+                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('LIST', 'presseContentEditor')">Liste</button>
+                            <select class="presse-fontsize-select" onchange="applyPresseFontSize(this.value, 'presseContentEditor'); this.value='';">
+                                <option value="">Taille</option>
+                                <option value="small">Petite</option>
+                                <option value="normal">Normale</option>
+                                <option value="large">Grande</option>
+                                <option value="xlarge">Très grande</option>
+                            </select>
+                        </div>
+                        <div id="presseContentEditor" class="presse-rich-editor" contenteditable="true" data-placeholder="Contenu de l'article..."></div>
                     </div>
-                    <textarea id="presseContent" placeholder="Contenu de l'article..." rows="6"></textarea>
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; flex-wrap:wrap; gap:8px;">
                         <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-image"></i><input type="file" id="presseMediaFile" accept="image/*,video/*" class="hidden" onchange="previewPresseFile()"></label>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
@@ -1423,18 +1443,57 @@
     </div>
     <!-- [PRESSE] Modale — Modifier un article -->
     <div id="article-edit-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeArticleEditModal()">
-        <div class="modal-box" style="max-width:600px;" onclick="event.stopPropagation()">
+        <div class="modal-box article-edit-box" style="max-width:760px;" onclick="event.stopPropagation()">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                 <h3 style="margin:0; color:white;"><i class="fa-solid fa-feather-pointed"></i> Modifier l'article</h3>
                 <button onclick="closeArticleEditModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
             </div>
             <input type="hidden" id="editArticleId">
             <input type="text" id="editArticleTitle" class="modal-input" placeholder="Titre de l'article...">
-            <textarea id="editArticleContent" class="modal-input" rows="10" placeholder="Contenu de l'article..." style="margin-top:10px; resize:vertical;"></textarea>
+            <div class="presse-theme-panel article-edit-theme-panel">
+                <div class="presse-theme-header">
+                    <span><i class="fa-solid fa-palette"></i> Thème de fond</span>
+                    <small>Palette de l'article</small>
+                </div>
+                <div id="editArticleThemeChoices" class="presse-theme-choices"></div>
+            </div>
+            <div class="presse-editor-shell article-edit-editor-shell">
+                <div class="presse-format-toolbar">
+                    <button type="button" class="btn-secondary" onclick="applyPresseFormat('H1', 'editArticleContentEditor')">Grand titre</button>
+                    <button type="button" class="btn-secondary" onclick="applyPresseFormat('H2', 'editArticleContentEditor')">Sous-titre</button>
+                    <button type="button" class="btn-secondary" onclick="applyPresseFormat('P', 'editArticleContentEditor')">Paragraphe</button>
+                    <button type="button" class="btn-secondary" onclick="applyPresseFormat('QUOTE', 'editArticleContentEditor')">Citation</button>
+                    <button type="button" class="btn-secondary" onclick="applyPresseFormat('B', 'editArticleContentEditor')">Gras</button>
+                    <button type="button" class="btn-secondary" onclick="applyPresseFormat('I', 'editArticleContentEditor')">Italique</button>
+                    <button type="button" class="btn-secondary" onclick="applyPresseFormat('U', 'editArticleContentEditor')">Souligné</button>
+                    <button type="button" class="btn-secondary" onclick="applyPresseFormat('SMALL', 'editArticleContentEditor')">Petit</button>
+                    <button type="button" class="btn-secondary" onclick="applyPresseFormat('LIST', 'editArticleContentEditor')">Liste</button>
+                    <select class="presse-fontsize-select" onchange="applyPresseFontSize(this.value, 'editArticleContentEditor'); this.value='';">
+                        <option value="">Taille</option>
+                        <option value="small">Petite</option>
+                        <option value="normal">Normale</option>
+                        <option value="large">Grande</option>
+                        <option value="xlarge">Très grande</option>
+                    </select>
+                </div>
+                <div id="editArticleContentEditor" class="presse-rich-editor article-edit-rich-editor" contenteditable="true" data-placeholder="Contenu de l'article..."></div>
+            </div>
             <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
                 <button onclick="closeArticleEditModal()" class="btn-secondary">Annuler</button>
                 <button onclick="submitArticleEdit()" class="btn-primary"><i class="fa-solid fa-check"></i> Enregistrer</button>
             </div>
+        </div>
+    </div>
+    <div id="article-fullscreen-modal" class="modal-overlay hidden article-fullscreen-modal" onclick="if(event.target===this)closeArticleFullscreen()">
+        <div class="article-fullscreen-shell" onclick="event.stopPropagation()">
+            <div class="article-fullscreen-header">
+                <div>
+                    <div class="article-fullscreen-kicker">Lecture intégrale</div>
+                    <h3 id="articleFullscreenLabel">Article</h3>
+                </div>
+                <button type="button" class="post-detail-close" onclick="closeArticleFullscreen()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="article-fullscreen-content" class="article-fullscreen-content"></div>
         </div>
     </div>
     <!-- [DIPLOMATIE] Modale Admin — Créer/éditer une relation -->

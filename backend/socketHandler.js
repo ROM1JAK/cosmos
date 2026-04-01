@@ -598,11 +598,17 @@
       }
   });
 
-  socket.on('edit_post', async ({ postId, content, ownerId }) => {
+  socket.on('edit_post', async ({ postId, content, ownerId, articleTheme }) => {
       const post = await Post.findById(postId);
       if(!post) return;
       if(post.ownerId !== ownerId && !(await User.findOne({ secretCode: ownerId, isAdmin: true }))) return;
       post.content = content;
+      if(articleTheme && typeof articleTheme === 'object') {
+          post.articleTheme = {
+              ...post.articleTheme,
+              ...articleTheme
+          };
+      }
       post.edited = true;
       await post.save();
       io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));

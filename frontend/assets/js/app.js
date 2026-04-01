@@ -72,6 +72,9 @@ let ombraHistory = [];
 
 // PRESSE
 let currentPresseCharId = null;
+let currentPresseTheme = null;
+let currentEditArticleTheme = null;
+let currentArticleFullscreenId = null;
 
 // ACTUALITÉS
 let actuRequestPending = false;
@@ -2041,15 +2044,16 @@ function toggleLike(id) {
     if(!PLAYER_ID) return; if(!currentFeedCharId) return alert("Sélectionnez un perso (Feed).");
     socket.emit('like_post', { postId: id, charId: currentFeedCharId }); 
 }
-function openArticleEditModal(postId) {
+async function openArticleEditModal(postId) {
     const post = presseArticlesCache.find(a => String(a._id) === postId);
     if(!post) return;
-    let titleText = '', bodyText = post.content || '';
-    const titleMatch = post.content && post.content.match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
-    if(titleMatch) { titleText = titleMatch[1]; bodyText = titleMatch[2]; }
+    const { titleText, bodyText, bodyHtml, isHtml } = parseArticleContent(post.content || '');
     document.getElementById('editArticleId').value = postId;
     document.getElementById('editArticleTitle').value = titleText;
-    document.getElementById('editArticleContent').value = bodyText;
+    const editor = getPresseEditor('editArticleContentEditor');
+    if(editor) editor.innerHTML = isHtml ? bodyHtml : legacyArticleTextToEditorHtml(bodyText);
+    currentEditArticleTheme = normalizeArticleTheme(post.articleTheme || currentPresseTheme || DEFAULT_ARTICLE_THEME);
+    await hydrateArticleThemeChoices(post.journalLogo || '', 'editArticleContentEditor', currentEditArticleTheme);
     document.getElementById('article-edit-modal').classList.remove('hidden');
     snapForm('article-edit-modal');
 }
@@ -2061,10 +2065,15 @@ function closeArticleEditModal() {
 function submitArticleEdit() {
     const postId = document.getElementById('editArticleId').value;
     const title = document.getElementById('editArticleTitle').value.trim();
-    const body = document.getElementById('editArticleContent').value.trim();
+    const body = editorHtmlToStorage(syncArticleEditor('editArticleContentEditor'));
     if(!postId) return;
     const newContent = title ? `[TITRE]${title}[/TITRE]\n${body}` : body;
-    socket.emit('edit_post', { postId, content: newContent, ownerId: PLAYER_ID });
+    socket.emit('edit_post', {
+        postId,
+        content: newContent,
+        ownerId: PLAYER_ID,
+        articleTheme: normalizeArticleTheme(currentEditArticleTheme || DEFAULT_ARTICLE_THEME)
+    });
     _unsavedBypass = true;
     closeArticleEditModal();
 }
@@ -2130,8 +2139,15 @@ socket.on('new_post', (post) => {
     buildAdminConsoleOverview();
 });
 socket.on('post_updated', (post) => {
-    feedPostsCache = feedPostsCache.map(item => String(item._id) === String(post._id) ? post : item);
-    renderFeedStream();
+    if(post.isArticle) {
+        presseArticlesCache = presseArticlesCache.map(item => String(item._id) === String(post._id) ? post : item);
+        refreshPresseJournalDatalist();
+        renderPresseStream();
+        if(currentArticleFullscreenId === String(post._id)) openArticleFullscreen(String(post._id));
+    } else {
+        feedPostsCache = feedPostsCache.map(item => String(item._id) === String(post._id) ? post : item);
+        renderFeedStream();
+    }
     if(currentDetailPostId === post._id) {
         document.getElementById('post-detail-comments-list').innerHTML = generateCommentsHTML(post.comments, post._id);
         const likeBtn = document.querySelector('#post-detail-content .action-item'); if(likeBtn) likeBtn.innerHTML = `<i class="fa-solid fa-heart"></i> ${post.likes.length}`;
@@ -2141,9 +2157,12 @@ socket.on('post_updated', (post) => {
 });
 socket.on('post_deleted', (id) => {
     feedPostsCache = feedPostsCache.filter(post => String(post._id) !== String(id));
+    presseArticlesCache = presseArticlesCache.filter(post => String(post._id) !== String(id));
     renderFeedStream();
+    renderPresseStream();
     if(currentView === 'accueil') renderAccueil();
     if(currentDetailPostId === id) closePostDetail();
+    if(currentArticleFullscreenId === String(id)) closeArticleFullscreen();
     buildAdminConsoleOverview();
 });
 socket.on('reload_posts', () => loadFeed());
@@ -2422,9 +2441,382 @@ const URGENCY_CONFIG = {
     economie: { label: '📉 ÉCONOMIE',             cls: 'urgency-economie' }
 };
 
+const DEFAULT_ARTICLE_THEME = Object.freeze({
+    name: 'edition',
+    label: 'Édition',
+    paper: '#f5f0e8',
+    surface: '#efe4d1',
+    ink: '#1a1008',
+    muted: '#6b5c3e',
+    accent: '#c0973b'
+});
+
+const FONT_SIZE_VALUE_MAP = {
+    '1': 'small',
+    '2': 'small',
+    '3': 'normal',
+    '4': 'large',
+    '5': 'large',
+    '6': 'xlarge',
+    '7': 'xlarge'
+};
+
+function cloneArticleTheme(theme = DEFAULT_ARTICLE_THEME) {
+    return {
+        name: theme.name || DEFAULT_ARTICLE_THEME.name,
+        label: theme.label || DEFAULT_ARTICLE_THEME.label,
+        paper: theme.paper || DEFAULT_ARTICLE_THEME.paper,
+        surface: theme.surface || DEFAULT_ARTICLE_THEME.surface,
+        ink: theme.ink || DEFAULT_ARTICLE_THEME.ink,
+        muted: theme.muted || DEFAULT_ARTICLE_THEME.muted,
+        accent: theme.accent || DEFAULT_ARTICLE_THEME.accent
+    };
+}
+
+function normalizeHexColor(color, fallback) {
+    const value = String(color || '').trim();
+    if(/^#[0-9a-f]{6}$/i.test(value)) return value.toLowerCase();
+    if(/^#[0-9a-f]{3}$/i.test(value)) {
+        return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toLowerCase();
+    }
+    return fallback;
+}
+
+function hexToRgb(hex) {
+    const normalized = normalizeHexColor(hex, '#000000');
+    return {
+        r: parseInt(normalized.slice(1, 3), 16),
+        g: parseInt(normalized.slice(3, 5), 16),
+        b: parseInt(normalized.slice(5, 7), 16)
+    };
+}
+
+function rgbToHex(r, g, b) {
+    return `#${[r, g, b].map(value => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function rgbToHsl(r, g, b) {
+    const nr = r / 255;
+    const ng = g / 255;
+    const nb = b / 255;
+    const max = Math.max(nr, ng, nb);
+    const min = Math.min(nr, ng, nb);
+    let h;
+    let s;
+    const l = (max + min) / 2;
+
+    if(max === min) {
+        h = 0;
+        s = 0;
+    } else {
+        const delta = max - min;
+        s = l > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+        switch(max) {
+            case nr:
+                h = ((ng - nb) / delta) + (ng < nb ? 6 : 0);
+                break;
+            case ng:
+                h = ((nb - nr) / delta) + 2;
+                break;
+            default:
+                h = ((nr - ng) / delta) + 4;
+                break;
+        }
+        h /= 6;
+    }
+    return { h: h * 360, s: s * 100, l: l * 100 };
+}
+
+function hslToHex(h, s, l) {
+    const hue = ((h % 360) + 360) % 360;
+    const sat = Math.max(0, Math.min(100, s)) / 100;
+    const light = Math.max(0, Math.min(100, l)) / 100;
+    const chroma = (1 - Math.abs((2 * light) - 1)) * sat;
+    const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+    const match = light - (chroma / 2);
+    let r = 0;
+    let g = 0;
+    let b = 0;
+
+    if(hue < 60) [r, g, b] = [chroma, x, 0];
+    else if(hue < 120) [r, g, b] = [x, chroma, 0];
+    else if(hue < 180) [r, g, b] = [0, chroma, x];
+    else if(hue < 240) [r, g, b] = [0, x, chroma];
+    else if(hue < 300) [r, g, b] = [x, 0, chroma];
+    else [r, g, b] = [chroma, 0, x];
+
+    return rgbToHex((r + match) * 255, (g + match) * 255, (b + match) * 255);
+}
+
+function normalizeArticleTheme(theme) {
+    const base = cloneArticleTheme(theme || DEFAULT_ARTICLE_THEME);
+    return {
+        name: base.name,
+        label: base.label,
+        paper: normalizeHexColor(base.paper, DEFAULT_ARTICLE_THEME.paper),
+        surface: normalizeHexColor(base.surface, DEFAULT_ARTICLE_THEME.surface),
+        ink: normalizeHexColor(base.ink, DEFAULT_ARTICLE_THEME.ink),
+        muted: normalizeHexColor(base.muted, DEFAULT_ARTICLE_THEME.muted),
+        accent: normalizeHexColor(base.accent, DEFAULT_ARTICLE_THEME.accent)
+    };
+}
+
+function buildArticleThemeStyle(theme) {
+    const palette = normalizeArticleTheme(theme);
+    return `--article-paper:${palette.paper};--article-surface:${palette.surface};--article-ink:${palette.ink};--article-muted:${palette.muted};--article-accent:${palette.accent};`;
+}
+
+function getThemeStateForEditor(editorId) {
+    return editorId === 'editArticleContentEditor' ? currentEditArticleTheme : currentPresseTheme;
+}
+
+function setThemeStateForEditor(editorId, theme) {
+    if(editorId === 'editArticleContentEditor') currentEditArticleTheme = normalizeArticleTheme(theme);
+    else currentPresseTheme = normalizeArticleTheme(theme);
+}
+
+function buildArticleThemeCandidates(accentHex) {
+    const base = rgbToHsl(...Object.values(hexToRgb(normalizeHexColor(accentHex, DEFAULT_ARTICLE_THEME.accent))));
+    const accent = normalizeHexColor(accentHex, DEFAULT_ARTICLE_THEME.accent);
+    return [
+        {
+            name: 'logo',
+            label: 'Logo',
+            paper: hslToHex(base.h, Math.min(base.s * 0.45, 34), 95),
+            surface: hslToHex(base.h, Math.min(base.s * 0.34, 26), 89),
+            ink: hslToHex(base.h, 22, 15),
+            muted: hslToHex(base.h, 16, 36),
+            accent
+        },
+        {
+            name: 'edition',
+            label: 'Édition',
+            paper: '#f5f0e8',
+            surface: hslToHex(base.h, 28, 90),
+            ink: '#1a1008',
+            muted: '#6b5c3e',
+            accent
+        },
+        {
+            name: 'nuit',
+            label: 'Nuit',
+            paper: hslToHex(base.h, 18, 13),
+            surface: hslToHex(base.h, 18, 18),
+            ink: '#f7f1e7',
+            muted: '#c3b8a6',
+            accent: hslToHex(base.h, Math.max(base.s, 58), 62)
+        }
+    ].map(theme => normalizeArticleTheme(theme));
+}
+
+async function extractDominantColorFromImage(url) {
+    return await new Promise(resolve => {
+        if(!url) {
+            resolve(DEFAULT_ARTICLE_THEME.accent);
+            return;
+        }
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                const size = 24;
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                if(!ctx) {
+                    resolve(DEFAULT_ARTICLE_THEME.accent);
+                    return;
+                }
+                ctx.drawImage(img, 0, 0, size, size);
+                const { data } = ctx.getImageData(0, 0, size, size);
+                let totalR = 0;
+                let totalG = 0;
+                let totalB = 0;
+                let count = 0;
+                for(let index = 0; index < data.length; index += 4) {
+                    const alpha = data[index + 3];
+                    if(alpha < 140) continue;
+                    const r = data[index];
+                    const g = data[index + 1];
+                    const b = data[index + 2];
+                    const lightness = rgbToHsl(r, g, b).l;
+                    if(lightness > 97 || lightness < 5) continue;
+                    totalR += r;
+                    totalG += g;
+                    totalB += b;
+                    count += 1;
+                }
+                if(!count) {
+                    resolve(DEFAULT_ARTICLE_THEME.accent);
+                    return;
+                }
+                resolve(rgbToHex(totalR / count, totalG / count, totalB / count));
+            } catch (error) {
+                resolve(DEFAULT_ARTICLE_THEME.accent);
+            }
+        };
+        img.onerror = () => resolve(DEFAULT_ARTICLE_THEME.accent);
+        img.src = url;
+    });
+}
+
+function renderArticleThemeChoices(containerId, themes, selectedTheme, editorId) {
+    const container = document.getElementById(containerId);
+    if(!container) return;
+    const activeName = normalizeArticleTheme(selectedTheme).name;
+    container.innerHTML = themes.map(theme => {
+        const palette = normalizeArticleTheme(theme);
+        const active = palette.name === activeName ? 'active' : '';
+        return `
+            <button
+                type="button"
+                class="presse-theme-choice ${active}"
+                onclick="selectArticleTheme('${containerId}', '${editorId}', '${palette.name}')"
+                style="${buildArticleThemeStyle(palette)} background:linear-gradient(135deg, color-mix(in srgb, var(--article-accent) 24%, transparent), transparent 55%), var(--article-paper); color:var(--article-ink);"
+            >
+                <span class="presse-theme-choice-label">
+                    <strong>${escapeHtml(palette.label || palette.name)}</strong>
+                    <span>${escapeHtml(palette.paper)} • ${escapeHtml(palette.accent)}</span>
+                </span>
+                <span class="presse-theme-choice-swatches">
+                    <i style="background:${palette.paper};"></i>
+                    <i style="background:${palette.surface};"></i>
+                    <i style="background:${palette.accent};"></i>
+                </span>
+            </button>`;
+    }).join('');
+    container.dataset.themes = JSON.stringify(themes);
+}
+
+function selectArticleTheme(containerId, editorId, themeName) {
+    const container = document.getElementById(containerId);
+    if(!container) return;
+    const themes = JSON.parse(container.dataset.themes || '[]');
+    const theme = themes.find(item => item.name === themeName) || DEFAULT_ARTICLE_THEME;
+    setThemeStateForEditor(editorId, theme);
+    renderArticleThemeChoices(containerId, themes, theme, editorId);
+    if(editorId === 'presseContentEditor') updatePresseComposerUX();
+}
+
+async function hydrateArticleThemeChoices(logoUrl, editorId, initialTheme = null) {
+    const accent = await extractDominantColorFromImage(logoUrl);
+    const themes = buildArticleThemeCandidates(accent);
+    const theme = normalizeArticleTheme(initialTheme || themes[0] || DEFAULT_ARTICLE_THEME);
+    setThemeStateForEditor(editorId, theme);
+    renderArticleThemeChoices(
+        editorId === 'editArticleContentEditor' ? 'editArticleThemeChoices' : 'presseThemeChoices',
+        themes,
+        theme,
+        editorId
+    );
+    if(editorId === 'presseContentEditor') updatePresseComposerUX();
+}
+
+function getPresseEditor(editorId = 'presseContentEditor') {
+    return document.getElementById(editorId);
+}
+
+function unwrapNode(node) {
+    if(!node || !node.parentNode) return;
+    while(node.firstChild) node.parentNode.insertBefore(node.firstChild, node);
+    node.parentNode.removeChild(node);
+}
+
+function normalizeEditorFonts(editor) {
+    if(!editor) return;
+    editor.querySelectorAll('font').forEach(node => {
+        const mapped = FONT_SIZE_VALUE_MAP[node.getAttribute('size') || '3'];
+        if(mapped && mapped !== 'normal') {
+            const span = document.createElement('span');
+            span.setAttribute('data-font-size', mapped);
+            span.innerHTML = node.innerHTML;
+            node.replaceWith(span);
+        } else {
+            unwrapNode(node);
+        }
+    });
+}
+
+function sanitizeArticleNode(node, documentRef) {
+    const allowedTags = new Set(['P', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'H2', 'H3', 'BLOCKQUOTE', 'UL', 'OL', 'LI', 'SPAN']);
+    if(node.nodeType === Node.TEXT_NODE) return documentRef.createTextNode(node.textContent || '');
+    if(node.nodeType !== Node.ELEMENT_NODE) return null;
+
+    let tag = node.tagName.toUpperCase();
+    if(tag === 'DIV') tag = 'P';
+    if(tag === 'FONT') tag = 'SPAN';
+    if(!allowedTags.has(tag)) {
+        const fragment = documentRef.createDocumentFragment();
+        Array.from(node.childNodes).forEach(child => {
+            const sanitizedChild = sanitizeArticleNode(child, documentRef);
+            if(sanitizedChild) fragment.appendChild(sanitizedChild);
+        });
+        return fragment;
+    }
+
+    const element = documentRef.createElement(tag.toLowerCase());
+    if(tag === 'SPAN') {
+        const size = node.getAttribute('data-font-size') || FONT_SIZE_VALUE_MAP[node.getAttribute('size') || '3'];
+        if(size && size !== 'normal') element.setAttribute('data-font-size', size);
+    }
+
+    Array.from(node.childNodes).forEach(child => {
+        const sanitizedChild = sanitizeArticleNode(child, documentRef);
+        if(sanitizedChild) element.appendChild(sanitizedChild);
+    });
+    return element;
+}
+
+function sanitizeArticleHtml(html) {
+    const parser = new DOMParser();
+    const parsed = parser.parseFromString(`<div>${html || ''}</div>`, 'text/html');
+    const wrapper = parsed.body.firstElementChild;
+    const cleanRoot = parsed.createElement('div');
+    Array.from(wrapper.childNodes).forEach(child => {
+        const sanitizedChild = sanitizeArticleNode(child, parsed);
+        if(sanitizedChild) cleanRoot.appendChild(sanitizedChild);
+    });
+    return cleanRoot.innerHTML
+        .replace(/<p><\/p>/g, '')
+        .replace(/(<br>){3,}/g, '<br><br>')
+        .trim();
+}
+
+function getPlainTextFromHtml(html) {
+    const temp = document.createElement('div');
+    temp.innerHTML = html || '';
+    return (temp.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function editorHtmlToStorage(html) {
+    const cleanHtml = sanitizeArticleHtml(html);
+    return cleanHtml ? `[HTML]${cleanHtml}[/HTML]` : '';
+}
+
+function legacyArticleTextToEditorHtml(text) {
+    let html = escapeHtml(text || '');
+    html = html
+        .replace(/\[H1\]([\s\S]*?)\[\/H1\]/g, '<h2>$1</h2>')
+        .replace(/\[H2\]([\s\S]*?)\[\/H2\]/g, '<h3>$1</h3>')
+        .replace(/\[SMALL\]([\s\S]*?)\[\/SMALL\]/g, '<p><span data-font-size="small">$1</span></p>')
+        .replace(/\[QUOTE\]([\s\S]*?)\[\/QUOTE\]/g, '<blockquote>$1</blockquote>')
+        .replace(/\[B\]([\s\S]*?)\[\/B\]/g, '<strong>$1</strong>')
+        .replace(/\[I\]([\s\S]*?)\[\/I\]/g, '<em>$1</em>')
+        .replace(/\[U\]([\s\S]*?)\[\/U\]/g, '<u>$1</u>')
+        .replace(/\[SIZE=(small|normal|large|xlarge)\]([\s\S]*?)\[\/SIZE\]/g, (match, size, value) => size === 'normal' ? value : `<span data-font-size="${size}">${value}</span>`)
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/\n{2,}/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+    return sanitizeArticleHtml(`<p>${html}</p>`);
+}
+
 function parseArticleContent(content) {
     let titleText = '';
     let bodyText = content || '';
+    let bodyHtml = '';
+    let isHtml = false;
     const titleMatch = content && content.match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
     if(titleMatch) {
         titleText = titleMatch[1];
@@ -2433,7 +2825,13 @@ function parseArticleContent(content) {
         const words = (content || '').split(/\s+/);
         titleText = words.slice(0, 8).join(' ') + (words.length > 8 ? '...' : '');
     }
-    return { titleText, bodyText };
+
+    const htmlMatch = String(bodyText || '').trim().match(/^\[HTML\]([\s\S]*)\[\/HTML\]$/);
+    if(htmlMatch) {
+        bodyHtml = sanitizeArticleHtml(htmlMatch[1]);
+        isHtml = true;
+    }
+    return { titleText, bodyText, bodyHtml, isHtml };
 }
 
 function formatArticleDateTime(post) {
@@ -2447,6 +2845,8 @@ function formatArticleDateTime(post) {
 }
 
 function formatArticleRichText(text) {
+    const parsedBody = parseArticleContent(`[TITRE][/TITRE]\n${text || ''}`);
+    if(parsedBody.isHtml) return parsedBody.bodyHtml;
     let html = escapeHtml(text || '');
     html = html
         .replace(/\[H1\]([\s\S]*?)\[\/H1\]/g, '<h3 class="article-inline-h1">$1</h3>')
@@ -2454,83 +2854,116 @@ function formatArticleRichText(text) {
         .replace(/\[SMALL\]([\s\S]*?)\[\/SMALL\]/g, '<p class="article-inline-small">$1</p>')
         .replace(/\[QUOTE\]([\s\S]*?)\[\/QUOTE\]/g, '<blockquote class="article-inline-quote">$1</blockquote>')
         .replace(/\[B\]([\s\S]*?)\[\/B\]/g, '<strong>$1</strong>')
+        .replace(/\[I\]([\s\S]*?)\[\/I\]/g, '<em>$1</em>')
+        .replace(/\[U\]([\s\S]*?)\[\/U\]/g, '<u>$1</u>')
+        .replace(/\[SIZE=(small|normal|large|xlarge)\]([\s\S]*?)\[\/SIZE\]/g, (match, size, value) => size === 'normal' ? value : `<span class="article-font-${size}">${value}</span>`)
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/\*([^*]+)\*/g, '<em>$1</em>')
         .replace(/\n/g, '<br>');
     return html;
 }
 
-function applyPresseFormat(tag) {
-    const input = document.getElementById('presseContent');
-    if(!input) return;
-    input.focus();
-    const start = input.selectionStart || 0;
-    const end = input.selectionEnd || 0;
-    const selected = input.value.slice(start, end);
-    const open = `[${tag}]`;
-    const close = `[/${tag}]`;
-    const content = selected || (tag === 'H1' ? 'Titre' : tag === 'H2' ? 'Sous-titre' : tag === 'SMALL' ? 'Texte court' : tag === 'QUOTE' ? 'Citation' : 'Texte');
-    const insert = `${open}${content}${close}`;
-    input.value = input.value.slice(0, start) + insert + input.value.slice(end);
-    const cursor = start + insert.length;
-    input.setSelectionRange(cursor, cursor);
-    updatePresseComposerUX();
+function syncArticleEditor(editorId) {
+    const editor = getPresseEditor(editorId);
+    if(!editor) return '';
+    normalizeEditorFonts(editor);
+    const cleanHtml = sanitizeArticleHtml(editor.innerHTML);
+    if(editor.innerHTML !== cleanHtml) editor.innerHTML = cleanHtml;
+    return cleanHtml;
+}
+
+function applyPresseFormat(tag, editorId = 'presseContentEditor') {
+    const editor = getPresseEditor(editorId);
+    if(!editor) return;
+    editor.focus();
+    if(tag === 'SMALL') {
+        applyPresseFontSize('small', editorId);
+        return;
+    }
+    if(tag === 'B') document.execCommand('bold', false);
+    else if(tag === 'I') document.execCommand('italic', false);
+    else if(tag === 'U') document.execCommand('underline', false);
+    else if(tag === 'H1') document.execCommand('formatBlock', false, 'h2');
+    else if(tag === 'H2') document.execCommand('formatBlock', false, 'h3');
+    else if(tag === 'P') document.execCommand('formatBlock', false, 'p');
+    else if(tag === 'QUOTE') document.execCommand('formatBlock', false, 'blockquote');
+    else if(tag === 'LIST') document.execCommand('insertUnorderedList', false);
+    syncArticleEditor(editorId);
+    if(editorId === 'presseContentEditor') updatePresseComposerUX();
+}
+
+function applyPresseFontSize(size, editorId = 'presseContentEditor') {
+    const editor = getPresseEditor(editorId);
+    if(!editor || !size) return;
+    editor.focus();
+    const commandValue = size === 'small' ? '2' : size === 'large' ? '5' : size === 'xlarge' ? '6' : '3';
+    document.execCommand('fontSize', false, commandValue);
+    syncArticleEditor(editorId);
+    if(editorId === 'presseContentEditor') updatePresseComposerUX();
 }
 
 function applyPressePreset() {
     const preset = document.getElementById('pressePreset')?.value;
     const titleInput = document.getElementById('presseTitle');
-    const contentInput = document.getElementById('presseContent');
-    if(!preset || !titleInput || !contentInput) return;
+    const editor = getPresseEditor('presseContentEditor');
+    if(!preset || !titleInput || !editor) return;
     const templates = {
         flash: {
             title: 'Flash info — ',
-            content: '[H1]Information principale[/H1]\n[SMALL]Date, lieu, contexte[/SMALL]\n[QUOTE]Déclaration courte[/QUOTE]\n\nDétails factuels...'
+            content: '<h2>Information principale</h2><p><span data-font-size="small">Date, lieu, contexte</span></p><blockquote>Déclaration courte</blockquote><p>Détails factuels...</p>'
         },
         chronique: {
             title: 'Chronique — ',
-            content: '[H2]Contexte[/H2]\n\nAnalyse de la situation...\n\n[H2]Conséquences[/H2]\n\nLecture politique et sociale...'
+            content: '<h3>Contexte</h3><p>Analyse de la situation...</p><h3>Conséquences</h3><p>Lecture politique et sociale...</p>'
         },
         interview: {
             title: 'Interview — ',
-            content: '[H1]Entretien exclusif[/H1]\n[SMALL]Journaliste : ...[/SMALL]\n\n[QUOTE]Question 1[/QUOTE]\nRéponse...\n\n[QUOTE]Question 2[/QUOTE]\nRéponse...'
+            content: '<h2>Entretien exclusif</h2><p><span data-font-size="small">Journaliste : ...</span></p><blockquote>Question 1</blockquote><p>Réponse...</p><blockquote>Question 2</blockquote><p>Réponse...</p>'
         },
         enquete: {
             title: 'Dossier enquête — ',
-            content: '[H1]Ce que nous avons découvert[/H1]\n[H2]Pièce 1[/H2]\nFaits vérifiés...\n\n[H2]Pièce 2[/H2]\nÉléments complémentaires...\n\n[SMALL]Sources recoupées.[/SMALL]'
+            content: '<h2>Ce que nous avons découvert</h2><h3>Pièce 1</h3><p>Faits vérifiés...</p><h3>Pièce 2</h3><p>Éléments complémentaires...</p><p><span data-font-size="small">Sources recoupées.</span></p>'
         }
     };
     const tpl = templates[preset];
     if(!tpl) return;
     if(!titleInput.value.trim()) titleInput.value = tpl.title;
-    contentInput.value = tpl.content;
+    editor.innerHTML = sanitizeArticleHtml(tpl.content);
     updatePresseComposerUX();
 }
 
 function countWords(text) {
-    const cleaned = (text || '').replace(/\[(?:\/?)(?:H1|H2|SMALL|QUOTE|B)\]/g, ' ').trim();
+    const cleaned = String(text || '').replace(/\[(?:\/?)(?:H1|H2|SMALL|QUOTE|B|I|U|HTML|\/HTML)\]/g, ' ').trim();
     if(!cleaned) return 0;
     return cleaned.split(/\s+/).filter(Boolean).length;
 }
 
 function initPresseComposerUX() {
     if(presseUxBound) return;
-    const ids = ['presseTitle', 'presseContent', 'presseJournalName', 'presseUrgency'];
+    const ids = ['presseTitle', 'presseJournalName', 'presseUrgency'];
     ids.forEach(id => {
         const el = document.getElementById(id);
         if(el) el.addEventListener('input', updatePresseComposerUX);
         if(el && el.tagName === 'SELECT') el.addEventListener('change', updatePresseComposerUX);
     });
+    const editor = getPresseEditor('presseContentEditor');
+    if(editor) {
+        editor.addEventListener('input', () => updatePresseComposerUX());
+        editor.addEventListener('blur', () => syncArticleEditor('presseContentEditor'));
+    }
+    hydrateArticleThemeChoices('', 'presseContentEditor', DEFAULT_ARTICLE_THEME);
     presseUxBound = true;
     updatePresseComposerUX();
 }
 
 function updatePresseComposerUX() {
     const title = document.getElementById('presseTitle')?.value?.trim() || '';
-    const body = document.getElementById('presseContent')?.value || '';
+    const bodyHtml = syncArticleEditor('presseContentEditor');
+    const body = getPlainTextFromHtml(bodyHtml);
     const journal = document.getElementById('presseJournalName')?.value?.trim() || 'Journal non défini';
     const urgency = document.getElementById('presseUrgency')?.value || '';
     const mediaUrl = document.getElementById('presseMediaUrl')?.value || '';
+    const theme = normalizeArticleTheme(currentPresseTheme || DEFAULT_ARTICLE_THEME);
     const wc = countWords(body);
     const readMin = Math.max(1, Math.ceil(wc / 220));
 
@@ -2546,7 +2979,6 @@ function updatePresseComposerUX() {
         return;
     }
     const urgencyLabel = urgency && URGENCY_CONFIG[urgency] ? URGENCY_CONFIG[urgency].label : 'Normal';
-    const bodyHtml = formatArticleRichText(body);
     const mediaHtml = mediaUrl
         ? (mediaUrl.match(/\.(mp4|webm|ogg)$/i) || mediaUrl.includes('/video/upload')
             ? `<video src="${mediaUrl}" controls style="width:100%; border-radius:8px; margin:8px 0;"></video>`
@@ -2555,14 +2987,16 @@ function updatePresseComposerUX() {
 
     preview.innerHTML = `
         <div class="presse-live-label">Aperçu live</div>
-        <h4 class="presse-live-title">${escapeHtml(title || 'Titre de l\'article')}</h4>
-        <div class="presse-live-meta">
-            <span><i class="fa-solid fa-newspaper"></i> ${escapeHtml(journal)}</span>
-            <span><i class="fa-regular fa-clock"></i> ${new Date().toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
-            <span><i class="fa-solid fa-bolt"></i> ${escapeHtml(urgencyLabel)}</span>
-        </div>
-        ${mediaHtml}
-        <div class="presse-live-body">${bodyHtml || '<span class="presse-live-empty">Ajoute du contenu...</span>'}</div>`;
+        <div class="presse-live-card" style="${buildArticleThemeStyle(theme)}">
+            <h4 class="presse-live-title">${escapeHtml(title || 'Titre de l\'article')}</h4>
+            <div class="presse-live-meta">
+                <span><i class="fa-solid fa-newspaper"></i> ${escapeHtml(journal)}</span>
+                <span><i class="fa-regular fa-clock"></i> ${new Date().toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
+                <span><i class="fa-solid fa-bolt"></i> ${escapeHtml(urgencyLabel)}</span>
+            </div>
+            ${mediaHtml}
+            <div class="presse-live-body">${bodyHtml || '<span class="presse-live-empty">Ajoute du contenu...</span>'}</div>
+        </div>`;
 }
 
 async function previewPresseJournalLogo() {
@@ -2575,6 +3009,7 @@ async function previewPresseJournalLogo() {
         const hidden = document.getElementById('presseJournalLogo');
         if(hidden) hidden.value = url;
         if(preview) preview.innerHTML = `<img src="${url}" alt="logo journal">`;
+        await hydrateArticleThemeChoices(url, 'presseContentEditor', currentPresseTheme || DEFAULT_ARTICLE_THEME);
     } else if(preview) {
         preview.innerHTML = '<i class="fa-solid fa-newspaper"></i>';
     }
@@ -2611,7 +3046,9 @@ async function previewPresseFile() {
 
 function submitArticle() {
     const title = document.getElementById('presseTitle').value.trim();
-    const content = document.getElementById('presseContent').value.trim();
+    const editorHtml = syncArticleEditor('presseContentEditor');
+    const content = editorHtmlToStorage(editorHtml);
+    const contentText = getPlainTextFromHtml(editorHtml);
     const mediaUrl = document.getElementById('presseMediaUrl').value.trim();
     const journalName = document.getElementById('presseJournalName').value.trim();
     const journalLogo = document.getElementById('presseJournalLogo').value.trim();
@@ -2619,7 +3056,7 @@ function submitArticle() {
     const isPresseP = document.getElementById('presseIsPub')?.checked;
     const pressePubId = isPresseP ? document.getElementById('pressePubStockId')?.value : null;
     const linkedStock = pressePubId ? stocksData.find(stock => String(stock._id) === String(pressePubId)) : null;
-    if(!title && !content) return alert("Article vide.");
+    if(!title && !contentText) return alert("Article vide.");
     if(!currentPresseCharId) return alert("Aucun journaliste sélectionné.");
     const char = myCharacters.find(c => c._id === currentPresseCharId);
     if(!char) return alert("Personnage introuvable.");
@@ -2640,6 +3077,7 @@ function submitArticle() {
         journalName, journalLogo,
         isAnonymous: false, isBreakingNews: urgencyLevel === 'urgent',
         urgencyLevel,
+        articleTheme: normalizeArticleTheme(currentPresseTheme || DEFAULT_ARTICLE_THEME),
         isArticle: true, poll: null,
         isSponsored: !!isPresseP,
         linkedStockId: pressePubId || '',
@@ -2652,26 +3090,34 @@ function submitArticle() {
     if(isPresseP && pressePubId) socket.emit('pub_boost_stock', { stockId: pressePubId });
 
     document.getElementById('presseTitle').value = '';
-    document.getElementById('presseContent').value = '';
+    const editor = getPresseEditor('presseContentEditor');
+    if(editor) editor.innerHTML = '';
     document.getElementById('presseMediaUrl').value = '';
     document.getElementById('presseMediaFile').value = '';
     document.getElementById('presseUrgency').value = '';
     const presseP = document.getElementById('presseIsPub'); if(presseP) { presseP.checked = false; togglePressePubSelect(); }
+    hydrateArticleThemeChoices(journalLogo, 'presseContentEditor', currentPresseTheme || DEFAULT_ARTICLE_THEME);
     updatePresseComposerUX();
 }
 
-function createArticleElement(post) {
-    const div = document.createElement('div');
-    div.className = 'article-card';
-    if(post.isHeadline) div.classList.add('article-headline');
-    if(post.urgencyLevel === 'urgent') div.classList.add('article-breaking');
-    div.id = `article-${post._id}`;
+function renderArticleBodyMarkup(post) {
+    const { bodyText, bodyHtml, isHtml } = parseArticleContent(post.content || '');
+    if(isHtml) {
+        return `<div class="article-content article-content-rich">${bodyHtml || '<p></p>'}</div>`;
+    }
+    if(bodyText && bodyText.trim().length > 0) {
+        const firstChar = bodyText.trim().charAt(0);
+        const rest = bodyText.trim().slice(1);
+        return `<div class="article-content"><span class="article-dropcap">${escapeHtml(firstChar)}</span>${formatArticleRichText(rest)}</div>`;
+    }
+    return '<div class="article-content"></div>';
+}
 
+function buildArticleCardMarkup(post) {
+    const { titleText } = parseArticleContent(post.content || '');
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="article-del-btn" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
     const editBtn = (post.ownerId === PLAYER_ID || IS_ADMIN) ? `<button class="article-edit-btn" onclick="event.stopPropagation(); openArticleEditModal('${post._id}')"><i class="fa-solid fa-pen"></i></button>` : '';
     const headlineBtn = IS_ADMIN ? `<button class="article-headline-btn" onclick="event.stopPropagation(); toggleHeadline('${post._id}', ${!post.isHeadline})" title="${post.isHeadline ? 'Retirer de la Une' : 'Mettre à la Une'}"><i class="fa-solid fa-star"></i> ${post.isHeadline ? 'Retirer la Une' : 'La Une'}</button>` : '';
-
-    const { titleText, bodyText } = parseArticleContent(post.content || '');
 
     let bannerHTML = '';
     if(post.mediaUrl && post.mediaType === 'image') bannerHTML = `<img src="${post.mediaUrl}" class="article-banner">`;
@@ -2689,17 +3135,7 @@ function createArticleElement(post) {
         : '';
     const publishedAt = formatArticleDateTime(post);
 
-    // Lettrine : premiere lettre du corps en grand
-    let articleBodyHTML = '';
-    if(bodyText && bodyText.trim().length > 0) {
-        const firstChar = bodyText.trim().charAt(0);
-        const rest = bodyText.trim().slice(1);
-        articleBodyHTML = `<div class="article-content"><span class="article-dropcap">${escapeHtml(firstChar)}</span>${formatArticleRichText(rest)}</div>`;
-    } else {
-        articleBodyHTML = `<div class="article-content"></div>`;
-    }
-
-    div.innerHTML = `
+    return `
         ${bannerHTML}
         <div class="article-body">
             ${delBtn}
@@ -2710,7 +3146,7 @@ function createArticleElement(post) {
             <h2 class="article-title">${escapeHtml(titleText)}</h2>
             <div class="article-published-at"><i class="fa-regular fa-clock"></i> ${escapeHtml(publishedAt)}</div>
             <div class="article-separator"></div>
-            ${articleBodyHTML}
+            ${renderArticleBodyMarkup(post)}
             <div class="article-footer-signature" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
                 <img src="${post.authorAvatar}" class="article-sig-avatar">
                 <div>
@@ -2723,7 +3159,42 @@ function createArticleElement(post) {
                 ${IS_ADMIN ? `<button class="action-item" onclick="event.stopPropagation(); openAdminStatsModal('${post._id}', ${post.likes.length})" title="Admin: modifier likes" style="color:var(--warning);"><i class="fa-solid fa-pen"></i></button>` : ''}
             </div>
         </div>`;
+}
+
+function createArticleElement(post, options = {}) {
+    const div = document.createElement('div');
+    div.className = 'article-card';
+    if(post.isHeadline) div.classList.add('article-headline');
+    if(post.urgencyLevel === 'urgent') div.classList.add('article-breaking');
+    div.id = options.id || `article-${post._id}`;
+    div.style.cssText = buildArticleThemeStyle(post.articleTheme || DEFAULT_ARTICLE_THEME);
+    div.innerHTML = buildArticleCardMarkup(post);
+    if(options.interactive !== false) {
+        div.addEventListener('click', event => {
+            if(event.target.closest('button, a, input, label, video, audio')) return;
+            openArticleFullscreen(post._id);
+        });
+    }
     return div;
+}
+
+function openArticleFullscreen(postId) {
+    const post = presseArticlesCache.find(item => String(item._id) === String(postId));
+    if(!post) return;
+    currentArticleFullscreenId = String(postId);
+    const content = document.getElementById('article-fullscreen-content');
+    const label = document.getElementById('articleFullscreenLabel');
+    if(!content || !label) return;
+    const { titleText } = parseArticleContent(post.content || '');
+    label.textContent = titleText || 'Article';
+    content.innerHTML = '';
+    content.appendChild(createArticleElement(post, { interactive: false, id: `article-fullscreen-${post._id}` }));
+    document.getElementById('article-fullscreen-modal')?.classList.remove('hidden');
+}
+
+function closeArticleFullscreen() {
+    currentArticleFullscreenId = null;
+    document.getElementById('article-fullscreen-modal')?.classList.add('hidden');
 }
 
 function toggleHeadline(postId, value) {
