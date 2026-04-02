@@ -231,6 +231,9 @@
                 <span style="font-size:0.75rem; color:var(--text-muted);">Envoyer en tant que :</span>
                 <select id="charDmSenderSelect" style="background:var(--bg-tertiary); border:1px solid var(--border); color:white; padding:4px 8px; border-radius:var(--radius-sm); font-family:var(--font-main); font-size:0.82rem;"></select>
             </div>
+            <div class="char-mp-history-toolbar modal-history-toolbar">
+                <button id="char-dm-more" class="btn-secondary hidden" type="button" onclick="loadMoreCharDmModalMessages()">Charger plus de messages</button>
+            </div>
             <div id="char-dm-messages" style="flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:8px;"></div>
             <div id="char-dm-typing" class="char-mp-typing hidden" style="padding:0 16px 8px;"></div>
             <div style="padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px;">
@@ -387,6 +390,10 @@
                                         </div>
                                     </div>
 
+                                    <div class="chat-history-toolbar">
+                                        <button id="chat-load-more" class="btn-secondary hidden" type="button" onclick="loadMoreCurrentChatMessages()">Charger plus de messages</button>
+                                    </div>
+
                                     <div id="messages"></div>
                                     <div id="typing-indicator" class="hidden"><span class="typing-dots">...</span> <span id="typing-text"></span></div>
                     
@@ -536,9 +543,13 @@
                                                     <div id="mpTargetRole" class="char-mp-header-role"></div>
                                                 </div>
                                             </div>
+                                            <button id="char-mp-archive-current" class="btn-secondary char-mp-header-btn" type="button" onclick="archiveCurrentCharMpConversation()"><i class="fa-solid fa-box-archive"></i> Archiver</button>
                                         </div>
 
                                         <!-- Messages -->
+                                        <div class="char-mp-history-toolbar">
+                                            <button id="char-mp-more" class="btn-secondary hidden" type="button" onclick="loadMoreCharMpMessages()">Charger plus de messages</button>
+                                        </div>
                                         <div id="char-mp-messages" class="char-mp-messages"></div>
                                         <div id="char-mp-typing" class="char-mp-typing hidden"></div>
 
@@ -1335,6 +1346,7 @@
                             <input type="hidden" id="admin-company-old-name">
                             <div class="admin-company-form-grid">
                                 <input type="text" id="admin-company-name" class="modal-input" placeholder="Nom de l'entreprise">
+                                <select id="admin-company-owner" class="modal-input"></select>
                                 <input type="text" id="admin-company-role" class="modal-input" placeholder="Rôle / fonction">
                                 <input type="text" id="admin-company-hq" class="modal-input" placeholder="Siège / localisation">
                                 <input type="number" id="admin-company-revenue" class="modal-input" placeholder="Chiffre d'affaires" min="0">
@@ -1343,6 +1355,7 @@
                             </div>
                             <div class="admin-company-editor-actions">
                                 <button class="btn-primary" onclick="saveAdminCompanyEdit()"><i class="fa-solid fa-floppy-disk"></i> Enregistrer</button>
+                                <button class="btn-secondary" onclick="transferAdminCompanyOwner()"><i class="fa-solid fa-right-left"></i> Changer de propriétaire</button>
                                 <button class="btn-secondary" onclick="resetAdminCompanyEditor()"><i class="fa-solid fa-rotate-left"></i> Réinitialiser</button>
                                 <button class="btn-secondary" onclick="openStockAddModalForAdminCompany()"><i class="fa-solid fa-chart-line"></i> Coter une action</button>
                             </div>

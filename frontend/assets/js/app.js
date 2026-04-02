@@ -63,6 +63,9 @@ let feedTypingTimeout = null;
 let pendingAttachment = null; 
 let pendingCommentAttachment = null;
 let lastMessageData = { author: null, time: 0, ownerId: null };
+const CHAT_PAGE_SIZE = 20;
+let currentChatMessages = [];
+let chatHistoryState = { mode: 'room', key: 'room:global', page: 0, hasMore: false, total: 0 };
 let pollOptions = [];
 let pollUIOpen = false; 
 
@@ -524,7 +527,12 @@ socket.on('all_chars_online', (chars) => {
         listDiv.appendChild(block);
     });
 });
-socket.on('force_history_refresh', (data) => { if (currentRoomId === data.roomId && !currentDmTarget) socket.emit('request_history', currentRoomId); });
+socket.on('force_history_refresh', (data) => {
+    if (currentRoomId === data.roomId && !currentDmTarget) {
+        resetCurrentChatHistory('room', currentRoomId);
+        socket.emit('request_history', { roomId: currentRoomId, userId: PLAYER_ID, page: 0, pageSize: CHAT_PAGE_SIZE });
+    }
+});
 
 const txtInput = document.getElementById('txtInput');
 txtInput.addEventListener('input', () => {
@@ -550,7 +558,8 @@ function joinRoom(roomId) {
     document.getElementById('currentRoomName').style.color = "var(--text-primary)";
     document.getElementById('messages').innerHTML = ""; document.getElementById('typing-indicator').classList.add('hidden');
     document.getElementById('char-selector-wrapper').classList.remove('hidden'); document.getElementById('dm-header-actions').classList.add('hidden');
-    socket.emit('request_history', currentRoomId); cancelContext(); clearStaging();
+    resetCurrentChatHistory('room', currentRoomId);
+    socket.emit('request_history', { roomId: currentRoomId, userId: PLAYER_ID, page: 0, pageSize: CHAT_PAGE_SIZE }); cancelContext(); clearStaging();
     scrollToBottom(true); scheduleScrollToBottom(true);
     if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
     updateRoomListUI(); updateDmListUI(); switchView('chat'); 
@@ -570,13 +579,63 @@ function updateRoomListUI() {
 
 function startDmFromList(target) { if (target !== USERNAME) openDm(target); }
 socket.on('open_dm_ui', (target) => openDm(target));
+function getChatHistoryKey(mode, key) {
+    return `${mode}:${key || ''}`;
+}
+function resetCurrentChatHistory(mode, key) {
+    currentChatMessages = [];
+    chatHistoryState = { mode, key: getChatHistoryKey(mode, key), page: 0, hasMore: false, total: 0 };
+    updateChatLoadMoreButton();
+}
+function updateChatLoadMoreButton() {
+    const btn = document.getElementById('chat-load-more');
+    if(!btn) return;
+    btn.classList.toggle('hidden', !chatHistoryState.hasMore);
+    btn.textContent = chatHistoryState.mode === 'dm' ? 'Charger plus de messages privés' : 'Charger plus de messages';
+}
+function renderCurrentChatMessages(scrollMode = 'bottom') {
+    const container = document.getElementById('messages');
+    if(!container) return;
+    const previousHeight = container.scrollHeight;
+    const previousTop = container.scrollTop;
+    container.innerHTML = '';
+    lastMessageData = { author: null, time: 0, ownerId: null };
+    currentChatMessages.forEach(msg => displayMessage(msg, chatHistoryState.mode === 'dm'));
+    if(scrollMode === 'preserve') {
+        container.scrollTop = container.scrollHeight - previousHeight + previousTop;
+    } else {
+        scrollToBottom(true);
+        scheduleScrollToBottom(true);
+    }
+}
+function loadMoreCurrentChatMessages() {
+    if(!chatHistoryState.hasMore) return;
+    if(chatHistoryState.mode === 'dm' && currentDmTarget) {
+        socket.emit('request_dm_history', {
+            myUsername: USERNAME,
+            targetUsername: currentDmTarget,
+            page: (chatHistoryState.page || 0) + 1,
+            pageSize: CHAT_PAGE_SIZE
+        });
+        return;
+    }
+    if(chatHistoryState.mode === 'room' && currentRoomId) {
+        socket.emit('request_history', {
+            roomId: currentRoomId,
+            userId: PLAYER_ID,
+            page: (chatHistoryState.page || 0) + 1,
+            pageSize: CHAT_PAGE_SIZE
+        });
+    }
+}
 function openDm(target) {
     currentDmTarget = target; currentRoomId = null; lastMessageData = { author: null, time: 0 }; 
     if (!dmContacts.includes(target)) dmContacts.push(target);
     if (unreadDms.has(target)) unreadDms.delete(target);
     document.getElementById('currentRoomName').textContent = `@${target}`; document.getElementById('currentRoomName').style.color = "#9b59b6"; 
     document.getElementById('messages').innerHTML = ""; document.getElementById('char-selector-wrapper').classList.add('hidden'); document.getElementById('dm-header-actions').classList.remove('hidden'); 
-    cancelContext(); clearStaging(); socket.emit('request_dm_history', { myUsername: USERNAME, targetUsername: target });
+    resetCurrentChatHistory('dm', target);
+    cancelContext(); clearStaging(); socket.emit('request_dm_history', { myUsername: USERNAME, targetUsername: target, page: 0, pageSize: CHAT_PAGE_SIZE });
     scrollToBottom(true); scheduleScrollToBottom(true);
     updateRoomListUI(); updateDmListUI(); switchView('chat'); 
     if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
@@ -594,11 +653,28 @@ function updateDmListUI() {
         list.innerHTML += `<div class="dm-item ${isActive} ${isUnread}" onclick="openDm('${contact}')"><img src="${avatarUrl}" class="dm-avatar"><span>${contact}</span></div>`;
     });
 }
-socket.on('dm_history_data', (data) => { if (currentDmTarget === data.target) { document.getElementById('messages').innerHTML=""; lastMessageData={author:null, time:0}; data.history.forEach(msg => displayMessage(msg, true)); scrollToBottom(true); scheduleScrollToBottom(true); } });
+socket.on('dm_history_data', (data) => {
+    if (currentDmTarget !== data.target) return;
+    const history = Array.isArray(data.history) ? data.history : [];
+    currentChatMessages = Number(data.page) > 0 ? [...history, ...currentChatMessages] : history;
+    chatHistoryState = {
+        mode: 'dm',
+        key: getChatHistoryKey('dm', data.target),
+        page: Number(data.page) || 0,
+        hasMore: !!data.hasMore,
+        total: Number(data.total) || currentChatMessages.length
+    };
+    renderCurrentChatMessages(Number(data.page) > 0 ? 'preserve' : 'bottom');
+    updateChatLoadMoreButton();
+});
 socket.on('receive_dm', (msg) => {
     const other = (msg.sender === USERNAME) ? msg.target : msg.sender;
     if (!dmContacts.includes(other)) { dmContacts.push(other); updateDmListUI(); }
-    if (currentDmTarget === other) { displayMessage(msg, true); scrollToBottom(); } 
+    if (currentDmTarget === other) {
+        currentChatMessages.push(msg);
+        displayMessage(msg, true);
+        scrollToBottom();
+    } 
     else { unreadDms.add(other); updateDmListUI(); }
     if (msg.sender !== USERNAME && notificationsEnabled) notifSound.play().catch(e=>{});
 });
@@ -731,6 +807,9 @@ socket.on('char_updated', (char) => {
     }
     if(currentProfileChar && String(currentProfileChar._id) === String(char._id)) {
         Object.assign(currentProfileChar, char);
+        if(document.getElementById('profile-slide-panel')?.classList.contains('open')) {
+            socket.emit('get_char_profile', currentProfileChar.name);
+        }
     }
 });
 
@@ -1327,14 +1406,17 @@ function renderGroupedCharMessages(containerId, messages, myCharId, scrollMode =
                 <div class="cmp-block-stack"></div>
             </div>`;
         const stack = block.querySelector('.cmp-block-stack');
+        const bubble = document.createElement('div');
+        bubble.className = 'cmp-block-text';
         group.items.forEach(item => {
-            const entry = document.createElement('div');
-            entry.className = 'cmp-block-entry';
-            entry.innerHTML = `
-                <div class="cmp-block-text">${formatText(item.content || '')}</div>
+            const line = document.createElement('div');
+            line.className = 'cmp-block-line';
+            line.innerHTML = `
+                <div class="cmp-block-line-text">${formatText(item.content || '')}</div>
                 <span class="cmp-block-time">${escapeHtml(item.date || '')}</span>`;
-            stack.appendChild(entry);
+            bubble.appendChild(line);
         });
+        stack.appendChild(bubble);
         fragment.appendChild(block);
     });
     container.innerHTML = '';
@@ -1347,18 +1429,43 @@ function renderGroupedCharMessages(containerId, messages, myCharId, scrollMode =
         container.scrollTop = container.scrollHeight;
     }
 }
+function updateCharMpLoadMoreButton(key) {
+    const conv = key ? getCharMpConversation(key) : null;
+    const mainBtn = document.getElementById('char-mp-more');
+    if(mainBtn) mainBtn.classList.toggle('hidden', !(conv && conv.hasMore && charMpCurrentKey === key && !charMpArchiveInView));
+}
+function updateCharDmModalLoadMoreButton(key) {
+    const conv = key ? getCharMpConversation(key) : null;
+    const btn = document.getElementById('char-dm-more');
+    if(btn) btn.classList.toggle('hidden', !(conv && conv.hasMore && charDmTarget));
+}
+function requestCharMpHistoryPage(key, page) {
+    const conv = getCharMpConversation(key);
+    if(!conv) return;
+    socket.emit('request_char_dm_history', {
+        senderCharId: conv.myChar._id,
+        targetCharId: conv.otherChar._id,
+        page,
+        pageSize: CHAT_PAGE_SIZE
+    });
+}
 function renderCharMpThread(key, scrollMode = 'bottom') {
     const conv = getCharMpConversation(key);
     if(!conv) return;
     renderGroupedCharMessages('char-mp-messages', conv.msgs || [], conv.myChar._id, scrollMode);
+    updateCharMpLoadMoreButton(key);
 }
-function renderCharDmModalMessages() {
+function renderCharDmModalMessages(scrollMode = 'bottom') {
     if(!charDmTarget) return;
     const senderId = document.getElementById('charDmSenderSelect')?.value || null;
     const key = senderId ? mpKey(senderId, charDmTarget._id) : null;
     const conv = key ? getCharMpConversation(key) : null;
-    if(!conv) return;
-    renderGroupedCharMessages('char-dm-messages', conv.msgs || [], conv.myChar._id, 'bottom');
+    if(!conv) {
+        updateCharDmModalLoadMoreButton(null);
+        return;
+    }
+    renderGroupedCharMessages('char-dm-messages', conv.msgs || [], conv.myChar._id, scrollMode);
+    updateCharDmModalLoadMoreButton(key);
 }
 function loadMyCharConvos() {
     const ids = myCharacters.map(c => c._id);
@@ -1490,8 +1597,31 @@ function openCharMpConvo(key) {
     renderCharMpSidebar();
     renderCharMpThread(key, 'bottom');
     hideCharMpTypingUI();
-    const { myCharId, otherCharId } = mpParse(key);
-    socket.emit('request_char_dm_history', { senderCharId: myCharId, targetCharId: otherCharId });
+    requestCharMpHistoryPage(key, 0);
+}
+function loadMoreCharMpMessages() {
+    if(!charMpCurrentKey) return;
+    const conv = getCharMpConversation(charMpCurrentKey);
+    if(!conv || !conv.hasMore) return;
+    requestCharMpHistoryPage(charMpCurrentKey, (conv.page || 0) + 1);
+}
+function loadMoreCharDmModalMessages() {
+    if(!charDmTarget) return;
+    const senderId = document.getElementById('charDmSenderSelect')?.value || null;
+    const key = senderId ? mpKey(senderId, charDmTarget._id) : null;
+    const conv = key ? getCharMpConversation(key) : null;
+    if(!conv || !conv.hasMore) return;
+    requestCharMpHistoryPage(key, (conv.page || 0) + 1);
+}
+function archiveCurrentCharMpConversation() {
+    if(!charMpCurrentKey) return;
+    const conv = getCharMpConversation(charMpCurrentKey);
+    if(!conv) return;
+    if(!confirm(`Archiver la conversation entre ${conv.myChar.name} et ${conv.otherChar.name} pour tout le monde ?`)) return;
+    socket.emit('archive_char_dm_conversation', {
+        senderCharId: conv.myChar._id,
+        targetCharId: conv.otherChar._id
+    });
 }
 function openCharMpArchivePage() {
     setCharMpArchiveMode(true);
@@ -1560,6 +1690,10 @@ function sendCharMpMessage() {
     });
     document.getElementById('charMpInput').value = '';
     stopCharMpTyping();
+    requestAnimationFrame(() => {
+        const container = document.getElementById('char-mp-messages');
+        if(container) container.scrollTop = container.scrollHeight;
+    });
 }
 socket.on('my_char_convos', (convos) => {
     convos.forEach(c => {
@@ -1579,6 +1713,9 @@ socket.on('my_char_convos', (convos) => {
                 ownerId: c.otherOwnerId || '',
                 ownerUsername: c.otherOwnerUsername || ''
             },
+            page: existing.page || 0,
+            hasMore: existing.hasMore || false,
+            total: existing.total || 0,
             lastContent: c.lastContent || existing.lastContent || '',
             lastDate: c.lastDate || existing.lastDate || null
         };
@@ -1613,18 +1750,22 @@ socket.on('archived_char_convos', (convos) => {
     });
     renderArchivedCharMpList();
 });
-socket.on('char_dm_history', ({ senderCharId, targetCharId, msgs }) => {
+socket.on('char_dm_history', ({ senderCharId, targetCharId, page, total, hasMore, msgs }) => {
     const keys = [mpKey(String(senderCharId), String(targetCharId)), mpKey(String(targetCharId), String(senderCharId))];
     const activeKey = keys.find(key => charMpConversations[key]);
     if(activeKey) {
-        charMpConversations[activeKey].msgs = Array.isArray(msgs) ? msgs : [];
-        charMpConversations[activeKey].lastContent = msgs?.length ? msgs[msgs.length - 1].content : (charMpConversations[activeKey].lastContent || '');
-        charMpConversations[activeKey].lastDate = msgs?.length ? (msgs[msgs.length - 1].timestamp || null) : (charMpConversations[activeKey].lastDate || null);
-        if(charMpCurrentKey === activeKey) renderCharMpThread(activeKey, 'bottom');
+        const history = Array.isArray(msgs) ? msgs : [];
+        charMpConversations[activeKey].msgs = Number(page) > 0 ? [...history, ...(charMpConversations[activeKey].msgs || [])] : history;
+        charMpConversations[activeKey].page = Number(page) || 0;
+        charMpConversations[activeKey].total = Number(total) || charMpConversations[activeKey].msgs.length;
+        charMpConversations[activeKey].hasMore = !!hasMore;
+        charMpConversations[activeKey].lastContent = charMpConversations[activeKey].msgs.length ? charMpConversations[activeKey].msgs[charMpConversations[activeKey].msgs.length - 1].content : (charMpConversations[activeKey].lastContent || '');
+        charMpConversations[activeKey].lastDate = charMpConversations[activeKey].msgs.length ? (charMpConversations[activeKey].msgs[charMpConversations[activeKey].msgs.length - 1].timestamp || null) : (charMpConversations[activeKey].lastDate || null);
+        if(charMpCurrentKey === activeKey) renderCharMpThread(activeKey, Number(page) > 0 ? 'preserve' : 'bottom');
         renderCharMpSidebar();
     }
     const modal = document.getElementById('char-dm-modal');
-    if(modal && !modal.classList.contains('hidden')) renderCharDmModalMessages();
+    if(modal && !modal.classList.contains('hidden')) renderCharDmModalMessages(Number(page) > 0 ? 'preserve' : 'bottom');
 });
 socket.on('archived_char_dm_history', ({ senderCharId, targetCharId, page, total, hasMore, msgs }) => {
     const key = mpKey(String(senderCharId), String(targetCharId));
@@ -1670,12 +1811,16 @@ socket.on('receive_char_dm', (msg) => {
             },
             msgs: [],
             unread: false,
+            page: 0,
+            hasMore: false,
+            total: 0,
             lastContent: '',
             lastDate: null
         };
     }
     const conv = charMpConversations[key];
     conv.msgs = [...(conv.msgs || []), msg];
+    conv.total = Math.max(Number(conv.total) || 0, conv.msgs.length);
     conv.lastContent = msg.content || '';
     conv.lastDate = msg.timestamp || null;
     if(isCharMpTabActive() && charMpCurrentKey === key && !charMpArchiveInView) {
@@ -1698,6 +1843,25 @@ socket.on('receive_char_dm', (msg) => {
         renderCharDmModalMessages();
     }
     if(notificationsEnabled && msg.ownerId !== PLAYER_ID) notifSound.play().catch(() => {});
+});
+socket.on('char_dm_archived', ({ senderCharId, targetCharId }) => {
+    const possibleKeys = [mpKey(String(senderCharId), String(targetCharId)), mpKey(String(targetCharId), String(senderCharId))];
+    possibleKeys.forEach(key => {
+        if(charMpConversations[key]) delete charMpConversations[key];
+    });
+    if(possibleKeys.includes(charMpCurrentKey)) {
+        charMpCurrentKey = null;
+        setCharMpArchiveMode(false);
+        document.getElementById('char-mp-convo')?.classList.add('hidden');
+        document.getElementById('char-mp-empty')?.classList.remove('hidden');
+    }
+    if(charDmTarget && possibleKeys.includes(mpKey(String(document.getElementById('charDmSenderSelect')?.value || ''), String(charDmTarget._id)))) {
+        closeCharDmModal();
+    }
+    renderCharMpSidebar();
+    updateCharMpLoadMoreButton(null);
+    updateCharDmModalLoadMoreButton(null);
+    loadArchivedCharMpConvos(true);
 });
 
 // ── Modale nouvelle conversation ──
@@ -1740,7 +1904,7 @@ function startNewCharMpConvoFromModal(othId, othName, othAvatar, othColor, othRo
     if(!myChar) return;
     const otherChar = { _id:othId, name:othName, avatar:othAvatar, color:othColor, role:othRole, ownerId:othOwnerId, ownerUsername:othOwnerUsername };
     const key = mpKey(myCharId, othId);
-    if(!charMpConversations[key]) charMpConversations[key] = { myChar, otherChar, msgs:[], unread:false, lastContent:'', lastDate:null };
+    if(!charMpConversations[key]) charMpConversations[key] = { myChar, otherChar, msgs:[], unread:false, page:0, hasMore:false, total:0, lastContent:'', lastDate:null };
     switchView('char-mp');
     openCharMpConvo(key);
 }
@@ -1767,9 +1931,9 @@ function loadCharDmHistory() {
     const key = mpKey(myCharId, charDmTarget._id);
     if(!charMpConversations[key]) {
         const myChar = myCharacters.find(c=>c._id===myCharId);
-        if(myChar) charMpConversations[key]={ myChar, otherChar:charDmTarget, msgs:[], unread:false, lastContent:'', lastDate:null };
+        if(myChar) charMpConversations[key]={ myChar, otherChar:charDmTarget, msgs:[], unread:false, page:0, hasMore:false, total:0, lastContent:'', lastDate:null };
     }
-    socket.emit('request_char_dm_history', { senderCharId:myCharId, targetCharId:charDmTarget._id });
+    requestCharMpHistoryPage(key, 0);
 }
 
 function sendCharDm() {
@@ -1784,6 +1948,10 @@ function sendCharDm() {
     });
     document.getElementById('charDmInput').value='';
     stopCharMpTyping();
+    requestAnimationFrame(() => {
+        const container = document.getElementById('char-dm-messages');
+        if(container) container.scrollTop = container.scrollHeight;
+    });
 }
 
 function initCharMpView() { bindCharMpInputs(); loadMyCharConvos(); renderCharMpSidebar(); renderArchivedCharMpList(); }
@@ -1836,22 +2004,54 @@ async function sendMessage() {
     txt.value = ''; cancelContext();
 }
 
-socket.on('history_data', (msgs) => { 
+socket.on('history_data', (data) => { 
     if(currentDmTarget) return; 
-    const container = document.getElementById('messages'); container.innerHTML = ""; lastMessageData = { author: null, time: 0 };
+    const msgs = Array.isArray(data?.msgs) ? data.msgs : (Array.isArray(data) ? data : []);
+    const container = document.getElementById('messages');
+    const previousHeight = container ? container.scrollHeight : 0;
+    const previousTop = container ? container.scrollTop : 0;
+    currentChatMessages = Number(data?.page) > 0 ? [...msgs, ...currentChatMessages] : msgs;
+    chatHistoryState = {
+        mode: 'room',
+        key: getChatHistoryKey('room', currentRoomId),
+        page: Number(data?.page) || 0,
+        hasMore: !!data?.hasMore,
+        total: Number(data?.total) || currentChatMessages.length
+    };
     const splitId = firstUnreadMap[currentRoomId];
-    msgs.forEach(msg => { if(splitId && msg._id === splitId) container.innerHTML += `<div class="new-msg-separator">-- Nouveaux --</div>`; displayMessage(msg); });
+    container.innerHTML = "";
+    lastMessageData = { author: null, time: 0 };
+    currentChatMessages.forEach(msg => { if(splitId && msg._id === splitId) container.innerHTML += `<div class="new-msg-separator">-- Nouveaux --</div>`; displayMessage(msg); });
     if(firstUnreadMap[currentRoomId]) delete firstUnreadMap[currentRoomId];
-    scrollToBottom(true); 
-    scheduleScrollToBottom(true);
+    if(Number(data?.page) > 0) {
+        requestAnimationFrame(() => { container.scrollTop = container.scrollHeight - previousHeight + previousTop; });
+    } else {
+        scrollToBottom(true); 
+        scheduleScrollToBottom(true);
+    }
+    updateChatLoadMoreButton();
 });
 socket.on('message_rp', (msg) => { 
     if (msg.ownerId !== PLAYER_ID && notificationsEnabled) notifSound.play().catch(e => {});
-    if(String(msg.roomId) === String(currentRoomId) && !currentDmTarget) { displayMessage(msg); scrollToBottom(); } 
+    if(String(msg.roomId) === String(currentRoomId) && !currentDmTarget) {
+        currentChatMessages.push(msg);
+        displayMessage(msg);
+        scrollToBottom();
+    } 
     else { unreadRooms.add(String(msg.roomId)); if (!firstUnreadMap[msg.roomId]) firstUnreadMap[msg.roomId] = msg._id; updateRoomListUI(); }
 });
-socket.on('message_deleted', (msgId) => { const el = document.getElementById(`msg-${msgId}`); if(el) el.remove(); });
-socket.on('message_updated', (data) => { const el = document.getElementById(`content-${data.id}`); if(el) { el.innerHTML = formatText(data.newContent); const meta = el.closest('.msg-col-content').querySelector('.timestamp'); if(meta && !meta.textContent.includes('(modifié)')) meta.textContent += ' (modifié)'; } });
+socket.on('message_deleted', (msgId) => {
+    currentChatMessages = currentChatMessages.filter(msg => String(msg._id) !== String(msgId));
+    const el = document.getElementById(`msg-${msgId}`); if(el) el.remove();
+});
+socket.on('message_updated', (data) => {
+    const target = currentChatMessages.find(msg => String(msg._id) === String(data.id));
+    if(target) {
+        target.content = data.newContent;
+        target.edited = true;
+    }
+    const el = document.getElementById(`content-${data.id}`); if(el) { el.innerHTML = formatText(data.newContent); const meta = el.closest('.msg-col-content').querySelector('.timestamp'); if(meta && !meta.textContent.includes('(modifié)')) meta.textContent += ' (modifié)'; }
+});
 
 function formatText(text) { 
     if(!text) return ""; 
@@ -2350,6 +2550,9 @@ function openNotificationTarget(notificationId) {
                 },
                 msgs: [],
                 unread: false,
+                page: 0,
+                hasMore: false,
+                total: 0,
                 lastContent: ''
             };
         }
@@ -5493,6 +5696,30 @@ function buildAdminConsoleOverview() {
 let adminUsersCache = [];
 let adminCompaniesCache = [];
 let pendingAdminStockSelection = null;
+function getAdminCharactersCatalog() {
+    return adminUsersCache
+        .flatMap(user => (Array.isArray(user.characters) ? user.characters.map(char => ({ ...char, ownerUsername: user.username || char.ownerUsername || '' })) : []))
+        .filter(char => char && char._id)
+        .sort((left, right) => `${left.name || ''}`.localeCompare(`${right.name || ''}`, 'fr'));
+}
+function populateAdminCompanyOwnerSelect(selectedCharId = '') {
+    const select = document.getElementById('admin-company-owner');
+    if(!select) return;
+    const chars = getAdminCharactersCatalog();
+    select.innerHTML = chars.length
+        ? chars.map(char => `<option value="${char._id}">${escapeHtml(char.name || 'Sans nom')} · ${escapeHtml(char.ownerUsername || 'n/a')}</option>`).join('')
+        : '<option value="">Aucun personnage disponible</option>';
+    if(selectedCharId) select.value = selectedCharId;
+}
+function resetAdminCompanyEditor() {
+    ['admin-company-char-id', 'admin-company-index', 'admin-company-old-name', 'admin-company-name', 'admin-company-role', 'admin-company-hq', 'admin-company-revenue', 'admin-company-logo', 'admin-company-description'].forEach(id => {
+        const field = document.getElementById(id);
+        if(field) field.value = '';
+    });
+    populateAdminCompanyOwnerSelect('');
+    const hint = document.getElementById('admin-company-editor-hint');
+    if(hint) hint.textContent = 'Sélectionne une entreprise dans la liste pour la modifier.';
+}
 function getFilteredAdminUsers(query) {
     const q = (query || '').toLowerCase();
     if(!q) return adminUsersCache;
@@ -5552,6 +5779,7 @@ socket.on('admin_stats_data', (data) => {
 socket.on('admin_users_data', (users) => {
     adminUsersCache = users;
     if(expandedAdminUserId && !users.some(u => u._id === expandedAdminUserId)) expandedAdminUserId = null;
+    populateAdminCompanyOwnerSelect(document.getElementById('admin-company-char-id')?.value || '');
     renderAdminUsers(users);
     buildAdminConsoleOverview();
 });
@@ -5561,6 +5789,7 @@ socket.on('admin_logs_data', (logs) => {
 });
 socket.on('admin_companies_data', (companies) => {
     adminCompaniesCache = companies;
+    populateAdminCompanyOwnerSelect(document.getElementById('admin-company-char-id')?.value || '');
     renderAdminCompanies(companies);
 });
 socket.on('admin_action_result', (data) => {
@@ -5671,6 +5900,7 @@ function filterAdminCompanies(query) {
 function editAdminCompany(charId, companyIndex) {
     const item = adminCompaniesCache.find(entry => String(entry.charId) === String(charId) && Number(entry.companyIndex) === Number(companyIndex));
     if(!item) return;
+    populateAdminCompanyOwnerSelect(item.charId);
     document.getElementById('admin-company-char-id').value = item.charId;
     document.getElementById('admin-company-index').value = item.companyIndex;
     document.getElementById('admin-company-old-name').value = item.company.name || '';
@@ -5683,6 +5913,14 @@ function editAdminCompany(charId, companyIndex) {
     const hint = document.getElementById('admin-company-editor-hint');
     if(hint) hint.textContent = `Édition de ${item.company.name} rattachée à ${item.charName}.`;
     switchAdminTab('companies');
+}
+function transferAdminCompanyOwner() {
+    const fromCharId = document.getElementById('admin-company-char-id')?.value;
+    const toCharId = document.getElementById('admin-company-owner')?.value;
+    const companyIndex = Number(document.getElementById('admin-company-index')?.value);
+    if(!fromCharId || Number.isNaN(companyIndex)) return alert('Sélectionne une entreprise à transférer.');
+    if(!toCharId || String(toCharId) === String(fromCharId)) return alert('Choisis un autre personnage propriétaire.');
+    socket.emit('admin_transfer_company', { fromCharId, toCharId, companyIndex });
 }
 function saveAdminCompanyEdit() {
     const charId = document.getElementById('admin-company-char-id')?.value;

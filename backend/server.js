@@ -112,6 +112,27 @@ async function getRecentMessages(query, limit = 200) {
 	return messages.reverse();
 }
 
+async function getMessagePage(query, page = 0, pageSize = 20) {
+	const safePage = Math.max(0, Number(page) || 0);
+	const safePageSize = Math.max(1, Math.min(100, Number(pageSize) || 20));
+	const [items, total] = await Promise.all([
+		Message.find(query)
+			.sort({ timestamp: -1 })
+			.skip(safePage * safePageSize)
+			.limit(safePageSize)
+			.lean(),
+		Message.countDocuments(query)
+	]);
+
+	return {
+		items: items.reverse(),
+		total,
+		page: safePage,
+		pageSize: safePageSize,
+		hasMore: (safePage + 1) * safePageSize < total
+	};
+}
+
 async function getLatestCharConversations(Model, myCharIds) {
 	if (!myCharIds || !myCharIds.length) return [];
 	const normalizedCharIds = myCharIds.map(String);
@@ -371,6 +392,59 @@ async function getEnrichedStocks() {
 	});
 }
 
+async function syncCharacterStocksWithCompanies(char, previousCompanies = []) {
+	if (!char?._id) return;
+	const charId = String(char._id);
+	const currentCompanies = Array.isArray(char.companies) ? char.companies : [];
+	const currentByName = new Map(
+		currentCompanies
+			.filter(company => company?.name)
+			.map(company => [String(company.name), company])
+	);
+	const stocks = await Stock.find({ charId });
+
+	for (const stock of stocks) {
+		let targetCompany = currentByName.get(String(stock.companyName || ''));
+		if (!targetCompany) {
+			const previousIndex = previousCompanies.findIndex(company => String(company?.name || '') === String(stock.companyName || ''));
+			if (previousIndex >= 0 && currentCompanies[previousIndex]?.name) {
+				targetCompany = currentCompanies[previousIndex];
+			}
+		}
+
+		if (!targetCompany) {
+			await Stock.deleteOne({ _id: stock._id });
+			continue;
+		}
+
+		stock.charName = char.name || stock.charName;
+		stock.charColor = char.color || stock.charColor;
+		stock.companyName = targetCompany.name || stock.companyName;
+		stock.companyLogo = targetCompany.logo || '';
+		stock.description = targetCompany.description || '';
+		stock.headquarters = targetCompany.headquarters || null;
+		stock.updatedAt = new Date();
+		await stock.save();
+	}
+}
+
+async function syncCharacterCompanyFromStock(stock, previousCompanyName = null) {
+	if (!stock?.charId) return null;
+	const char = await Character.findById(stock.charId);
+	if (!char || !Array.isArray(char.companies) || !char.companies.length) return null;
+	const matchNames = [previousCompanyName, stock.companyName].filter(Boolean).map(String);
+	const companyIndex = char.companies.findIndex(company => matchNames.includes(String(company?.name || '')));
+	if (companyIndex < 0) return null;
+
+	char.companies[companyIndex].name = stock.companyName || char.companies[companyIndex].name;
+	char.companies[companyIndex].logo = stock.companyLogo || '';
+	char.companies[companyIndex].description = stock.description || '';
+	char.companies[companyIndex].headquarters = stock.headquarters || null;
+	char.markModified('companies');
+	await char.save();
+	return char;
+}
+
 function broadcastUserList() {
 	const uniqueNames = [...new Set(Object.values(onlineUsers))];
 	io.emit('update_user_list', uniqueNames);
@@ -562,6 +636,7 @@ initSocketHandlers({
 	WikiPage,
 	onlineUsers,
 	getRecentMessages,
+	getMessagePage,
 	getLatestCharConversations,
 	getArchivedCharDmPage,
 	getFeedPosts,
@@ -576,6 +651,8 @@ initSocketHandlers({
 	broadcastAdminLogs,
 	getRecentAdminLogs,
 	applyStockValueChange,
+	syncCharacterStocksWithCompanies,
+	syncCharacterCompanyFromStock,
 	broadcastUserList
 });
 
