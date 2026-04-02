@@ -214,12 +214,31 @@
       socket.emit('char_bio_updated', { charId, bio });
   });
 
+  const normalizeAdminCount = (value) => {
+      if(typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.floor(value));
+      const rawValue = String(value ?? '').trim().toLowerCase();
+      if(!rawValue) return 0;
+      const compact = rawValue.replace(/\s+/g, '');
+      if(/^\d+(?:[.,]\d+)?$/.test(compact)) return Math.max(0, Math.floor(Number(compact.replace(',', '.'))));
+      const factors = { k: 1e3, m: 1e6, b: 1e9 };
+      const matches = compact.match(/\d+(?:[.,]\d+)?[kmb]?/g);
+      if(!matches || matches.join('') !== compact) return 0;
+      const total = matches.reduce((sum, token) => {
+          const match = token.match(/^(\d+(?:[.,]\d+)?)([kmb])?$/);
+          if(!match) return NaN;
+          const amount = Number(match[1].replace(',', '.'));
+          return Number.isFinite(amount) ? sum + (amount * (factors[match[2]] || 1)) : NaN;
+      }, 0);
+      return Number.isFinite(total) ? Math.max(0, Math.floor(total)) : 0;
+  };
+
   // [NOUVEAU] Admin modifie les stats (followers, likes)
   socket.on('admin_edit_followers', async ({ charId, count }) => {
       const user = await getSocketUser(socket);
       if(!user || !user.isAdmin) return;
       const char = await Character.findById(charId);
       if(!char) return;
+      count = normalizeAdminCount(count);
       const current = char.followers.length;
       const diff = count - current;
       if(diff > 0) { for(let i=0;i<diff;i++) char.followers.push('fake_'+Date.now()+'_'+i); }
@@ -242,6 +261,7 @@
       if(!user || !user.isAdmin) return;
       const post = await Post.findById(postId);
       if(!post) return;
+      count = normalizeAdminCount(count);
       const current = post.likes.length;
       const diff = count - current;
       if(diff > 0) { for(let i=0;i<diff;i++) post.likes.push('fake_like_'+Date.now()+'_'+i); }

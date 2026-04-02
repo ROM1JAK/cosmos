@@ -127,6 +127,62 @@ function switchView(view) {
 }
 
 let _reseauTabLoaded = { chat: false, flux: false, mp: false };
+function setBadgeState(elementId, count, options = {}) {
+    const badge = document.getElementById(elementId);
+    if(!badge) return;
+    const safeCount = Math.max(0, Number(count) || 0);
+    if(safeCount > 0) {
+        const label = options.maxLabel && safeCount > options.maxLabel ? `${options.maxLabel}+` : String(safeCount);
+        badge.textContent = label;
+        badge.classList.remove('hidden');
+    } else {
+        badge.textContent = '';
+        badge.classList.add('hidden');
+    }
+}
+function setButtonAlertState(buttonId, isActive, className = 'nav-notify') {
+    const button = document.getElementById(buttonId);
+    if(!button) return;
+    button.classList.toggle(className, !!isActive);
+}
+function getUnreadNotificationCounts() {
+    return notifications.filter(n => !n.isRead).reduce((counts, notification) => {
+        const view = notification.redirectView || 'other';
+        if(view === 'char-mp') counts.mp += 1;
+        else if(view === 'chat' || view === 'dm') counts.chat += 1;
+        else if(view === 'feed') counts.feed += 1;
+        else if(view === 'presse') counts.presse += 1;
+        else if(view === 'profile') counts.profile += 1;
+        else counts.other += 1;
+        return counts;
+    }, { chat: 0, feed: 0, mp: 0, presse: 0, profile: 0, other: 0 });
+}
+function updateDestinationBadges() {
+    const notificationCounts = getUnreadNotificationCounts();
+    const fluxBadge = document.getElementById('reseau-flux-badge');
+    const transientFeedCount = fluxBadge && !fluxBadge.classList.contains('hidden') ? Math.max(parseInt(fluxBadge.textContent, 10) || 0, 1) : 0;
+    const chatCount = unreadRooms.size + unreadDms.size + notificationCounts.chat;
+    const mpCount = Object.values(charMpConversations).filter(conv => conv && conv.unread).length + notificationCounts.mp;
+    const feedCount = Math.max(transientFeedCount, notificationCounts.feed);
+    const reseauCount = chatCount + mpCount + feedCount;
+    const presseCount = notificationCounts.presse;
+
+    setBadgeState('reseau-chat-badge', chatCount, { maxLabel: 99 });
+    setBadgeState('reseau-flux-badge', feedCount, { maxLabel: 99 });
+    setBadgeState('char-mp-badge', mpCount, { maxLabel: 99 });
+    setBadgeState('reseau-nav-badge', reseauCount, { maxLabel: 99 });
+    setBadgeState('presse-badge', presseCount, { maxLabel: 99 });
+
+    document.getElementById('reseau-tab-chat')?.classList.toggle('reseau-tab-alert', chatCount > 0);
+    document.getElementById('reseau-tab-flux')?.classList.toggle('reseau-tab-alert', feedCount > 0);
+    document.getElementById('reseau-tab-mp')?.classList.toggle('reseau-tab-alert', mpCount > 0);
+
+    setButtonAlertState('btn-view-reseau', reseauCount > 0, 'nav-notify');
+    setButtonAlertState('btn-view-reseau', mpCount > 0, 'nav-char-mp-unread');
+    setButtonAlertState('btn-view-presse', presseCount > 0, 'nav-notify');
+    document.getElementById('btn-view-reseau')?.classList.toggle('nav-has-unread', reseauCount > 0);
+    document.getElementById('btn-view-presse')?.classList.toggle('nav-has-unread', presseCount > 0);
+}
 function switchReseauTab(tab, save = true) {
     if(save) localStorage.setItem('last_reseau_tab', tab);
     ['chat','flux','mp'].forEach(t => {
@@ -142,22 +198,15 @@ function switchReseauTab(tab, save = true) {
         else          { panel.classList.add('hidden');    btn.classList.remove('active'); }
     });
     if(tab === 'flux') {
-        const badge = document.getElementById('reseau-flux-badge');
-        if(badge) { badge.classList.add('hidden'); badge.textContent = ''; }
-        const reseauBtn = document.getElementById('btn-view-reseau');
-        if(reseauBtn) reseauBtn.classList.remove('nav-notify');
         localStorage.setItem('last_feed_visit', Date.now().toString());
         if(!_reseauTabLoaded.flux) { loadFeed(); _reseauTabLoaded.flux = true; }
         const fluxPanel = document.getElementById('reseau-panel-flux');
         if(fluxPanel) requestAnimationFrame(() => { fluxPanel.scrollTop = 0; });
     }
     if(tab === 'mp') {
-        const mpBadge = document.getElementById('char-mp-badge');
-        if(mpBadge) { mpBadge.classList.add('hidden'); mpBadge.textContent = ''; }
-        const reseauBtn = document.getElementById('btn-view-reseau');
-        if(reseauBtn) reseauBtn.classList.remove('nav-char-mp-unread');
         if(!_reseauTabLoaded.mp) { initCharMpView(); _reseauTabLoaded.mp = true; }
     }
+    updateDestinationBadges();
 }
 
 function bindPersistentScroll(elementId, storageKey) {
@@ -561,6 +610,7 @@ function joinRoom(roomId) {
     resetCurrentChatHistory('room', currentRoomId);
     socket.emit('request_history', { roomId: currentRoomId, userId: PLAYER_ID, page: 0, pageSize: CHAT_PAGE_SIZE }); cancelContext(); clearStaging();
     scrollToBottom(true); scheduleScrollToBottom(true);
+    updateDestinationBadges();
     if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
     updateRoomListUI(); updateDmListUI(); switchView('chat'); 
 }
@@ -637,6 +687,7 @@ function openDm(target) {
     resetCurrentChatHistory('dm', target);
     cancelContext(); clearStaging(); socket.emit('request_dm_history', { myUsername: USERNAME, targetUsername: target, page: 0, pageSize: CHAT_PAGE_SIZE });
     scrollToBottom(true); scheduleScrollToBottom(true);
+    updateDestinationBadges();
     updateRoomListUI(); updateDmListUI(); switchView('chat'); 
     if(window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); document.getElementById('mobile-overlay').classList.remove('open'); }
 }
@@ -676,6 +727,7 @@ socket.on('receive_dm', (msg) => {
         scrollToBottom();
     } 
     else { unreadDms.add(other); updateDmListUI(); }
+    updateDestinationBadges();
     if (msg.sender !== USERNAME && notificationsEnabled) notifSound.play().catch(e=>{});
 });
 
@@ -1189,8 +1241,13 @@ function adminRemoveCompany(charId, idx) {
 function adminEditFollowers() {
     if(!currentProfileChar || !IS_ADMIN) return;
     const count = prompt(`Nombre d'abonnés actuel : ${currentProfileChar.followers ? currentProfileChar.followers.length : 0}\nNouveau nombre :`, currentProfileChar.followers ? currentProfileChar.followers.length : 0);
-    if(count !== null && !isNaN(parseInt(count))) {
-        socket.emit('admin_edit_followers', { charId: currentProfileChar._id, count: parseInt(count) });
+    if(count !== null) {
+        const parsedCount = parseCompactCountInput(count);
+        if(Number.isFinite(parsedCount)) {
+            socket.emit('admin_edit_followers', { charId: currentProfileChar._id, count: parsedCount });
+        } else {
+            alert('Format invalide. Exemples : 46000, 46k, 1m, 1m 46k');
+        }
     }
 }
 
@@ -1203,7 +1260,11 @@ function openAdminStatsModal(postId, currentLikes) {
 function closeAdminStatsModal() { document.getElementById('admin-stats-modal').classList.add('hidden'); }
 function submitAdminStats() {
     const postId = document.getElementById('adminStatsPostId').value;
-    const likes = parseInt(document.getElementById('adminStatsLikes').value) || 0;
+    const likes = parseCompactCountInput(document.getElementById('adminStatsLikes').value);
+    if(!Number.isFinite(likes)) {
+        alert('Format invalide. Exemples : 12500, 12k, 1m 46k');
+        return;
+    }
     socket.emit('admin_edit_post_likes', { postId, count: likes });
     closeAdminStatsModal();
 }
@@ -1597,6 +1658,7 @@ function openCharMpConvo(key) {
     renderCharMpSidebar();
     renderCharMpThread(key, 'bottom');
     hideCharMpTypingUI();
+    updateDestinationBadges();
     requestCharMpHistoryPage(key, 0);
 }
 function loadMoreCharMpMessages() {
@@ -1829,15 +1891,9 @@ socket.on('receive_char_dm', (msg) => {
     const isOnMp = isCharMpTabActive();
     if(!isOnMp && msg.ownerId !== PLAYER_ID) {
         conv.unread = true;
-        const badge = document.getElementById('char-mp-badge');
-        if(badge) {
-            badge.classList.remove('hidden');
-            badge.textContent = '!';
-        }
-        const reseauBtn = document.getElementById('btn-view-reseau');
-        if(reseauBtn) reseauBtn.classList.add('nav-char-mp-unread');
     }
     renderCharMpSidebar();
+    updateDestinationBadges();
     const modal = document.getElementById('char-dm-modal');
     if(charDmTarget && String(charDmTarget._id) === String(otherCharId) && modal && !modal.classList.contains('hidden')) {
         renderCharDmModalMessages();
@@ -2039,6 +2095,7 @@ socket.on('message_rp', (msg) => {
         scrollToBottom();
     } 
     else { unreadRooms.add(String(msg.roomId)); if (!firstUnreadMap[msg.roomId]) firstUnreadMap[msg.roomId] = msg._id; updateRoomListUI(); }
+    updateDestinationBadges();
 });
 socket.on('message_deleted', (msgId) => {
     currentChatMessages = currentChatMessages.filter(msg => String(msg._id) !== String(msgId));
@@ -2337,6 +2394,7 @@ socket.on('new_post', (post) => {
     renderFeedStream();
     if(currentView === 'accueil') renderAccueil();
     buildAdminConsoleOverview();
+    updateDestinationBadges();
 });
 socket.on('post_updated', (post) => {
     if(post.isArticle) {
@@ -2479,11 +2537,12 @@ function createPostElement(post) {
 }
 
 let notifications = [];
-socket.on('notifications_data', (d) => { notifications = d; updateNotificationBadge(); });
+socket.on('notifications_data', (d) => { notifications = d; updateNotificationBadge(); updateDestinationBadges(); });
 socket.on('notification_dispatch', (n) => {
     if(n.targetOwnerId === PLAYER_ID) {
         notifications.unshift(n);
         updateNotificationBadge();
+        updateDestinationBadges();
         const btn = document.getElementById('btn-notifs');
         if(btn) {
             btn.classList.remove('notif-pop');
@@ -2505,6 +2564,7 @@ function getNotificationMeta(notification) {
     if(notification.redirectView === 'dm') return { ...base, icon: 'fa-envelope', cls: 'notif-dm', label: 'Message privé' };
     if(notification.redirectView === 'chat') return { ...base, icon: 'fa-comments', cls: 'notif-chat', label: 'Chat' };
     if(notification.redirectView === 'feed') return { ...base, icon: 'fa-bullhorn', cls: 'notif-feed', label: 'Feed' };
+    if(notification.redirectView === 'presse') return { ...base, icon: 'fa-newspaper', cls: 'notif-feed', label: 'Presse' };
     if(notification.redirectView === 'profile') return { ...base, icon: 'fa-user', cls: 'notif-profile', label: 'Profil' };
     return base;
 }
@@ -2520,11 +2580,11 @@ function openNotifications() {
         const meta = getNotificationMeta(n);
         const title = n.redirectView === 'char-mp' ? 'Ouvrir la conversation' : 'Ouvrir';
         const time = n.timestamp ? new Date(n.timestamp).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
-        list.innerHTML += `<div class="notif-item ${meta.cls} ${!n.isRead?'unread':''} notif-enter" style="animation-delay:${Math.min(idx * 0.035, 0.24)}s" onclick="openNotificationTarget('${n._id}')" title="${title}"><div class="notif-icon"><i class="fa-solid ${meta.icon}"></i></div><div class="notif-content"><div class="notif-topline"><span class="notif-label">${meta.label}</span><span class="notif-time">${time}</span></div><div><strong>${n.fromName}</strong> ${n.content}</div></div></div>`;
+        list.innerHTML += `<div class="notif-item ${meta.cls} ${!n.isRead?'unread':''} notif-enter" style="animation-delay:${Math.min(idx * 0.035, 0.24)}s" onclick="openNotificationTarget('${n._id}')" title="${title}"><div class="notif-icon"><i class="fa-solid ${meta.icon}"></i></div><div class="notif-content"><div class="notif-topline"><span class="notif-label">${meta.label}</span><span class="notif-time">${time}</span></div><div class="notif-destination-row"><span class="notif-destination-chip">${meta.label}</span></div><div><strong>${n.fromName}</strong> ${n.content}</div></div></div>`;
     });
     bindPersistentScroll('notif-list', 'notif-list-scroll');
     restorePersistentScroll('notif-list-scroll', 'notif-list');
-    socket.emit('mark_notifications_read', PLAYER_ID); notifications.forEach(n=>n.isRead=true); updateNotificationBadge();
+    socket.emit('mark_notifications_read', PLAYER_ID); notifications.forEach(n=>n.isRead=true); updateNotificationBadge(); updateDestinationBadges();
 }
 function closeNotifications() { document.getElementById('notifications-modal').classList.add('hidden'); }
 function openNotificationTarget(notificationId) {
@@ -2575,6 +2635,10 @@ function openNotificationTarget(notificationId) {
         switchView('reseau');
         switchReseauTab('flux');
         if(notification.redirectData?.postId) setTimeout(() => openPostDetail(notification.redirectData.postId), 150);
+        return;
+    }
+    if(notification.redirectView === 'presse') {
+        switchView('presse');
         return;
     }
     if(notification.redirectView === 'profile' && notification.redirectData?.charName) {
@@ -3035,6 +3099,39 @@ function parseArticleContent(content) {
         isHtml = true;
     }
     return { titleText, bodyText, bodyHtml, isHtml };
+}
+
+function getArticleExcerpt(content, maxLength = 180) {
+    const { bodyText, bodyHtml, isHtml } = parseArticleContent(content || '');
+    const sourceText = isHtml ? getPlainTextFromHtml(bodyHtml || '') : String(bodyText || '');
+    const cleanText = sourceText
+        .replace(/\[(?:\/?)(?:H1|H2|SMALL|QUOTE|B|I|U)\]/g, ' ')
+        .replace(/\[SIZE=(small|normal|large|xlarge)\]|\[\/SIZE\]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if(cleanText.length <= maxLength) return cleanText;
+    return `${cleanText.slice(0, maxLength).trimEnd()}…`;
+}
+
+function parseCompactCountInput(value) {
+    if(typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.floor(value));
+    const rawValue = String(value ?? '').trim().toLowerCase();
+    if(!rawValue) return NaN;
+    const compact = rawValue.replace(/\s+/g, '');
+    if(/^\d+(?:[.,]\d+)?$/.test(compact)) {
+        return Math.max(0, Math.floor(Number(compact.replace(',', '.'))));
+    }
+    const factors = { k: 1e3, m: 1e6, b: 1e9 };
+    const matches = compact.match(/\d+(?:[.,]\d+)?[kmb]?/g);
+    if(!matches || matches.join('') !== compact) return NaN;
+    const total = matches.reduce((sum, token) => {
+        const match = token.match(/^(\d+(?:[.,]\d+)?)([kmb])?$/);
+        if(!match) return NaN;
+        const amount = Number(match[1].replace(',', '.'));
+        if(!Number.isFinite(amount)) return NaN;
+        return sum + (amount * (factors[match[2]] || 1));
+    }, 0);
+    return Number.isFinite(total) ? Math.max(0, Math.floor(total)) : NaN;
 }
 
 function formatArticleDateTime(post) {
@@ -3838,16 +3935,13 @@ function renderAccueil() {
     if(headlinePrev) {
         if(presseArticlesCache.length) {
             const headline = presseArticlesCache.find(a => a.isHeadline) || presseArticlesCache[0];
-            const titleMatch = headline.content && headline.content.match(/^\[TITRE\](.*?)\[\/TITRE\]\n?([\s\S]*)/);
-            const titleText = titleMatch ? titleMatch[1] : ((headline.content || '').split(/\s+/).slice(0, 10).join(' ') + (((headline.content || '').split(/\s+/).length > 10) ? '...' : ''));
-            const bodyText = titleMatch ? (titleMatch[2] || '') : (headline.content || '');
-            const cleanBodyText = bodyText.replace(/\[(?:\/?)(?:H1|H2|SMALL|QUOTE|B)\]/g, '');
-            const excerpt = cleanBodyText.trim().slice(0, 180);
+            const { titleText } = parseArticleContent(headline.content || '');
+            const excerpt = getArticleExcerpt(headline.content || '', 180);
             headlinePrev.innerHTML = `
                 <div onclick="switchView('presse')">
                     <span class="accueil-headline-tag"><i class="fa-solid fa-star"></i> La Une</span>
                     <h3 class="accueil-headline-item-title">${escapeHtml(titleText)}</h3>
-                    <p class="accueil-headline-item-excerpt">${escapeHtml(excerpt)}${bodyText.length > 180 ? '…' : ''}</p>
+                    <p class="accueil-headline-item-excerpt">${escapeHtml(excerpt)}</p>
                     <div class="accueil-headline-item-meta">
                         <span class="accueil-headline-item-author"><i class="fa-solid fa-feather-pointed"></i> ${escapeHtml(headline.authorName || 'Redaction')}</span>
                         <span>${escapeHtml(headline.date || '')}</span>
