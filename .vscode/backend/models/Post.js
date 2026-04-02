@@ -5,6 +5,7 @@ const PostSchema = new mongoose.Schema({
     authorCharId: String, authorName: String, authorAvatar: String, authorRole: String, authorColor: String, ownerId: String,
     partyName: String, partyLogo: String,
     likes: [String],
+    likeCountDisplay: { type: String, default: '' },
     comments: [{ id: String, authorCharId: String, authorName: String, authorAvatar: String, content: String, mediaUrl: String, mediaType: String, ownerId: String, date: String }],
     date: String, timestamp: { type: Date, default: Date.now },
     isAnonymous: { type: Boolean, default: false },

@@ -4,6 +4,7 @@ const CharacterSchema = new mongoose.Schema({
     name: String, color: String, avatar: String, role: String,
     ownerId: String, ownerUsername: String, description: String,
     followers: [String],
+    followerCountDisplay: { type: String, default: '' },
     partyName: String, partyLogo: String,
     partyFounder: String, partyCreationDate: String, partyMotto: String, partyDescription: String,
     isOfficial: { type: Boolean, default: false },

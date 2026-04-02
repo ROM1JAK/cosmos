@@ -1,4 +1,4 @@
-﻿module.exports = function initSocketHandlers(deps) {
+module.exports = function initSocketHandlers(deps) {
   const {
     io,
     mongoose,
@@ -214,35 +214,57 @@
       socket.emit('char_bio_updated', { charId, bio });
   });
 
-  const normalizeAdminCount = (value) => {
+  const parseCompactCountValue = (value) => {
       if(typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.floor(value));
       const rawValue = String(value ?? '').trim().toLowerCase();
-      if(!rawValue) return 0;
+      if(!rawValue) return NaN;
       const compact = rawValue.replace(/\s+/g, '');
       if(/^\d+(?:[.,]\d+)?$/.test(compact)) return Math.max(0, Math.floor(Number(compact.replace(',', '.'))));
       const factors = { k: 1e3, m: 1e6, b: 1e9 };
       const matches = compact.match(/\d+(?:[.,]\d+)?[kmb]?/g);
-      if(!matches || matches.join('') !== compact) return 0;
+      if(!matches || matches.join('') !== compact) return NaN;
       const total = matches.reduce((sum, token) => {
           const match = token.match(/^(\d+(?:[.,]\d+)?)([kmb])?$/);
           if(!match) return NaN;
           const amount = Number(match[1].replace(',', '.'));
           return Number.isFinite(amount) ? sum + (amount * (factors[match[2]] || 1)) : NaN;
       }, 0);
-      return Number.isFinite(total) ? Math.max(0, Math.floor(total)) : 0;
+      return Number.isFinite(total) ? Math.max(0, Math.floor(total)) : NaN;
+  };
+
+  const formatCompactCountLabel = (value) => {
+      const safeValue = Math.max(0, Number(value) || 0);
+      if(safeValue < 1000) return String(Math.floor(safeValue));
+      const units = [
+          { suffix: 'B', value: 1e9 },
+          { suffix: 'M', value: 1e6 },
+          { suffix: 'K', value: 1e3 }
+      ];
+      for(const unit of units) {
+          if(safeValue >= unit.value) {
+              const scaled = safeValue / unit.value;
+              const digits = scaled >= 100 ? 0 : 1;
+              return `${scaled.toFixed(digits).replace(/\.0$/, '')}${unit.suffix}`;
+          }
+      }
+      return String(Math.floor(safeValue));
+  };
+
+  const normalizeAdminCountLabel = (value) => {
+      const parsed = parseCompactCountValue(value);
+      if(!Number.isFinite(parsed)) return '';
+      return formatCompactCountLabel(parsed);
   };
 
   // [NOUVEAU] Admin modifie les stats (followers, likes)
-  socket.on('admin_edit_followers', async ({ charId, count }) => {
+  socket.on('admin_edit_followers', async ({ charId, count, countDisplay }) => {
       const user = await getSocketUser(socket);
       if(!user || !user.isAdmin) return;
       const char = await Character.findById(charId);
       if(!char) return;
-      count = normalizeAdminCount(count);
-      const current = char.followers.length;
-      const diff = count - current;
-      if(diff > 0) { for(let i=0;i<diff;i++) char.followers.push('fake_'+Date.now()+'_'+i); }
-      else { char.followers = char.followers.slice(0, count < 0 ? 0 : count); }
+      const storedLabel = normalizeAdminCountLabel(countDisplay ?? count);
+      if(!storedLabel) return;
+      char.followerCountDisplay = storedLabel;
       await char.save();
       socket.emit('char_profile_data', { ...char.toObject(), postCount: await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } }), lastPosts: [] });
       await logAdminAction({
@@ -251,30 +273,28 @@
           targetType: 'character',
           targetId: String(char._id),
           targetLabel: char.name,
-          message: `${user.username} a ajustÃ© les abonnÃ©s de ${char.name} Ã  ${Math.max(0, Number(count) || 0)}`,
+          message: `${user.username} a ajustÃ© les abonnÃ©s de ${char.name} Ã  ${storedLabel}`,
           meta: { redirectView: 'profile', redirectData: { charId: String(char._id) } }
       });
   });
 
-  socket.on('admin_edit_post_likes', async ({ postId, count }) => {
+  socket.on('admin_edit_post_likes', async ({ postId, count, countDisplay }) => {
       const user = await getSocketUser(socket);
       if(!user || !user.isAdmin) return;
       const post = await Post.findById(postId);
       if(!post) return;
-      count = normalizeAdminCount(count);
-      const current = post.likes.length;
-      const diff = count - current;
-      if(diff > 0) { for(let i=0;i<diff;i++) post.likes.push('fake_like_'+Date.now()+'_'+i); }
-      else { post.likes = post.likes.slice(0, count < 0 ? 0 : count); }
+      const storedLabel = normalizeAdminCountLabel(countDisplay ?? count);
+      if(!storedLabel) return;
+      post.likeCountDisplay = storedLabel;
       await post.save();
-      io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));
+	  io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers followerCountDisplay companies') : null));
       await logAdminAction({
           actorUser: user,
           actionType: 'post_likes_edited',
           targetType: post.isArticle ? 'article' : 'post',
           targetId: String(post._id),
           targetLabel: post.authorName || 'Publication',
-          message: `${user.username} a fixÃ© les likes de ${post.authorName || 'une publication'} Ã  ${Math.max(0, Number(count) || 0)}`,
+          message: `${user.username} a fixÃ© les likes de ${post.authorName || 'une publication'} Ã  ${storedLabel}`,
           meta: { redirectView: post.isArticle ? 'presse' : 'feed', redirectData: { postId: String(post._id) } }
       });
   });
@@ -723,7 +743,7 @@
       }
       post.edited = true;
       await post.save();
-      io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));
+    io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers followerCountDisplay companies') : null));
       await broadcastWorldTimeline();
   });
 
@@ -735,7 +755,7 @@
       if(index === -1) { post.likes.push(charId); action = 'like'; } 
       else { post.likes.splice(index, 1); }
       await post.save();
-    io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));
+    io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers followerCountDisplay companies') : null));
       if (action === 'like' && post.ownerId) {
            const likerChar = await Character.findById(charId);
            await createNotification(post.ownerId, 'like', `(${likerChar ? likerChar.name : "Inconnu"}) a aimÃ© votre post`, "Feed", 'feed', { postId: String(post._id) });
@@ -748,7 +768,7 @@
       comment.id = new mongoose.Types.ObjectId().toString();
       post.comments.push(comment);
       await post.save();
-      io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));
+    io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers followerCountDisplay companies') : null));
     if (post.ownerId !== comment.ownerId) await createNotification(post.ownerId, 'reply', `(${comment.authorName}) a commentÃ© votre post`, "Feed", 'feed', { postId: String(post._id) });
   });
   socket.on('delete_comment', async ({ postId, commentId, ownerId }) => {
@@ -761,7 +781,7 @@
       if(comment.ownerId !== ownerId && post.ownerId !== ownerId && !isAdmin) return;
       post.comments = post.comments.filter(c => c.id !== commentId);
       await post.save();
-      io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));
+    io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers followerCountDisplay companies') : null));
       if(isAdmin && requester) {
           await logAdminAction({
               actorUser: requester,
@@ -794,7 +814,7 @@
           post.poll.options[optionIndex].voters.push(fakeId);
       }
       await post.save();
-      io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers companies') : null));
+    io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers followerCountDisplay companies') : null));
   });
   
   socket.on('mark_notifications_read', async (userId) => { await Notification.updateMany({ targetOwnerId: userId, isRead: false }, { isRead: true }); socket.emit('notifications_read_confirmed'); });

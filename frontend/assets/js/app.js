@@ -1035,7 +1035,7 @@ socket.on('char_profile_data', (char) => {
     }
 
     // Stats
-    const followersCount = char.followers ? char.followers.length : 0;
+    const followersCount = getFollowerCountLabel(char);
     document.getElementById('profileFollowersCount').textContent = followersCount;
     document.getElementById('profilePostCount').textContent = char.postCount || 0;
 
@@ -1145,9 +1145,9 @@ socket.on('char_profile_data', (char) => {
             mini.innerHTML = `
                 <div class="profile-mini-post-content">${formatText(post.content || '')}</div>
                 <div class="profile-mini-post-meta">
-                    <span><i class="fa-solid fa-heart" style="color:var(--danger);"></i> ${post.likes ? post.likes.length : 0}</span>
+                    <span><i class="fa-solid fa-heart" style="color:var(--danger);"></i> ${getPostLikeCountLabel(post)}</span>
                     <span style="color:var(--text-muted);">${post.date || ''}</span>
-                    ${IS_ADMIN ? `<button class="admin-stat-btn" onclick="openAdminStatsModal('${post._id}', ${post.likes ? post.likes.length : 0})"><i class="fa-solid fa-pen"></i></button>` : ''}
+                    ${IS_ADMIN ? `<button class="admin-stat-btn" onclick="openAdminStatsModal('${post._id}', '${getPostLikeCountLabel(post).replace(/'/g, "\\'")}')"><i class="fa-solid fa-pen"></i></button>` : ''}
                 </div>`;
             activityFeed.appendChild(mini);
         });
@@ -1160,7 +1160,7 @@ socket.on('char_profile_updated', (char) => {
     if(document.getElementById('profile-slide-panel').classList.contains('open') && document.getElementById('profileName').textContent === char.name) {
         const isSubbed = char.followers && currentFeedCharId && char.followers.includes(currentFeedCharId);
         updateSubButton(document.getElementById('btn-sub-profile'), isSubbed); 
-        document.getElementById('profileFollowersCount').textContent = `${char.followers.length}`;
+        document.getElementById('profileFollowersCount').textContent = getFollowerCountLabel(char);
     }
 });
 function updateSubButton(btn, subbed) { btn.innerHTML = subbed ? '<i class="fa-solid fa-check"></i> Abonné' : '<i class="fa-solid fa-rss"></i> S\'abonner'; btn.style.color = subbed ? '#23a559' : 'white'; }
@@ -1240,32 +1240,43 @@ function adminRemoveCompany(charId, idx) {
 // [NOUVEAU] Admin — modifier stats abonnés
 function adminEditFollowers() {
     if(!currentProfileChar || !IS_ADMIN) return;
-    const count = prompt(`Nombre d'abonnés actuel : ${currentProfileChar.followers ? currentProfileChar.followers.length : 0}\nNouveau nombre :`, currentProfileChar.followers ? currentProfileChar.followers.length : 0);
-    if(count !== null) {
-        const parsedCount = parseCompactCountInput(count);
-        if(Number.isFinite(parsedCount)) {
-            socket.emit('admin_edit_followers', { charId: currentProfileChar._id, count: parsedCount });
-        } else {
-            alert('Format invalide. Exemples : 46000, 46k, 1m, 1m 46k');
-        }
-    }
+    document.getElementById('adminStatsMode').value = 'followers';
+    document.getElementById('adminStatsPostId').value = '';
+    document.getElementById('adminStatsCharId').value = currentProfileChar._id;
+    document.getElementById('adminStatsTitle').textContent = '⚙️ Modifier les abonnés';
+    document.getElementById('adminStatsLabel').textContent = 'Nombre d’abonnés';
+    document.getElementById('adminStatsLikes').value = getFollowerCountLabel(currentProfileChar);
+    document.getElementById('admin-stats-modal').classList.remove('hidden');
 }
 
 // [NOUVEAU] Admin — modale stats post (likes)
 function openAdminStatsModal(postId, currentLikes) {
+    document.getElementById('adminStatsMode').value = 'likes';
     document.getElementById('adminStatsPostId').value = postId;
+    document.getElementById('adminStatsCharId').value = '';
+    document.getElementById('adminStatsTitle').textContent = '⚙️ Modifier les likes';
+    document.getElementById('adminStatsLabel').textContent = 'Nombre de likes';
     document.getElementById('adminStatsLikes').value = currentLikes;
     document.getElementById('admin-stats-modal').classList.remove('hidden');
 }
-function closeAdminStatsModal() { document.getElementById('admin-stats-modal').classList.add('hidden'); }
+function closeAdminStatsModal() {
+    document.getElementById('admin-stats-modal').classList.add('hidden');
+    document.getElementById('adminStatsMode').value = '';
+    document.getElementById('adminStatsPostId').value = '';
+    document.getElementById('adminStatsCharId').value = '';
+}
 function submitAdminStats() {
-    const postId = document.getElementById('adminStatsPostId').value;
-    const likes = parseCompactCountInput(document.getElementById('adminStatsLikes').value);
-    if(!Number.isFinite(likes)) {
+    const mode = document.getElementById('adminStatsMode').value;
+    const countDisplay = normalizeCompactCountStorage(document.getElementById('adminStatsLikes').value);
+    if(!countDisplay) {
         alert('Format invalide. Exemples : 12500, 12k, 1m 46k');
         return;
     }
-    socket.emit('admin_edit_post_likes', { postId, count: likes });
+    if(mode === 'followers') {
+        socket.emit('admin_edit_followers', { charId: document.getElementById('adminStatsCharId').value, countDisplay });
+    } else {
+        socket.emit('admin_edit_post_likes', { postId: document.getElementById('adminStatsPostId').value, countDisplay });
+    }
     closeAdminStatsModal();
 }
 
@@ -2408,7 +2419,7 @@ socket.on('post_updated', (post) => {
     }
     if(currentDetailPostId === post._id) {
         document.getElementById('post-detail-comments-list').innerHTML = generateCommentsHTML(post.comments, post._id);
-        const likeBtn = document.querySelector('#post-detail-content .action-item'); if(likeBtn) likeBtn.innerHTML = `<i class="fa-solid fa-heart"></i> ${post.likes.length}`;
+        const likeBtn = document.querySelector('#post-detail-content .action-item'); if(likeBtn) likeBtn.innerHTML = `<i class="fa-solid fa-heart"></i> ${getPostLikeCountLabel(post)}`;
     }
     if(currentView === 'accueil') renderAccueil();
     buildAdminConsoleOverview();
@@ -2527,9 +2538,9 @@ function createPostElement(post) {
             ${mediaHTML}
             ${pollHTML}
             <div class="post-actions">
-                <button class="action-item ${isLiked?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
+                <button class="action-item ${isLiked?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${getPostLikeCountLabel(post)}</button>
                 <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
-                ${IS_ADMIN ? `<button class="action-item" onclick="event.stopPropagation(); openAdminStatsModal('${post._id}', ${post.likes.length})" title="Admin: modifier likes" style="color:var(--warning);"><i class="fa-solid fa-pen"></i></button>` : ''}
+                ${IS_ADMIN ? `<button class="action-item" onclick="event.stopPropagation(); openAdminStatsModal('${post._id}', '${getPostLikeCountLabel(post).replace(/'/g, "\\'")}')" title="Admin: modifier likes" style="color:var(--warning);"><i class="fa-solid fa-pen"></i></button>` : ''}
             </div>
         ${bodyWrapperEnd}
         <div class="comments-list hidden">${generateCommentsHTML(post.comments, post._id)}</div>`;
@@ -3134,6 +3145,52 @@ function parseCompactCountInput(value) {
     return Number.isFinite(total) ? Math.max(0, Math.floor(total)) : NaN;
 }
 
+function formatCompactCountLabel(value) {
+    const safeValue = Math.max(0, Number(value) || 0);
+    if(safeValue < 1000) return String(Math.floor(safeValue));
+    const units = [
+        { suffix: 'B', value: 1e9 },
+        { suffix: 'M', value: 1e6 },
+        { suffix: 'K', value: 1e3 }
+    ];
+    for(const unit of units) {
+        if(safeValue >= unit.value) {
+            const scaled = safeValue / unit.value;
+            const digits = scaled >= 100 ? 0 : 1;
+            return `${scaled.toFixed(digits).replace(/\.0$/, '')}${unit.suffix}`;
+        }
+    }
+    return String(Math.floor(safeValue));
+}
+
+function normalizeCompactCountStorage(value) {
+    const parsed = parseCompactCountInput(value);
+    return Number.isFinite(parsed) ? formatCompactCountLabel(parsed) : '';
+}
+
+function getDisplayCountValue(rawDisplay, fallbackValue = 0) {
+    const parsed = parseCompactCountInput(rawDisplay);
+    return Number.isFinite(parsed) ? parsed : Math.max(0, Number(fallbackValue) || 0);
+}
+
+function getDisplayCountLabel(rawDisplay, fallbackValue = 0) {
+    const stored = String(rawDisplay || '').trim();
+    if(stored) return stored;
+    return formatCompactCountLabel(fallbackValue);
+}
+
+function getFollowerCountLabel(char) {
+    return getDisplayCountLabel(char?.followerCountDisplay, char?.followers?.length || 0);
+}
+
+function getPostLikeCountLabel(post) {
+    return getDisplayCountLabel(post?.likeCountDisplay, post?.likes?.length || 0);
+}
+
+function getPostLikeCountValue(post) {
+    return getDisplayCountValue(post?.likeCountDisplay, post?.likes?.length || 0);
+}
+
 function formatArticleDateTime(post) {
     const source = post.timestamp || post.date;
     const d = source ? new Date(source) : new Date();
@@ -3455,8 +3512,8 @@ function buildArticleCardMarkup(post) {
                 </div>
             </div>
             <div class="article-actions">
-                <button class="action-item ${post.likes.includes(currentFeedCharId)?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${post.likes.length}</button>
-                ${IS_ADMIN ? `<button class="action-item" onclick="event.stopPropagation(); openAdminStatsModal('${post._id}', ${post.likes.length})" title="Admin: modifier likes" style="color:var(--warning);"><i class="fa-solid fa-pen"></i></button>` : ''}
+                <button class="action-item ${post.likes.includes(currentFeedCharId)?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${getPostLikeCountLabel(post)}</button>
+                ${IS_ADMIN ? `<button class="action-item" onclick="event.stopPropagation(); openAdminStatsModal('${post._id}', '${getPostLikeCountLabel(post).replace(/'/g, "\\'")}')" title="Admin: modifier likes" style="color:var(--warning);"><i class="fa-solid fa-pen"></i></button>` : ''}
             </div>
         </div>`;
 }
@@ -3876,7 +3933,7 @@ function renderMesPersos() {
                 </div>
             </div>
             <div class="mp-char-stats">
-                <div class="mp-stat"><span>${char.followers ? char.followers.length : 0}</span><span>Abonnés</span></div>
+                <div class="mp-stat"><span>${getFollowerCountLabel(char)}</span><span>Abonnés</span></div>
                 <div class="mp-stat"><span>${char.capital ? formatStockValue(char.capital) : '0'}</span><span>Capital</span></div>
                 <div class="mp-stat"><span>${companies.length}</span><span>Entreprise${companies.length !== 1 ? 's' : ''}</span></div>
             </div>
@@ -5692,7 +5749,7 @@ function buildAdminConsoleOverview() {
         .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
         .slice(0, 6);
     const flaggedPosts = [...feedPostsCache]
-        .filter(post => post && (post.isBreakingNews || post.isAnonymous || (post.comments || []).length >= 3 || (post.likes || []).length >= 8))
+        .filter(post => post && (post.isBreakingNews || post.isAnonymous || (post.comments || []).length >= 3 || getPostLikeCountValue(post) >= 8))
         .sort((a, b) => new Date(b.timestamp || objectIdToDate(b._id) || 0) - new Date(a.timestamp || objectIdToDate(a._id) || 0))
         .slice(0, 6);
     const stockMoves = [...stocksData]
@@ -5754,7 +5811,7 @@ function buildAdminConsoleOverview() {
             <div class="admin-console-icon"><i class="fa-solid ${post.isBreakingNews ? 'fa-burst' : post.isAnonymous ? 'fa-user-secret' : 'fa-comment-dots'}"></i></div>
             <div class="admin-console-body">
                 <div class="admin-console-text">${escapeHtml(post.authorName || 'Auteur inconnu')} • ${escapeHtml((post.content || '').slice(0, 88) || 'Post sans texte')}${(post.content || '').length > 88 ? '…' : ''}</div>
-                <div class="admin-console-meta">${(post.comments || []).length} commentaires • ${(post.likes || []).length} likes</div>
+                <div class="admin-console-meta">${(post.comments || []).length} commentaires • ${getPostLikeCountLabel(post)} likes</div>
             </div>
         </div>`), 'Aucun post à surveiller.');
 

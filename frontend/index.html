@@ -246,10 +246,13 @@
     <!-- [NOUVEAU] Modale Admin — Modifier stats post -->
     <div id="admin-stats-modal" class="modal-overlay hidden" onclick="closeAdminStatsModal()">
         <div class="modal-box" style="max-width:320px;" onclick="event.stopPropagation()">
-            <h3 style="color:white; margin:0 0 16px;">⚙️ Modifier les stats</h3>
+            <h3 id="adminStatsTitle" style="color:white; margin:0 0 16px;">⚙️ Modifier les stats</h3>
+            <input type="hidden" id="adminStatsMode">
             <input type="hidden" id="adminStatsPostId">
-            <label style="font-size:0.8rem; color:var(--text-muted); display:block; margin-bottom:4px;">Nombre de Likes</label>
+            <input type="hidden" id="adminStatsCharId">
+            <label id="adminStatsLabel" style="font-size:0.8rem; color:var(--text-muted); display:block; margin-bottom:4px;">Nombre de Likes</label>
             <input type="text" id="adminStatsLikes" class="modal-input" placeholder="0, 46k, 1m 46k">
+            <div id="adminStatsHint" style="font-size:0.74rem; color:var(--text-muted); margin-top:-6px; margin-bottom:10px;">Les valeurs de 1000 et plus sont stockées en abrégé, comme 46K.</div>
             <div style="display:flex; gap:8px; margin-top:12px;">
                 <button class="btn-primary" onclick="submitAdminStats()">Appliquer</button>
                 <button class="btn-secondary" onclick="closeAdminStatsModal()">Annuler</button>
