@@ -3,6 +3,10 @@
         "/^node --check \"backend/socketHandler\\.js\"$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^node -e \"require\\('\\./server'\\); console\\.log\\('root-ok'\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

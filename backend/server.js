@@ -1,4 +1,4 @@
-const express = require('express');
+module.exports = require('../.vscode/backend/server');const express = require('express');
 const path = require('path');
 const app = express();
 const http = require('http').createServer(app);
@@ -23,7 +23,7 @@ const io = require('socket.io')(http, {
 	}
 });
 
-app.use(express.static(path.join(__dirname, '../../frontend')));
+app.use(express.static(path.join(__dirname, '../frontend')));
 app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
 app.get('/api/ping', (_req, res) => {
 	res.status(200).json({
@@ -492,54 +492,6 @@ function getObjectDate(value) {
 	return new Date();
 }
 
-function parseCompactCountValue(value) {
-	if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.floor(value));
-	const rawValue = String(value || '').trim().toLowerCase();
-	if (!rawValue) return NaN;
-	const compact = rawValue.replace(/\s+/g, '');
-	if (/^\d+(?:[.,]\d+)?$/.test(compact)) return Math.max(0, Math.floor(Number(compact.replace(',', '.'))));
-	const factors = { k: 1e3, m: 1e6, b: 1e9 };
-	const matches = compact.match(/\d+(?:[.,]\d+)?[kmb]?/g);
-	if (!matches || matches.join('') !== compact) return NaN;
-	const total = matches.reduce((sum, token) => {
-		const match = token.match(/^(\d+(?:[.,]\d+)?)([kmb])?$/);
-		if (!match) return NaN;
-		const amount = Number(match[1].replace(',', '.'));
-		if (!Number.isFinite(amount)) return NaN;
-		return sum + (amount * (factors[match[2]] || 1));
-	}, 0);
-	return Number.isFinite(total) ? Math.max(0, Math.floor(total)) : NaN;
-}
-
-function formatCompactCountLabel(value) {
-	const safeValue = Math.max(0, Number(value) || 0);
-	if (safeValue < 1000) return String(Math.floor(safeValue));
-	const units = [
-		{ suffix: 'B', value: 1e9 },
-		{ suffix: 'M', value: 1e6 },
-		{ suffix: 'K', value: 1e3 }
-	];
-	for (const unit of units) {
-		if (safeValue >= unit.value) {
-			const scaled = safeValue / unit.value;
-			const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 1;
-			return `${scaled.toFixed(digits).replace(/\.0$/, '')}${unit.suffix}`;
-		}
-	}
-	return String(Math.floor(safeValue));
-}
-
-function getStoredCountLabel(rawValue, fallbackValue = 0) {
-	const stored = String(rawValue || '').trim();
-	if (stored) return stored;
-	return formatCompactCountLabel(fallbackValue);
-}
-
-function getStoredCountValue(rawValue, fallbackValue = 0) {
-	const parsed = parseCompactCountValue(rawValue);
-	return Number.isFinite(parsed) ? parsed : Math.max(0, Number(fallbackValue) || 0);
-}
-
 function buildDisplayPost(post, authorChar = null) {
 	const displayPost = post.toObject ? post.toObject() : { ...post };
 	if (displayPost.isAnonymous) {
@@ -549,11 +501,6 @@ function buildDisplayPost(post, authorChar = null) {
 	}
 	displayPost.authorIsOfficial = !!authorChar?.isOfficial;
 	displayPost.authorFollowers = Array.isArray(authorChar?.followers) ? authorChar.followers : [];
-	displayPost.authorFollowerCountDisplay = authorChar?.followerCountDisplay || '';
-	displayPost.authorFollowerCountLabel = getStoredCountLabel(authorChar?.followerCountDisplay, displayPost.authorFollowers.length);
-	displayPost.authorFollowerCountValue = getStoredCountValue(authorChar?.followerCountDisplay, displayPost.authorFollowers.length);
-	displayPost.likeCountLabel = getStoredCountLabel(displayPost.likeCountDisplay, Array.isArray(displayPost.likes) ? displayPost.likes.length : 0);
-	displayPost.likeCountValue = getStoredCountValue(displayPost.likeCountDisplay, Array.isArray(displayPost.likes) ? displayPost.likes.length : 0);
 	displayPost.authorCompanyNames = Array.isArray(authorChar?.companies) ? authorChar.companies.map(company => company.name).filter(Boolean) : [];
 	return displayPost;
 }
@@ -562,7 +509,7 @@ async function enrichPostsForDisplay(posts) {
 	const authorIds = [...new Set(posts.map(post => String(post.authorCharId || '')).filter(Boolean))];
 	const authorMap = new Map();
 	if (authorIds.length) {
-		const authors = await Character.find({ _id: { $in: authorIds } }).select('_id isOfficial followers followerCountDisplay companies');
+		const authors = await Character.find({ _id: { $in: authorIds } }).select('_id isOfficial followers companies');
 		authors.forEach(author => authorMap.set(String(author._id), author));
 	}
 	return posts.map(post => buildDisplayPost(post, authorMap.get(String(post.authorCharId || ''))));
