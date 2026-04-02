@@ -256,6 +256,21 @@ module.exports = function initSocketHandlers(deps) {
       return formatCompactCountLabel(parsed);
   };
 
+  const getValidFollowerIds = (followers) => {
+      if(!Array.isArray(followers)) return [];
+      return followers.filter(followerId => mongoose.Types.ObjectId.isValid(followerId));
+  };
+
+  const cleanupCharacterFollowers = async (char) => {
+      if(!char || !Array.isArray(char.followers)) return [];
+      const validFollowerIds = getValidFollowerIds(char.followers);
+      if(validFollowerIds.length !== char.followers.length) {
+          char.followers = validFollowerIds;
+          await char.save();
+      }
+      return validFollowerIds;
+  };
+
   // [NOUVEAU] Admin modifie les stats (followers, likes)
   socket.on('admin_edit_followers', async ({ charId, count, countDisplay }) => {
       const user = await getSocketUser(socket);
@@ -545,6 +560,7 @@ module.exports = function initSocketHandlers(deps) {
       const targetChar = await Character.findById(targetCharId);
       const followerChar = await Character.findById(followerCharId);
       if(!targetChar || !followerChar || String(followerChar._id) === String(targetChar._id)) return;
+      targetChar.followers = getValidFollowerIds(targetChar.followers);
       const index = targetChar.followers.indexOf(followerCharId);
       if(index === -1) {
           targetChar.followers.push(followerCharId);
@@ -560,7 +576,8 @@ module.exports = function initSocketHandlers(deps) {
 
   socket.on('get_followers_list', async (targetCharId) => {
       const char = await Character.findById(targetCharId);
-      if(char && char.followers.length > 0) socket.emit('followers_list_data', await Character.find({ _id: { $in: char.followers } }).select('name avatar role ownerUsername'));
+      const validFollowerIds = await cleanupCharacterFollowers(char);
+      if(char && validFollowerIds.length > 0) socket.emit('followers_list_data', await Character.find({ _id: { $in: validFollowerIds } }).select('name avatar role ownerUsername'));
       else socket.emit('followers_list_data', []);
   });
 
@@ -669,8 +686,9 @@ module.exports = function initSocketHandlers(deps) {
           await broadcastWorldTimeline();
       }
       
-      if(authorChar && authorChar.followers.length > 0) {
-          const followersChars = await Character.find({ _id: { $in: authorChar.followers } });
+      const validFollowerIds = await cleanupCharacterFollowers(authorChar);
+      if(authorChar && validFollowerIds.length > 0) {
+          const followersChars = await Character.find({ _id: { $in: validFollowerIds } });
           const notifiedOwners = new Set();
           for(const f of followersChars) {
               if(!notifiedOwners.has(f.ownerId)) {

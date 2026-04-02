@@ -7,6 +7,10 @@
         "/^node -e \"require\\('\\./server'\\); console\\.log\\('root-ok'\\)\"$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^node --check \"\\.vscode/backend/socketHandler\\.js\"$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }
