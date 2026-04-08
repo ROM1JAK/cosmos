@@ -74,6 +74,8 @@ const MESSAGE_ARCHIVE_AFTER_DAYS = Math.max(1, Number(process.env.MESSAGE_ARCHIV
 const MESSAGE_ARCHIVE_BATCH_SIZE = Math.max(100, Number(process.env.MESSAGE_ARCHIVE_BATCH_SIZE || 500));
 const MESSAGE_ARCHIVE_INTERVAL_MS = Math.max(60 * 60 * 1000, Number(process.env.MESSAGE_ARCHIVE_INTERVAL_MS || 6 * 60 * 60 * 1000));
 const MESSAGE_ARCHIVE_PAGE_SIZE = Math.max(20, Number(process.env.MESSAGE_ARCHIVE_PAGE_SIZE || 50));
+const FEED_POST_MAX_VISIBLE = 10;
+const FEED_POST_MAX_AGE_DAYS = 7;
 
 const CITIES_SEED = [
 	{ name: 'Aguerta', archipel: 'Archipel Pacifique' },
@@ -569,7 +571,12 @@ async function enrichPostsForDisplay(posts) {
 }
 
 async function getFeedPosts(limit = 50) {
-	const posts = await Post.find({ isArticle: { $ne: true } }).sort({ timestamp: -1 }).limit(limit);
+	const safeLimit = Math.max(1, Math.min(FEED_POST_MAX_VISIBLE, Number(limit) || FEED_POST_MAX_VISIBLE));
+	const cutoffDate = new Date(Date.now() - (FEED_POST_MAX_AGE_DAYS * 24 * 60 * 60 * 1000));
+	const posts = await Post.find({
+		isArticle: { $ne: true },
+		timestamp: { $gte: cutoffDate }
+	}).sort({ timestamp: -1 }).limit(safeLimit);
 	return enrichPostsForDisplay(posts);
 }
 

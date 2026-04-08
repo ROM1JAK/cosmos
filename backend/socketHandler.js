@@ -43,10 +43,15 @@ module.exports = function initSocketHandlers(deps) {
     broadcastUserList
   } = deps;
 
+        async function getCharacterProfilePosts(charId) {
+            if(!charId) return [];
+            return Post.find({ authorCharId: charId, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 });
+        }
+
     async function emitCharacterProfileData(char) {
             if(!char?._id) return;
             const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
-            const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
+            const lastPosts = await getCharacterProfilePosts(char._id);
             const charData = char.toObject();
             charData.postCount = postCount;
             charData.lastPosts = lastPosts;
@@ -122,7 +127,7 @@ module.exports = function initSocketHandlers(deps) {
       const char = await Character.findOne({ name: charName }).sort({_id: -1});
       if(char) {
           const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
-          const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
+          const lastPosts = await getCharacterProfilePosts(char._id);
           const charData = char.toObject(); 
           charData.postCount = postCount;
           charData.lastPosts = lastPosts;
@@ -281,7 +286,7 @@ module.exports = function initSocketHandlers(deps) {
       if(!storedLabel) return;
       char.followerCountDisplay = storedLabel;
       await char.save();
-      socket.emit('char_profile_data', { ...char.toObject(), postCount: await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } }), lastPosts: [] });
+	  socket.emit('char_profile_data', { ...char.toObject(), postCount: await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } }), lastPosts: await getCharacterProfilePosts(char._id) });
       await logAdminAction({
           actorUser: user,
           actionType: 'followers_edited',

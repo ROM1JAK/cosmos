@@ -27,6 +27,8 @@ let audioChunks = [];
 let isRecording = false;
 let allOnlineUsers = [];
 let feedPostsCache = [];
+const FEED_VISIBLE_POST_LIMIT = 10;
+const FEED_VISIBLE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 let eventsCache = [];
 let presseArticlesCache = [];
 let worldTimelineCache = [];
@@ -290,6 +292,19 @@ function isCompanyRelatedPost(post) {
     return companyNames.some(name => new RegExp(`(^|[^\\wÀ-ÿ])${escapeRegExp(name)}(?=$|[^\\wÀ-ÿ])`, 'i').test(haystack));
 }
 
+function getFeedPostTimestampValue(post) {
+    const timestamp = new Date(post?.timestamp || post?.date || 0).getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function normalizeFeedPosts(posts) {
+    const cutoff = Date.now() - FEED_VISIBLE_WINDOW_MS;
+    return (Array.isArray(posts) ? posts : [])
+        .filter(post => getFeedPostTimestampValue(post) >= cutoff)
+        .sort((left, right) => getFeedPostTimestampValue(right) - getFeedPostTimestampValue(left))
+        .slice(0, FEED_VISIBLE_POST_LIMIT);
+}
+
 function getFilteredFeedPosts() {
     return feedPostsCache.filter(post => {
         if(feedFilters.official && !post.authorIsOfficial) return false;
@@ -320,7 +335,7 @@ function syncFeedFiltersUI() {
         };
         meta.textContent = active.length
             ? `${filteredCount} post(s) • filtres: ${active.map(name => labels[name]).join(', ')}`
-            : 'Tous les posts du réseau';
+            : '10 derniers posts des 7 derniers jours';
     }
 }
 
@@ -2388,7 +2403,7 @@ function clearCommentStaging() { pendingCommentAttachment = null; document.getEl
 function deleteComment(postId, commentId) { if(confirm("Supprimer ?")) socket.emit('delete_comment', { postId, commentId, ownerId: PLAYER_ID }); }
 
 socket.on('feed_data', (posts) => {
-    feedPostsCache = posts;
+    feedPostsCache = normalizeFeedPosts(posts);
     renderFeedStream();
     if(currentView === 'accueil') renderAccueil();
     buildAdminConsoleOverview();
@@ -2401,7 +2416,7 @@ socket.on('new_post', (post) => {
         const btn = document.getElementById('btn-view-reseau');
         if(btn) btn.classList.add('nav-notify');
     }
-    feedPostsCache = [post, ...feedPostsCache.filter(item => String(item._id) !== String(post._id))].slice(0, 50);
+    feedPostsCache = normalizeFeedPosts([post, ...feedPostsCache.filter(item => String(item._id) !== String(post._id))]);
     renderFeedStream();
     if(currentView === 'accueil') renderAccueil();
     buildAdminConsoleOverview();
