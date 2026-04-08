@@ -219,10 +219,6 @@ function toggleReseauRail(forceExpanded) {
     syncReseauRailUI();
 }
 
-function shouldAutoCloseReseauRailOnMobile() {
-    return typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
-}
-
 function switchReseauTab(tab, save = true) {
     if(save) localStorage.setItem('last_reseau_tab', tab);
     ['chat','flux','mp'].forEach(t => {
@@ -246,7 +242,7 @@ function switchReseauTab(tab, save = true) {
     if(tab === 'mp') {
         if(!_reseauTabLoaded.mp) { initCharMpView(); _reseauTabLoaded.mp = true; }
     }
-    if(save && shouldAutoCloseReseauRailOnMobile()) {
+    if(save) {
         toggleReseauRail(false);
     }
     updateDestinationBadges();
