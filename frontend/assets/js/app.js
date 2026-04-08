@@ -193,20 +193,23 @@ function updateDestinationBadges() {
 function syncReseauRailUI() {
     const reseauView = document.getElementById('view-reseau');
     const toggleButton = document.getElementById('reseau-tab-toggle');
-    if(!reseauView || !toggleButton) return;
+    const railHandle = document.getElementById('reseau-rail-handle');
+    if(!reseauView || !toggleButton || !railHandle) return;
 
     reseauView.classList.toggle('reseau-rail-expanded', isReseauRailExpanded);
     reseauView.classList.toggle('reseau-rail-collapsed', !isReseauRailExpanded);
     toggleButton.setAttribute('aria-expanded', String(isReseauRailExpanded));
-    toggleButton.title = isReseauRailExpanded ? 'Réduire les onglets' : 'Déplier les onglets';
+    toggleButton.title = 'Masquer les onglets réseau';
+    railHandle.setAttribute('aria-expanded', String(isReseauRailExpanded));
+    railHandle.title = isReseauRailExpanded ? 'Masquer les onglets réseau' : 'Afficher les onglets réseau';
 
     const toggleLabel = toggleButton.querySelector('.reseau-tab-label');
-    if(toggleLabel) toggleLabel.textContent = isReseauRailExpanded ? ' Réduire' : ' Onglets';
+    if(toggleLabel) toggleLabel.textContent = 'Fermer';
 
-    const toggleIcon = toggleButton.querySelector('i');
-    if(toggleIcon) {
-        toggleIcon.classList.toggle('fa-angles-left', !isReseauRailExpanded);
-        toggleIcon.classList.toggle('fa-angles-right', isReseauRailExpanded);
+    const handleIcon = railHandle.querySelector('i');
+    if(handleIcon) {
+        handleIcon.classList.toggle('fa-chevron-right', !isReseauRailExpanded);
+        handleIcon.classList.toggle('fa-chevron-left', isReseauRailExpanded);
     }
 }
 
@@ -214,6 +217,10 @@ function toggleReseauRail(forceExpanded) {
     isReseauRailExpanded = typeof forceExpanded === 'boolean' ? forceExpanded : !isReseauRailExpanded;
     localStorage.setItem(RESEAU_RAIL_STORAGE_KEY, isReseauRailExpanded ? 'expanded' : 'collapsed');
     syncReseauRailUI();
+}
+
+function shouldAutoCloseReseauRailOnMobile() {
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
 }
 
 function switchReseauTab(tab, save = true) {
@@ -238,6 +245,9 @@ function switchReseauTab(tab, save = true) {
     }
     if(tab === 'mp') {
         if(!_reseauTabLoaded.mp) { initCharMpView(); _reseauTabLoaded.mp = true; }
+    }
+    if(save && shouldAutoCloseReseauRailOnMobile()) {
+        toggleReseauRail(false);
     }
     updateDestinationBadges();
 }
