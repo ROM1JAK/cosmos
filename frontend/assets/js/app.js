@@ -29,6 +29,8 @@ let allOnlineUsers = [];
 let feedPostsCache = [];
 const FEED_VISIBLE_POST_LIMIT = 10;
 const FEED_VISIBLE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const PROFILE_ACTIVITY_PAGE_SIZE = 6;
+const RESEAU_RAIL_STORAGE_KEY = 'reseau_rail_state';
 let eventsCache = [];
 let presseArticlesCache = [];
 let worldTimelineCache = [];
@@ -68,6 +70,8 @@ let lastMessageData = { author: null, time: 0, ownerId: null };
 const CHAT_PAGE_SIZE = 20;
 let currentChatMessages = [];
 let chatHistoryState = { mode: 'room', key: 'room:global', page: 0, hasMore: false, total: 0 };
+let currentProfileActivityPage = 1;
+let isReseauRailExpanded = localStorage.getItem(RESEAU_RAIL_STORAGE_KEY) === 'expanded';
 let pollOptions = [];
 let pollUIOpen = false; 
 
@@ -185,6 +189,33 @@ function updateDestinationBadges() {
     document.getElementById('btn-view-reseau')?.classList.toggle('nav-has-unread', reseauCount > 0);
     document.getElementById('btn-view-presse')?.classList.toggle('nav-has-unread', presseCount > 0);
 }
+
+function syncReseauRailUI() {
+    const reseauView = document.getElementById('view-reseau');
+    const toggleButton = document.getElementById('reseau-tab-toggle');
+    if(!reseauView || !toggleButton) return;
+
+    reseauView.classList.toggle('reseau-rail-expanded', isReseauRailExpanded);
+    reseauView.classList.toggle('reseau-rail-collapsed', !isReseauRailExpanded);
+    toggleButton.setAttribute('aria-expanded', String(isReseauRailExpanded));
+    toggleButton.title = isReseauRailExpanded ? 'Réduire les onglets' : 'Déplier les onglets';
+
+    const toggleLabel = toggleButton.querySelector('.reseau-tab-label');
+    if(toggleLabel) toggleLabel.textContent = isReseauRailExpanded ? ' Réduire' : ' Onglets';
+
+    const toggleIcon = toggleButton.querySelector('i');
+    if(toggleIcon) {
+        toggleIcon.classList.toggle('fa-angles-left', !isReseauRailExpanded);
+        toggleIcon.classList.toggle('fa-angles-right', isReseauRailExpanded);
+    }
+}
+
+function toggleReseauRail(forceExpanded) {
+    isReseauRailExpanded = typeof forceExpanded === 'boolean' ? forceExpanded : !isReseauRailExpanded;
+    localStorage.setItem(RESEAU_RAIL_STORAGE_KEY, isReseauRailExpanded ? 'expanded' : 'collapsed');
+    syncReseauRailUI();
+}
+
 function switchReseauTab(tab, save = true) {
     if(save) localStorage.setItem('last_reseau_tab', tab);
     ['chat','flux','mp'].forEach(t => {
@@ -210,6 +241,7 @@ function switchReseauTab(tab, save = true) {
     }
     updateDestinationBadges();
 }
+syncReseauRailUI();
 
 function bindPersistentScroll(elementId, storageKey) {
     const el = document.getElementById(elementId);
@@ -989,13 +1021,76 @@ function updateBreakingNewsVisibility() {
 // [NOUVEAU] State profil courant
 let currentProfileChar = null;
 
+function renderProfileActivityArchive() {
+    const activityFeed = document.getElementById('profileActivityFeed');
+    const activityMeta = document.getElementById('profileActivityMeta');
+    const pagination = document.getElementById('profileActivityPagination');
+    const prevButton = document.getElementById('profileActivityPrev');
+    const nextButton = document.getElementById('profileActivityNext');
+    const pageInfo = document.getElementById('profileActivityPageInfo');
+    const posts = Array.isArray(currentProfileChar?.lastPosts) ? currentProfileChar.lastPosts : [];
+    const totalPages = Math.max(1, Math.ceil(posts.length / PROFILE_ACTIVITY_PAGE_SIZE));
+
+    if(activityMeta) {
+        activityMeta.textContent = posts.length ? `${posts.length} post${posts.length > 1 ? 's' : ''}` : 'Aucun post';
+        activityMeta.classList.remove('hidden');
+    }
+
+    if(!activityFeed) return;
+
+    if(!posts.length) {
+        activityFeed.innerHTML = '<div class="profile-activity-empty">Aucun post archivé pour ce personnage.</div>';
+        if(pagination) pagination.classList.add('hidden');
+        return;
+    }
+
+    currentProfileActivityPage = Math.min(Math.max(1, currentProfileActivityPage), totalPages);
+    const startIndex = (currentProfileActivityPage - 1) * PROFILE_ACTIVITY_PAGE_SIZE;
+    const pagePosts = posts.slice(startIndex, startIndex + PROFILE_ACTIVITY_PAGE_SIZE);
+
+    activityFeed.innerHTML = '';
+    pagePosts.forEach(post => {
+        const mini = document.createElement('div');
+        mini.className = 'profile-mini-post';
+        mini.onclick = () => openPostDetail(String(post._id), post);
+        mini.innerHTML = `
+            <div class="profile-mini-post-content">${formatText(post.content || '')}</div>
+            <div class="profile-mini-post-meta">
+                <span><i class="fa-solid fa-heart" style="color:var(--danger);"></i> ${getPostLikeCountLabel(post)}</span>
+                <span><i class="fa-regular fa-comment"></i> ${Array.isArray(post.comments) ? post.comments.length : 0}</span>
+                <span style="color:var(--text-muted);">${post.date || ''}</span>
+                <span class="profile-mini-post-open"><i class="fa-solid fa-up-right-from-square"></i> Ouvrir</span>
+                ${IS_ADMIN ? `<button class="admin-stat-btn" onclick="event.stopPropagation(); openAdminStatsModal('${post._id}', '${getPostLikeCountLabel(post).replace(/'/g, "\\'")}')"><i class="fa-solid fa-pen"></i></button>` : ''}
+            </div>`;
+        activityFeed.appendChild(mini);
+    });
+
+    if(pagination && prevButton && nextButton && pageInfo) {
+        pagination.classList.toggle('hidden', totalPages <= 1);
+        prevButton.disabled = currentProfileActivityPage <= 1;
+        nextButton.disabled = currentProfileActivityPage >= totalPages;
+        pageInfo.textContent = `Page ${currentProfileActivityPage} / ${totalPages}`;
+    }
+}
+
+function changeProfileActivityPage(delta) {
+    const posts = Array.isArray(currentProfileChar?.lastPosts) ? currentProfileChar.lastPosts : [];
+    if(!posts.length) return;
+    const totalPages = Math.max(1, Math.ceil(posts.length / PROFILE_ACTIVITY_PAGE_SIZE));
+    currentProfileActivityPage = Math.min(totalPages, Math.max(1, currentProfileActivityPage + delta));
+    renderProfileActivityArchive();
+}
+
 function openProfile(name) {
     currentProfileChar = null;
+    currentProfileActivityPage = 1;
     ['profileName','profileRole','profileDesc','profileOwner'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = ''; });
     ['profileFollowersCount','profilePostCount'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = '0'; });
     const av = document.getElementById('profileAvatar'); if(av) av.src = '';
     const pb = document.getElementById('profilePartyBadge'); if(pb) pb.style.display = 'none';
     const af = document.getElementById('profileActivityFeed'); if(af) af.innerHTML = '<div style="padding:8px 0;color:var(--text-muted);font-size:0.82rem;">Chargement...</div>';
+    const am = document.getElementById('profileActivityMeta'); if(am) { am.textContent = ''; am.classList.add('hidden'); }
+    const ap = document.getElementById('profileActivityPagination'); if(ap) ap.classList.add('hidden');
     const cg = document.getElementById('profileCompaniesGrid'); if(cg) cg.innerHTML = '';
     const cs = document.getElementById('profileCompaniesSection'); if(cs) cs.style.display = 'none';
     closeBioEdit();
@@ -1011,6 +1106,7 @@ function closeProfileModal() {
     document.getElementById('profile-slide-panel').classList.remove('open'); 
     document.getElementById('profile-overlay').classList.add('hidden');
     currentProfileChar = null;
+    currentProfileActivityPage = 1;
 }
 function editMyCharFromProfile() {
     if(!currentProfileChar) return;
@@ -1021,7 +1117,9 @@ function editMyCharFromProfile() {
 }
 
 socket.on('char_profile_data', (char) => {
+    const isSameProfile = currentProfileChar && String(currentProfileChar._id) === String(char._id);
     currentProfileChar = char;
+    if(!isSameProfile) currentProfileActivityPage = 1;
     if(window.__pendingProfileEdit && String(window.__pendingProfileEdit) === String(char._id)) {
         window.__pendingProfileEdit = null;
         closeProfileModal();
@@ -1150,25 +1248,7 @@ socket.on('char_profile_data', (char) => {
         if(IS_ADMIN) companiesGrid.innerHTML = '<div style="color:var(--text-muted); font-size:0.82rem; font-style:italic;">Aucune entreprise. Cliquez sur "Entreprises" pour en ajouter.</div>';
     }
 
-    // [NOUVEAU] Section Activité (derniers posts)
-    const activityFeed = document.getElementById('profileActivityFeed');
-    activityFeed.innerHTML = '';
-    if(char.lastPosts && char.lastPosts.length > 0) {
-        char.lastPosts.forEach(post => {
-            const mini = document.createElement('div');
-            mini.className = 'profile-mini-post';
-            mini.innerHTML = `
-                <div class="profile-mini-post-content">${formatText(post.content || '')}</div>
-                <div class="profile-mini-post-meta">
-                    <span><i class="fa-solid fa-heart" style="color:var(--danger);"></i> ${getPostLikeCountLabel(post)}</span>
-                    <span style="color:var(--text-muted);">${post.date || ''}</span>
-                    ${IS_ADMIN ? `<button class="admin-stat-btn" onclick="openAdminStatsModal('${post._id}', '${getPostLikeCountLabel(post).replace(/'/g, "\\'")}')"><i class="fa-solid fa-pen"></i></button>` : ''}
-                </div>`;
-            activityFeed.appendChild(mini);
-        });
-    } else {
-        activityFeed.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem; font-style:italic; padding:10px 0;">Aucun post récent.</div>';
-    }
+    renderProfileActivityArchive();
 });
 
 socket.on('char_profile_updated', (char) => { 
@@ -2364,13 +2444,24 @@ function submitArticleEdit() {
 function deletePost(id) { if(confirm("Supprimer ?")) socket.emit('delete_post', { postId: id, ownerId: PLAYER_ID }); }
 
 let currentDetailPostId = null;
-function openPostDetail(id) {
-    const postEl = document.getElementById(`post-${id}`); if(!postEl) return;
+function openPostDetail(id, fallbackPost = null) {
+    const postEl = document.getElementById(`post-${id}`);
+    const sourcePost = fallbackPost
+        || feedPostsCache.find(post => String(post._id) === String(id))
+        || (Array.isArray(currentProfileChar?.lastPosts) ? currentProfileChar.lastPosts.find(post => String(post._id) === String(id)) : null)
+        || null;
+    if(!postEl && !sourcePost) return;
     currentDetailPostId = id;
-    const clone = postEl.cloneNode(true); clone.onclick = null; clone.style.border="none"; clone.classList.remove('highlight-new');
+    const clone = postEl ? postEl.cloneNode(true) : createPostElement(sourcePost);
+    clone.onclick = null;
+    clone.style.border = "none";
+    clone.classList.remove('highlight-new');
     const old = clone.querySelector('.comments-section'); if(old) old.remove();
+    const oldList = clone.querySelector('.comments-list'); if(oldList) oldList.remove();
     document.getElementById('post-detail-content').innerHTML = ""; document.getElementById('post-detail-content').appendChild(clone);
-    document.getElementById('post-detail-comments-list').innerHTML = postEl.querySelector('.comments-list')?.innerHTML || "";
+    document.getElementById('post-detail-comments-list').innerHTML = sourcePost
+        ? generateCommentsHTML(sourcePost.comments, sourcePost._id)
+        : postEl.querySelector('.comments-list')?.innerHTML || "";
     document.getElementById('post-detail-modal').classList.remove('hidden'); clearCommentStaging();
     
     document.getElementById('btn-detail-comment').onclick = async () => {
@@ -2503,14 +2594,6 @@ function createPostElement(post) {
         }
     }
     
-    // GESTION TITRE JOURNALISTE
-    let articleTitleHTML = "";
-    if (isJournalistMode && post.content) {
-        const words = post.content.split(/\s+/);
-        const titleText = words.slice(0, 10).join(' ') + (words.length > 10 ? '...' : '');
-        articleTitleHTML = `<div class="post-article-title">${titleText}</div>`;
-    }
-    
     let displayName = post.authorName; let displayAvatar = post.authorAvatar; let displayRole = post.authorRole;
     if(post.isAnonymous) { displayName = "Source Anonyme"; displayAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E"; displayRole = "Leak"; }
     
@@ -2548,7 +2631,6 @@ function createPostElement(post) {
                 <span class="post-date">${post.date}</span>
             </div>
             ${badges ? `<div class="post-smart-badges">${badges}</div>` : ''}
-            ${articleTitleHTML}
             <div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
             ${mediaHTML}
             ${pollHTML}
