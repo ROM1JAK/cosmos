@@ -4198,21 +4198,39 @@ function renderAccueil() {
     }
 }
 
-function toggleFeedPubSelect() {    const cb = document.getElementById('postIsPub');
+function ensurePubStockOptionsLoaded() {
+    if(stocksData.length) {
+        populatePubStockSelects();
+        return;
+    }
+    ['postPubStockId', 'pressePubStockId'].forEach(selId => {
+        const sel = document.getElementById(selId);
+        if(!sel) return;
+        sel.innerHTML = '<option value="">Chargement des entreprises...</option>';
+    });
+    socket.emit('request_stocks');
+}
+
+function toggleFeedPubSelect() {
+    const cb = document.getElementById('postIsPub');
     const wrap = document.getElementById('feed-pub-stock-wrap');
     if(wrap) wrap.classList.toggle('hidden', !cb?.checked);
+    if(cb?.checked) ensurePubStockOptionsLoaded();
 }
 function togglePressePubSelect() {
     const cb = document.getElementById('presseIsPub');
     const wrap = document.getElementById('presse-pub-stock-wrap');
     if(wrap) wrap.classList.toggle('hidden', !cb?.checked);
+    if(cb?.checked) ensurePubStockOptionsLoaded();
 }
 function populatePubStockSelects() {
     ['postPubStockId', 'pressePubStockId'].forEach(selId => {
         const sel = document.getElementById(selId);
         if(!sel) return;
         const cur = sel.value;
-        sel.innerHTML = '<option value="">— Choisir une action —</option>';
+        sel.innerHTML = stocksData.length
+            ? '<option value="">— Choisir une entreprise —</option>'
+            : '<option value="">Aucune entreprise disponible</option>';
         stocksData.forEach(s => {
             const opt = document.createElement('option');
             opt.value = s._id;
