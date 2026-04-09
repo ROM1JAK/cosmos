@@ -542,6 +542,49 @@ function getStoredCountValue(rawValue, fallbackValue = 0) {
 	return Number.isFinite(parsed) ? parsed : Math.max(0, Number(fallbackValue) || 0);
 }
 
+function buildAutoLikeCountDisplay(authorChar = null, postData = {}) {
+	const followerBase = getStoredCountValue(authorChar?.followerCountDisplay, Array.isArray(authorChar?.followers) ? authorChar.followers.length : 0);
+	if (followerBase <= 0) return '';
+
+	const content = String(postData?.content || '').trim();
+	const contentSize = content.length;
+	const hasMedia = !!postData?.mediaUrl;
+	const hasPoll = !!postData?.poll?.question;
+	const hasCompanyLink = !!postData?.linkedCompanyName || !!postData?.linkedStockId;
+	const isOfficial = !!authorChar?.isOfficial;
+	const companyCount = Array.isArray(authorChar?.companies) ? authorChar.companies.length : 0;
+	const normalizedRole = String(authorChar?.role || '').toLowerCase();
+
+	let baseRate = 0.18;
+	if (postData?.isBreakingNews) baseRate = 0.3;
+	else if (postData?.isSponsored) baseRate = 0.11;
+	else if (postData?.isAnonymous) baseRate = 0.16;
+
+	let statusBoost = 0;
+	if (isOfficial) statusBoost += 0.06;
+	if (/president|premier|ministre|gouvern|maire|depute|senat/.test(normalizedRole)) statusBoost += 0.04;
+	if (/journal|reporter|media|presse/.test(normalizedRole)) statusBoost += 0.03;
+	if (companyCount > 0) statusBoost += Math.min(0.03, companyCount * 0.01);
+
+	let contentBoost = 0;
+	if (contentSize >= 40 && contentSize < 140) contentBoost += 0.01;
+	else if (contentSize >= 140 && contentSize < 320) contentBoost += 0.03;
+	else if (contentSize >= 320 && contentSize < 900) contentBoost += 0.05;
+	else if (contentSize >= 900) contentBoost += 0.07;
+
+	if (hasMedia) contentBoost += 0.03;
+	if (hasPoll) contentBoost += 0.04;
+	if (hasCompanyLink && !postData?.isSponsored) contentBoost += 0.015;
+
+	const signatureSource = `${authorChar?.name || ''}|${postData?.authorName || ''}|${content.slice(0, 180)}|${postData?.mediaType || ''}|${postData?.isBreakingNews ? 'breaking' : ''}|${postData?.isSponsored ? 'sponsored' : ''}`;
+	const signature = Array.from(signatureSource).reduce((sum, char, index) => sum + (char.charCodeAt(0) * (index + 1)), 0);
+	const variation = (((signature % 17) - 8) / 1000) + ((signature % 9) / 1000);
+
+	const finalRate = Math.max(0.02, baseRate + statusBoost + contentBoost + variation);
+	const estimatedLikes = Math.max(1, Math.round(followerBase * finalRate));
+	return formatCompactCountLabel(estimatedLikes);
+}
+
 function buildDisplayPost(post, authorChar = null) {
 	const displayPost = post.toObject ? post.toObject() : { ...post };
 	if (displayPost.isAnonymous) {
@@ -704,6 +747,7 @@ initSocketHandlers({
 	getSocketUser,
 	logAdminAction,
 	buildDisplayPost,
+	buildAutoLikeCountDisplay,
 	getEnrichedStocks,
 	createNotification,
 	extractArticleTitle,

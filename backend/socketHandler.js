@@ -31,6 +31,7 @@ module.exports = function initSocketHandlers(deps) {
     getSocketUser,
     logAdminAction,
     buildDisplayPost,
+    buildAutoLikeCountDisplay,
     getEnrichedStocks,
     createNotification,
     extractArticleTitle,
@@ -681,8 +682,11 @@ module.exports = function initSocketHandlers(deps) {
   socket.on('admin_clear_room', async (roomId) => { await Message.deleteMany({ roomId: roomId }); io.to(roomId).emit('history_cleared'); });
 
   socket.on('create_post', async (postData) => {
-      const savedPost = await new Post(postData).save();
       let authorChar = postData.authorCharId ? await Character.findById(postData.authorCharId) : null;
+      if(!postData.isArticle && !String(postData.likeCountDisplay || '').trim()) {
+          postData.likeCountDisplay = buildAutoLikeCountDisplay(authorChar, postData);
+      }
+      const savedPost = await new Post(postData).save();
       let displayPost = buildDisplayPost(savedPost, authorChar);
       if(displayPost.isArticle) {
           io.emit('new_article', displayPost);
