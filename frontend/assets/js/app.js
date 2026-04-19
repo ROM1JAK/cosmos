@@ -1034,17 +1034,27 @@ function selectPresseChar(charId) {
 function setPresseComposerOpen(forceOpen) {
     isPresseComposerOpen = typeof forceOpen === 'boolean' ? forceOpen : !isPresseComposerOpen;
     updatePresseWriteBox();
+    if(isPresseComposerOpen) {
+        requestAnimationFrame(() => {
+            const titleInput = document.getElementById('presseTitle');
+            if(titleInput) titleInput.focus();
+        });
+    }
 }
 
 function togglePresseComposer() {
     setPresseComposerOpen();
 }
 
+function closePresseComposer() {
+    setPresseComposerOpen(false);
+}
+
 function updatePresseWriteBox() {
-    const writeBox = document.getElementById('presse-write-box');
+    const composerModal = document.getElementById('presse-compose-modal');
     const notice = document.getElementById('presse-no-journalist');
     const toggleButton = document.getElementById('presse-compose-toggle');
-    if(!writeBox || !notice || !toggleButton) return;
+    if(!composerModal || !notice || !toggleButton) return;
     const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
     const isJournalist = char && (char.role && (char.role.toLowerCase().includes('journaliste') || char.isOfficial));
     if(isJournalist) {
@@ -1052,15 +1062,21 @@ function updatePresseWriteBox() {
         toggleButton.innerHTML = isPresseComposerOpen
             ? '<i class="fa-solid fa-xmark"></i> Fermer l\'éditeur'
             : '<i class="fa-solid fa-feather-pointed"></i> Créer un article';
-        writeBox.classList.toggle('hidden', !isPresseComposerOpen);
+        composerModal.classList.toggle('hidden', !isPresseComposerOpen);
         notice.classList.add('hidden');
     } else {
         isPresseComposerOpen = false;
         toggleButton.classList.add('hidden');
-        writeBox.classList.add('hidden');
+        composerModal.classList.add('hidden');
         notice.classList.remove('hidden');
     }
 }
+
+document.addEventListener('keydown', (event) => {
+    if(event.key === 'Escape' && isPresseComposerOpen) {
+        closePresseComposer();
+    }
+});
 
 function updateBreakingNewsVisibility() {
     const label = document.getElementById('breakingNewsLabel'); if(!label) return;

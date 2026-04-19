@@ -642,10 +642,25 @@
                     <button class="btn-secondary" style="padding:7px 11px;" onclick="clearPresseJournalSearch()"><i class="fa-solid fa-eraser"></i> Reset</button>
                     <button class="btn-primary hidden" id="presse-compose-toggle" style="padding:7px 11px;" onclick="togglePresseComposer()"><i class="fa-solid fa-feather-pointed"></i> Créer un article</button>
                 </div>
-                <div id="presse-write-box" class="presse-write-box hidden">
-                    <div class="presse-write-header">
-                        <i class="fa-solid fa-feather-pointed"></i>
-                        <span>Rédiger un article</span>
+                <div id="presse-no-journalist" class="presse-notice hidden">
+                    <i class="fa-solid fa-id-card" style="font-size:2rem; color:var(--text-dim); margin-bottom:12px;"></i>
+                    <p>Seuls les personnages avec le rôle <strong>Journaliste</strong> peuvent publier dans la Presse.</p>
+                </div>
+                <div id="presse-stream"></div>
+            </div>
+        </div>
+
+        <div id="presse-compose-modal" class="modal-overlay hidden" onclick="if(event.target===this)closePresseComposer()">
+            <div class="modal-box presse-compose-modal-box" onclick="event.stopPropagation()">
+                <div id="presse-write-box" class="presse-write-box">
+                    <div class="presse-compose-modal-topbar">
+                        <div class="presse-write-header" style="margin-bottom:0;">
+                            <i class="fa-solid fa-feather-pointed"></i>
+                            <span>Rédiger un article</span>
+                        </div>
+                        <button type="button" class="presse-compose-close" onclick="closePresseComposer()" aria-label="Fermer l'éditeur Presse">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
                     </div>
                     <div class="presse-journal-row">
                         <div class="presse-journal-logo-preview" id="presseJournalLogoPreview"><i class="fa-solid fa-newspaper"></i></div>
@@ -724,11 +739,6 @@
                     <input type="hidden" id="presseMediaUrl">
                     <input type="hidden" id="presseJournalLogo">
                 </div>
-                <div id="presse-no-journalist" class="presse-notice hidden">
-                    <i class="fa-solid fa-id-card" style="font-size:2rem; color:var(--text-dim); margin-bottom:12px;"></i>
-                    <p>Seuls les personnages avec le rôle <strong>Journaliste</strong> peuvent publier dans la Presse.</p>
-                </div>
-                <div id="presse-stream"></div>
             </div>
         </div>
 
