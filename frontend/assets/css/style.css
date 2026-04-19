@@ -572,6 +572,7 @@ body[data-theme="ombra"] { --accent: #7c3aed; --accent-glow: rgba(124,58,237,0.3
 .presse-search-wrap i { color: var(--text-dim); }
 .presse-search-wrap input { flex: 1; background: transparent; border: none; color: var(--text-normal); font-family: var(--font-main); font-size: 0.86rem; }
 .presse-search-wrap input:focus { outline: none; }
+.presse-write-box.hidden { display: none !important; }
 .presse-write-box { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 20px; }
 .presse-write-header { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-family: var(--font-display); font-weight: 700; color: white; font-size: 0.9rem; letter-spacing: 0.03em; }
 .presse-write-header i { color: var(--accent); }
@@ -2876,6 +2877,11 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .feed-filter-btn.active { background: rgba(108,99,255,0.18); border-color: rgba(108,99,255,0.32); color: white; }
 .feed-filter-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .feed-filter-meta { color: var(--text-muted); font-size: 0.76rem; }
+.feed-filter-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.feed-profile-search-wrap { min-width: 240px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; padding: 7px 12px; }
+.feed-profile-search-wrap i { color: var(--text-dim); }
+.feed-profile-search-wrap input { flex: 1; background: transparent; border: none; color: var(--text-normal); font-family: var(--font-main); font-size: 0.8rem; min-width: 0; }
+.feed-profile-search-wrap input:focus { outline: none; }
 .post-smart-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 10px; }
 .post-smart-badge {
     display: inline-flex;
@@ -2954,6 +2960,10 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
         width: calc(100% - 28px);
         margin-top: 14px;
         padding: 12px 14px;
+    }
+    .feed-filter-actions,
+    .feed-profile-search-wrap {
+        width: 100%;
     }
     #reseau-panel-flux .feed-view-header {
         padding: 8px 14px;

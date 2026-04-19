@@ -84,6 +84,7 @@ let currentPresseCharId = null;
 let currentPresseTheme = null;
 let currentEditArticleTheme = null;
 let currentArticleFullscreenId = null;
+let isPresseComposerOpen = false;
 
 // ACTUALITÉS
 let actuRequestPending = false;
@@ -946,9 +947,32 @@ function updateUI() {
     if (!currentSelectedChar) { if(myCharacters.length > 0) selectCharacter(myCharacters[0]._id); else if(IS_ADMIN) selectCharacter('narrateur'); }
     else selectCharacter(currentSelectedChar._id);
 
-    updateFeedCharUI(); updatePresseCharUI(); updateBreakingNewsVisibility();
+    updateFeedCharUI(); updatePresseCharUI(); updateBreakingNewsVisibility(); refreshFeedProfileDatalist();
     if(currentView === 'mes-persos') renderMesPersos();
     if(currentView === 'accueil') renderAccueil();
+}
+
+function refreshFeedProfileDatalist() {
+    const datalist = document.getElementById('feed-profile-list');
+    if(!datalist) return;
+    const names = [...new Set([
+        ...myCharacters.map(char => char?.name),
+        ...feedPostsCache.map(post => post?.authorName),
+        ...presseArticlesCache.map(article => article?.authorName)
+    ].map(name => String(name || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
+    datalist.innerHTML = names.map(name => `<option value="${escapeHtml(name)}"></option>`).join('');
+}
+
+function openFeedProfileSearch() {
+    const input = document.getElementById('feedProfileSearch');
+    const value = input?.value?.trim() || '';
+    if(!value) return alert('Entrez un nom de profil.');
+    openProfile(value);
+}
+
+function clearFeedProfileSearch() {
+    const input = document.getElementById('feedProfileSearch');
+    if(input) input.value = '';
 }
 
 // FEED AVATAR SELECTOR
@@ -1007,14 +1031,35 @@ function selectPresseChar(charId) {
     const dd = document.getElementById('presse-char-dropdown'); if(dd) dd.classList.add('hidden');
     updatePresseCharUI();
 }
+function setPresseComposerOpen(forceOpen) {
+    isPresseComposerOpen = typeof forceOpen === 'boolean' ? forceOpen : !isPresseComposerOpen;
+    updatePresseWriteBox();
+}
+
+function togglePresseComposer() {
+    setPresseComposerOpen();
+}
+
 function updatePresseWriteBox() {
     const writeBox = document.getElementById('presse-write-box');
     const notice = document.getElementById('presse-no-journalist');
-    if(!writeBox || !notice) return;
+    const toggleButton = document.getElementById('presse-compose-toggle');
+    if(!writeBox || !notice || !toggleButton) return;
     const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
     const isJournalist = char && (char.role && (char.role.toLowerCase().includes('journaliste') || char.isOfficial));
-    if(isJournalist) { writeBox.classList.remove('hidden'); notice.classList.add('hidden'); }
-    else { writeBox.classList.add('hidden'); notice.classList.remove('hidden'); }
+    if(isJournalist) {
+        toggleButton.classList.remove('hidden');
+        toggleButton.innerHTML = isPresseComposerOpen
+            ? '<i class="fa-solid fa-xmark"></i> Fermer l\'éditeur'
+            : '<i class="fa-solid fa-feather-pointed"></i> Créer un article';
+        writeBox.classList.toggle('hidden', !isPresseComposerOpen);
+        notice.classList.add('hidden');
+    } else {
+        isPresseComposerOpen = false;
+        toggleButton.classList.add('hidden');
+        writeBox.classList.add('hidden');
+        notice.classList.remove('hidden');
+    }
 }
 
 function updateBreakingNewsVisibility() {
@@ -2501,6 +2546,7 @@ function deleteComment(postId, commentId) { if(confirm("Supprimer ?")) socket.em
 
 socket.on('feed_data', (posts) => {
     feedPostsCache = normalizeFeedPosts(posts);
+    refreshFeedProfileDatalist();
     renderFeedStream();
     if(currentView === 'accueil') renderAccueil();
     buildAdminConsoleOverview();
@@ -2514,6 +2560,7 @@ socket.on('new_post', (post) => {
         if(btn) btn.classList.add('nav-notify');
     }
     feedPostsCache = normalizeFeedPosts([post, ...feedPostsCache.filter(item => String(item._id) !== String(post._id))]);
+    refreshFeedProfileDatalist();
     renderFeedStream();
     if(currentView === 'accueil') renderAccueil();
     buildAdminConsoleOverview();
@@ -2523,10 +2570,12 @@ socket.on('post_updated', (post) => {
     if(post.isArticle) {
         presseArticlesCache = presseArticlesCache.map(item => String(item._id) === String(post._id) ? post : item);
         refreshPresseJournalDatalist();
+        refreshFeedProfileDatalist();
         renderPresseStream();
         if(currentArticleFullscreenId === String(post._id)) openArticleFullscreen(String(post._id));
     } else {
         feedPostsCache = feedPostsCache.map(item => String(item._id) === String(post._id) ? post : item);
+        refreshFeedProfileDatalist();
         renderFeedStream();
     }
     if(currentDetailPostId === post._id) {
@@ -2539,6 +2588,7 @@ socket.on('post_updated', (post) => {
 socket.on('post_deleted', (id) => {
     feedPostsCache = feedPostsCache.filter(post => String(post._id) !== String(id));
     presseArticlesCache = presseArticlesCache.filter(post => String(post._id) !== String(id));
+    refreshFeedProfileDatalist();
     renderFeedStream();
     renderPresseStream();
     if(currentView === 'accueil') renderAccueil();
@@ -3558,6 +3608,7 @@ function submitArticle() {
     const presseP = document.getElementById('presseIsPub'); if(presseP) { presseP.checked = false; togglePressePubSelect(); }
     hydrateArticleThemeChoices(journalLogo, 'presseContentEditor', currentPresseTheme || DEFAULT_ARTICLE_THEME);
     updatePresseComposerUX();
+    setPresseComposerOpen(false);
 }
 
 function renderArticleBodyMarkup(post) {
@@ -3685,6 +3736,7 @@ socket.on('presse_data', (articles) => {
     presseArticlesCache = articles;
     if(currentView === 'accueil') renderAccueil();
     refreshPresseJournalDatalist();
+    refreshFeedProfileDatalist();
     initPresseComposerUX();
     renderPresseStream();
     buildAdminConsoleOverview();

@@ -464,7 +464,15 @@
                                 </div>
                                 <div class="feed-filter-meta-row">
                                     <div id="feed-filter-meta" class="feed-filter-meta">Tous les posts du réseau</div>
-                                    <button class="btn-secondary" onclick="resetFeedFilters()" style="padding:6px 10px;font-size:0.74rem;"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+                                    <div class="feed-filter-actions">
+                                        <div class="feed-profile-search-wrap">
+                                            <i class="fa-solid fa-user-magnifying-glass"></i>
+                                            <input type="text" id="feedProfileSearch" list="feed-profile-list" placeholder="Rechercher un profil..." onkeydown="if(event.key==='Enter'){ event.preventDefault(); openFeedProfileSearch(); }">
+                                            <datalist id="feed-profile-list"></datalist>
+                                        </div>
+                                        <button class="btn-secondary" onclick="openFeedProfileSearch()" style="padding:6px 10px;font-size:0.74rem;"><i class="fa-solid fa-clock-rotate-left"></i> Voir anciens posts</button>
+                                        <button class="btn-secondary" onclick="clearFeedProfileSearch()" style="padding:6px 10px;font-size:0.74rem;"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -632,6 +640,7 @@
                         <datalist id="presse-journal-list"></datalist>
                     </div>
                     <button class="btn-secondary" style="padding:7px 11px;" onclick="clearPresseJournalSearch()"><i class="fa-solid fa-eraser"></i> Reset</button>
+                    <button class="btn-primary hidden" id="presse-compose-toggle" style="padding:7px 11px;" onclick="togglePresseComposer()"><i class="fa-solid fa-feather-pointed"></i> Créer un article</button>
                 </div>
                 <div id="presse-write-box" class="presse-write-box hidden">
                     <div class="presse-write-header">
