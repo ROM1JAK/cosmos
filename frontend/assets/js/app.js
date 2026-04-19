@@ -74,6 +74,7 @@ let currentProfileActivityPage = 1;
 let isReseauRailExpanded = localStorage.getItem(RESEAU_RAIL_STORAGE_KEY) === 'expanded';
 let pollOptions = [];
 let pollUIOpen = false; 
+let isTopNavMenuOpen = false;
 
 // OMBRA
 let ombraAlias = null;
@@ -93,7 +94,30 @@ const RECENT_VIEW_RESTORE_WINDOW_MS = Math.max(5000, Number((window.APP_CONFIG &
 
 const COMMON_EMOJIS = ["😀", "😂", "😉", "😍", "😎", "🥳", "😭", "😡", "🤔", "👍", "👎", "❤️", "💔", "🔥", "✨", "🎉", "💩", "👻", "💀", "👽", "🤖", "👋", "🙌", "🙏", "💪", "👀", "🍕", "🍻", "🚀", "💯"];
 
+function syncTopNavMenuUI() {
+    const nav = document.getElementById('top-nav');
+    const button = document.querySelector('.nav-hamburger-btn');
+    if(!nav || !button) return;
+    nav.classList.toggle('nav-open', isTopNavMenuOpen);
+    button.setAttribute('aria-expanded', String(isTopNavMenuOpen));
+    button.title = isTopNavMenuOpen ? 'Masquer le menu' : 'Afficher le menu';
+    const icon = button.querySelector('i');
+    if(icon) icon.className = `fa-solid ${isTopNavMenuOpen ? 'fa-xmark' : 'fa-bars'}`;
+}
+
+function closeTopNavMenu() {
+    if(!isTopNavMenuOpen) return;
+    isTopNavMenuOpen = false;
+    syncTopNavMenuUI();
+}
+
+function toggleTopNavMenu(forceOpen) {
+    isTopNavMenuOpen = typeof forceOpen === 'boolean' ? forceOpen : !isTopNavMenuOpen;
+    syncTopNavMenuUI();
+}
+
 function switchView(view) {
+    closeTopNavMenu();
     if(view === 'admin' && !IS_ADMIN) {
         switchView('accueil');
         return;
@@ -249,6 +273,7 @@ function switchReseauTab(tab, save = true) {
     updateDestinationBadges();
 }
 syncReseauRailUI();
+syncTopNavMenuUI();
 
 function bindPersistentScroll(elementId, storageKey) {
     const el = document.getElementById(elementId);
@@ -776,9 +801,11 @@ socket.on('receive_dm', (msg) => {
     const other = (msg.sender === USERNAME) ? msg.target : msg.sender;
     if (!dmContacts.includes(other)) { dmContacts.push(other); updateDmListUI(); }
     if (currentDmTarget === other) {
-        currentChatMessages.push(msg);
-        displayMessage(msg, true);
-        scrollToBottom();
+        const existingIndex = currentChatMessages.findIndex(existing => String(existing._id || '') === String(msg._id || ''));
+        if (existingIndex >= 0) currentChatMessages[existingIndex] = msg;
+        else currentChatMessages.push(msg);
+        chatHistoryState.total = Math.max(Number(chatHistoryState.total) || 0, currentChatMessages.length);
+        renderCurrentChatMessages('bottom');
     } 
     else { unreadDms.add(other); updateDmListUI(); }
     updateDestinationBadges();
@@ -2023,7 +2050,7 @@ socket.on('hide_char_dm_typing', ({ roomId }) => {
     updateCharMpTypingUI();
 });
 socket.on('receive_char_dm', (msg) => {
-    const isForMe = msg.targetOwnerId === PLAYER_ID || msg.ownerId === PLAYER_ID;
+    const isForMe = String(msg.targetOwnerId || '') === String(PLAYER_ID || '') || String(msg.ownerId || '') === String(PLAYER_ID || '');
     if(!isForMe) return;
     const myCharIds = myCharacters.map(c => String(c._id));
     const isSenderMine = myCharIds.includes(String(msg.senderCharId));
@@ -2054,7 +2081,8 @@ socket.on('receive_char_dm', (msg) => {
         };
     }
     const conv = charMpConversations[key];
-    conv.msgs = [...(conv.msgs || []), msg];
+    const alreadyExists = (conv.msgs || []).some(existing => String(existing._id || '') === String(msg._id || ''));
+    conv.msgs = alreadyExists ? (conv.msgs || []).map(existing => String(existing._id || '') === String(msg._id || '') ? msg : existing) : [...(conv.msgs || []), msg];
     conv.total = Math.max(Number(conv.total) || 0, conv.msgs.length);
     conv.lastContent = msg.content || '';
     conv.lastDate = msg.timestamp || null;
@@ -2062,7 +2090,7 @@ socket.on('receive_char_dm', (msg) => {
         renderCharMpThread(key, 'bottom');
     }
     const isOnMp = isCharMpTabActive();
-    if(!isOnMp && msg.ownerId !== PLAYER_ID) {
+    if(!isOnMp && String(msg.ownerId || '') !== String(PLAYER_ID || '')) {
         conv.unread = true;
     }
     renderCharMpSidebar();
@@ -2159,7 +2187,7 @@ function loadCharDmHistory() {
     if(!myCharId) return;
     const key = mpKey(myCharId, charDmTarget._id);
     if(!charMpConversations[key]) {
-        const myChar = myCharacters.find(c=>c._id===myCharId);
+        const myChar = myCharacters.find(c => String(c._id) === String(myCharId));
         if(myChar) charMpConversations[key]={ myChar, otherChar:charDmTarget, msgs:[], unread:false, page:0, hasMore:false, total:0, lastContent:'', lastDate:null };
     }
     requestCharMpHistoryPage(key, 0);
@@ -2337,6 +2365,26 @@ function displayMessage(msg, isDm = false) {
     else contentHTML = `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
     const editedTag = (msg.edited && msg.type === 'text') ? '<span class="timestamp" style="font-size:0.65rem">(modifié)</span>' : '';
     const avatarClick = isDm ? "" : `onclick="openProfile('${senderName.replace(/'/g, "\\'")}')"`;
+    if(isDm) {
+        const isOwnDm = senderName === USERNAME;
+        div.innerHTML = `
+            <div class="dm-bubble-row ${isOwnDm ? 'dm-self' : 'dm-other'}">
+                <img src="${senderAvatar}" class="dm-bubble-avatar" alt="${escapeHtml(senderName)}">
+                <div class="dm-bubble-stack">
+                    <div class="dm-bubble-meta">
+                        <strong>${escapeHtml(senderName)}</strong>
+                        <span>${escapeHtml(msg.date || '')}</span>
+                    </div>
+                    <div class="dm-bubble-card">${contentHTML}${editedTag}</div>
+                </div>
+            </div>`;
+        document.getElementById('messages').appendChild(div);
+        if (msg.type === 'audio') {
+            const placeholder = document.getElementById(`audio-placeholder-${msg._id}`);
+            if(placeholder) placeholder.replaceWith(createCustomAudioPlayer(msg.content));
+        }
+        return;
+    }
     let replyHTML = "";
     if (msg.replyTo && msg.replyTo.author) { replyHTML = `<div class="reply-context-line"><div class="reply-spine"></div><span style="font-weight:600; cursor:pointer;">@${msg.replyTo.author}</span> <span style="font-style:italic; opacity:0.8;">${msg.replyTo.content}</span></div>`; }
     let innerHTML = ""; if(replyHTML) innerHTML += replyHTML; innerHTML += `<div style="display:flex; width:100%;"><div class="msg-col-avatar">`;
@@ -3353,11 +3401,11 @@ function getFollowerCountLabel(char) {
 }
 
 function getPostLikeCountLabel(post) {
-    return getDisplayCountLabel(post?.likeCountDisplay, post?.likes?.length || 0);
+    return formatCompactCountLabel(getPostLikeCountValue(post));
 }
 
 function getPostLikeCountValue(post) {
-    return getDisplayCountValue(post?.likeCountDisplay, post?.likes?.length || 0);
+    return Math.max(0, getDisplayCountValue(post?.likeCountDisplay, 0) + (post?.likes?.length || 0));
 }
 
 function formatArticleDateTime(post) {

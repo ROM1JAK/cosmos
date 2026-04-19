@@ -597,8 +597,10 @@ function buildDisplayPost(post, authorChar = null) {
 	displayPost.authorFollowerCountDisplay = authorChar?.followerCountDisplay || '';
 	displayPost.authorFollowerCountLabel = getStoredCountLabel(authorChar?.followerCountDisplay, displayPost.authorFollowers.length);
 	displayPost.authorFollowerCountValue = getStoredCountValue(authorChar?.followerCountDisplay, displayPost.authorFollowers.length);
-	displayPost.likeCountLabel = getStoredCountLabel(displayPost.likeCountDisplay, Array.isArray(displayPost.likes) ? displayPost.likes.length : 0);
-	displayPost.likeCountValue = getStoredCountValue(displayPost.likeCountDisplay, Array.isArray(displayPost.likes) ? displayPost.likes.length : 0);
+	const liveLikeCount = Array.isArray(displayPost.likes) ? displayPost.likes.length : 0;
+	const storedLikeBase = getStoredCountValue(displayPost.likeCountDisplay, 0);
+	displayPost.likeCountValue = Math.max(0, storedLikeBase + liveLikeCount);
+	displayPost.likeCountLabel = formatCompactCountLabel(displayPost.likeCountValue);
 	displayPost.authorCompanyNames = Array.isArray(authorChar?.companies) ? authorChar.companies.map(company => company.name).filter(Boolean) : [];
 	return displayPost;
 }

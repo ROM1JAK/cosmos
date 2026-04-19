@@ -636,7 +636,7 @@ module.exports = function initSocketHandlers(deps) {
       const targetUser = await User.findOne({ username: data.target });
       const newMessage = new Message({ content: data.content, type: data.type, senderName: data.sender, ownerId: senderUser ? senderUser.secretCode : null, targetName: data.target, targetOwnerId: targetUser ? targetUser.secretCode : null, roomId: 'dm', date: data.date });
       const savedMsg = await newMessage.save();
-      const payload = { _id: savedMsg._id, sender: savedMsg.senderName, target: savedMsg.targetName, content: savedMsg.content, type: savedMsg.type, date: savedMsg.date };
+            const payload = { _id: savedMsg._id, sender: savedMsg.senderName, target: savedMsg.targetName, content: savedMsg.content, type: savedMsg.type, date: savedMsg.date, timestamp: savedMsg.timestamp };
       const targetSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.target);
       const senderSockets = Object.keys(onlineUsers).filter(id => onlineUsers[id] === data.sender);
       [...new Set([...targetSockets, ...senderSockets])].forEach(sockId => { io.to(sockId).emit('receive_dm', payload); });

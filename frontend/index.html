@@ -19,30 +19,37 @@
 </div>
 
 <nav id="top-nav">
-        <button id="btn-nav-account" class="nav-profile-btn" onclick="openAccountUI()">
-            <i class="fa-solid fa-circle-user"></i>
-            <span id="nav-account-label">Connexion</span>
-        </button>
-        <button class="nav-btn" id="btn-view-accueil" onclick="switchView('accueil')"><i class="fa-solid fa-house"></i><span class="nav-label"> Accueil</span></button>
-        <button class="nav-btn" id="btn-view-reseau" onclick="switchView('reseau')" style="position:relative;">
-            <i class="fa-solid fa-network-wired"></i><span class="nav-label"> Réseau</span>
-            <span id="reseau-nav-badge" class="nav-unread-dot hidden"></span>
-        </button>
-        <button class="nav-btn" id="btn-view-presse" onclick="switchView('presse')" style="position:relative;"><i class="fa-solid fa-newspaper"></i><span class="nav-label"> Presse</span><span id="presse-badge" class="nav-unread-dot hidden"></span></button>
-        <button class="nav-btn" id="btn-view-actualites" onclick="switchView('actualites')">
-            <i class="fa-solid fa-calendar-days"></i><span class="nav-label"> Actualités</span>
-            <span id="actu-badge" class="nav-unread-dot hidden"></span>
-        </button>
-        <button class="nav-btn" id="btn-view-cites" onclick="switchView('cites')"><i class="fa-solid fa-city"></i><span class="nav-label"> Cités</span></button>
-        <button class="nav-btn" id="btn-view-map" onclick="switchView('map')"><i class="fa-solid fa-map-location-dot"></i><span class="nav-label"> Map</span></button>
-        <button class="nav-btn" id="btn-view-bourse" onclick="switchView('bourse')"><i class="fa-solid fa-chart-line"></i><span class="nav-label"> Bourse</span></button>
-        <button class="nav-btn" id="btn-view-wiki" onclick="switchView('wiki')"><i class="fa-solid fa-book-open"></i><span class="nav-label"> Wiki</span></button>
-        <button class="nav-btn" id="btn-view-mes-persos" onclick="switchView('mes-persos')"><i class="fa-solid fa-id-card"></i><span class="nav-label"> Mes Persos</span></button>
-        <button class="nav-btn hidden" id="btn-view-admin" onclick="switchView('admin')"><i class="fa-solid fa-shield-halved"></i><span class="nav-label"> Admin</span></button>
-        <button class="nav-btn" id="btn-notifs" onclick="openNotifications()" style="position:relative;">
-            <i class="fa-solid fa-bell"></i>
-            <span id="notif-badge" class="hidden"></span>
-        </button>
+        <div class="nav-bar-row">
+            <button id="btn-nav-account" class="nav-profile-btn" onclick="openAccountUI()">
+                <i class="fa-solid fa-circle-user"></i>
+                <span id="nav-account-label">Connexion</span>
+            </button>
+            <button class="nav-hamburger-btn" type="button" onclick="toggleTopNavMenu()" aria-expanded="false" aria-controls="top-nav-links" title="Afficher le menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
+        <div class="nav-links" id="top-nav-links">
+            <button class="nav-btn" id="btn-view-accueil" onclick="switchView('accueil')"><i class="fa-solid fa-house"></i><span class="nav-label"> Accueil</span></button>
+            <button class="nav-btn" id="btn-view-reseau" onclick="switchView('reseau')" style="position:relative;">
+                <i class="fa-solid fa-network-wired"></i><span class="nav-label"> Réseau</span>
+                <span id="reseau-nav-badge" class="nav-unread-dot hidden"></span>
+            </button>
+            <button class="nav-btn" id="btn-view-presse" onclick="switchView('presse')" style="position:relative;"><i class="fa-solid fa-newspaper"></i><span class="nav-label"> Presse</span><span id="presse-badge" class="nav-unread-dot hidden"></span></button>
+            <button class="nav-btn" id="btn-view-actualites" onclick="switchView('actualites')">
+                <i class="fa-solid fa-calendar-days"></i><span class="nav-label"> Actualités</span>
+                <span id="actu-badge" class="nav-unread-dot hidden"></span>
+            </button>
+            <button class="nav-btn" id="btn-view-cites" onclick="switchView('cites')"><i class="fa-solid fa-city"></i><span class="nav-label"> Cités</span></button>
+            <button class="nav-btn" id="btn-view-map" onclick="switchView('map')"><i class="fa-solid fa-map-location-dot"></i><span class="nav-label"> Map</span></button>
+            <button class="nav-btn" id="btn-view-bourse" onclick="switchView('bourse')"><i class="fa-solid fa-chart-line"></i><span class="nav-label"> Bourse</span></button>
+            <button class="nav-btn" id="btn-view-wiki" onclick="switchView('wiki')"><i class="fa-solid fa-book-open"></i><span class="nav-label"> Wiki</span></button>
+            <button class="nav-btn" id="btn-view-mes-persos" onclick="switchView('mes-persos')"><i class="fa-solid fa-id-card"></i><span class="nav-label"> Mes Persos</span></button>
+            <button class="nav-btn hidden" id="btn-view-admin" onclick="switchView('admin')"><i class="fa-solid fa-shield-halved"></i><span class="nav-label"> Admin</span></button>
+            <button class="nav-btn" id="btn-notifs" onclick="openNotifications()" style="position:relative;">
+                <i class="fa-solid fa-bell"></i>
+                <span id="notif-badge" class="hidden"></span>
+            </button>
+        </div>
     </nav>
 
     <div id="mobile-overlay" onclick="toggleSidebar()"></div>
