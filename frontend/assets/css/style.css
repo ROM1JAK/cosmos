@@ -873,16 +873,17 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 /* ── Blocs de messages groupés ── */
 .cmp-block { display: flex; gap: 10px; max-width: min(88%, 960px); align-items: flex-end; }
 .cmp-block-other { align-self: flex-start; }
-.cmp-block-self { align-self: flex-end; flex-direction: row-reverse; }
+.cmp-block-self { align-self: flex-end; margin-left: auto; }
 .cmp-block-avatar { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border); flex-shrink: 0; }
 .cmp-block-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .cmp-block-self .cmp-block-body { align-items: flex-end; }
 .cmp-block-head { font-size: 0.72rem; font-weight: 700; color: var(--sender-color, var(--accent)); padding: 0 4px; }
-.cmp-block-stack { display: flex; flex-direction: column; gap: 6px; }
-.cmp-block-text { background: var(--bg-secondary); border: 1px solid var(--border); padding: 10px 14px; border-radius: 18px; font-size: 0.93rem; color: var(--text-normal); line-height: 1.45; word-break: break-word; overflow-wrap: anywhere; box-shadow: 0 10px 24px rgba(0,0,0,0.18); display: flex; flex-direction: column; gap: 8px; max-width: 100%; }
+.cmp-block-self .cmp-block-head { text-align: right; }
+.cmp-block-stack { display: flex; flex-direction: column; gap: 4px; }
+.cmp-block-text { background: var(--bg-secondary); border: 1px solid var(--border); padding: 10px 14px; border-radius: 18px; font-size: 0.93rem; color: var(--text-normal); line-height: 1.45; word-break: break-word; overflow-wrap: anywhere; box-shadow: 0 10px 24px rgba(0,0,0,0.18); display: flex; flex-direction: column; gap: 2px; max-width: 100%; }
 .cmp-block-self .cmp-block-text { background: linear-gradient(180deg, rgba(108,99,255,0.16), rgba(108,99,255,0.12)); border-color: rgba(108,99,255,0.32); }
 .cmp-block-line { display: flex; flex-direction: column; gap: 4px; }
-.cmp-block-line + .cmp-block-line { padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); }
+.cmp-block-line + .cmp-block-line { padding-top: 0; border-top: none; margin-top: 0; }
 .cmp-block-line-text { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
 .cmp-block-time { font-size: 0.62rem; color: var(--text-dim); align-self: flex-end; padding: 0 2px; }
 

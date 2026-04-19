@@ -1660,12 +1660,19 @@ function renderGroupedCharMessages(containerId, messages, myCharId, scrollMode =
     groupCharMessages(messages, myCharId).forEach(group => {
         const block = document.createElement('div');
         block.className = `cmp-block ${group.isSelf ? 'cmp-block-self' : 'cmp-block-other'}`;
-        block.innerHTML = `
-            <img src="${group.senderAvatar}" class="cmp-block-avatar" title="${escapeHtml(group.senderName)}" onerror="this.style.opacity=0">
-            <div class="cmp-block-body" style="--sender-color:${group.senderColor};">
-                <div class="cmp-block-head">${escapeHtml(group.senderName)}</div>
-                <div class="cmp-block-stack"></div>
-            </div>`;
+        block.innerHTML = group.isSelf
+            ? `
+                <div class="cmp-block-body" style="--sender-color:${group.senderColor};">
+                    <div class="cmp-block-head">${escapeHtml(group.senderName)}</div>
+                    <div class="cmp-block-stack"></div>
+                </div>
+                <img src="${group.senderAvatar}" class="cmp-block-avatar" title="${escapeHtml(group.senderName)}" onerror="this.style.opacity=0">`
+            : `
+                <img src="${group.senderAvatar}" class="cmp-block-avatar" title="${escapeHtml(group.senderName)}" onerror="this.style.opacity=0">
+                <div class="cmp-block-body" style="--sender-color:${group.senderColor};">
+                    <div class="cmp-block-head">${escapeHtml(group.senderName)}</div>
+                    <div class="cmp-block-stack"></div>
+                </div>`;
         const stack = block.querySelector('.cmp-block-stack');
         const bubble = document.createElement('div');
         bubble.className = 'cmp-block-text';
