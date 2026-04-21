@@ -2510,7 +2510,7 @@ function getQuotedPostDisplayAuthor(post) {
         };
     }
     return {
-        name: post.authorName || 'Auteur inconnu',
+        name: post.authorName || '',
         avatar: post.authorAvatar || '',
         role: post.authorRole || '',
         color: post.authorColor || 'white',
@@ -2547,13 +2547,17 @@ function buildQuotedPostMarkup(post, options = {}) {
         post.isSponsored ? `<span class="quoted-post-badge sponsored">${escapeHtml(post.linkedCompanyName || 'Pub')}</span>` : ''
     ].filter(Boolean).join('');
     const nestedQuote = !nested && post.quotedPost ? buildQuotedPostMarkup(post.quotedPost, { nested: true }) : '';
+    const authorLine = author.name
+        ? `<div class="quoted-post-author" style="color:${author.color}">${escapeHtml(author.name)}${post.partyName && post.partyLogo && !author.anonymous ? `<span class="party-badge"><img src="${post.partyLogo}" class="party-logo"> ${escapeHtml(post.partyName)}</span>` : ''}</div>`
+        : '';
+    const roleLine = author.role ? `<div class="quoted-post-role">${escapeHtml(author.role)}</div>` : '';
     return `
         <div class="quoted-post-card${preview ? ' quoted-post-card-preview' : ''}${nested ? ' quoted-post-card-nested' : ''}" ${safeId ? `onclick="event.stopPropagation(); openQuotedPost('${safeId}')"` : ''}>
             <div class="quoted-post-head">
                 <img src="${author.avatar}" class="quoted-post-avatar" onerror="this.style.opacity=0">
                 <div class="quoted-post-meta">
-                    <div class="quoted-post-author" style="color:${author.color}">${escapeHtml(author.name)}${post.partyName && post.partyLogo && !author.anonymous ? `<span class="party-badge"><img src="${post.partyLogo}" class="party-logo"> ${escapeHtml(post.partyName)}</span>` : ''}</div>
-                    <div class="quoted-post-role">${escapeHtml(author.role || '')}</div>
+                    ${authorLine}
+                    ${roleLine}
                 </div>
                 <span class="quoted-post-date">${escapeHtml(post.date || '')}</span>
             </div>
