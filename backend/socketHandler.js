@@ -17,6 +17,7 @@ module.exports = function initSocketHandlers(deps) {
     AdminLog,
     City,
     CityRelation,
+    PartyRelation,
     MapMarker,
     MapOverlay,
     Stock,
@@ -686,18 +687,19 @@ module.exports = function initSocketHandlers(deps) {
       if(postData.repostPostId) {
           const sourcePost = await Post.findById(postData.repostPostId).lean();
           if(sourcePost && !sourcePost.isArticle) {
+              const sourceAuthorChar = sourcePost.authorCharId ? await Character.findById(sourcePost.authorCharId).lean() : null;
               postData.quotedPost = {
                   _id: String(sourcePost._id),
                   content: sourcePost.content || '',
                   mediaUrl: sourcePost.mediaUrl || '',
                   mediaType: sourcePost.mediaType || '',
                   authorCharId: sourcePost.authorCharId || '',
-                  authorName: sourcePost.authorName || '',
-                  authorAvatar: sourcePost.authorAvatar || '',
-                  authorRole: sourcePost.authorRole || '',
-                  authorColor: sourcePost.authorColor || '',
-                  partyName: sourcePost.partyName || '',
-                  partyLogo: sourcePost.partyLogo || '',
+                  authorName: sourcePost.authorName || sourceAuthorChar?.name || '',
+                  authorAvatar: sourcePost.authorAvatar || sourceAuthorChar?.avatar || '',
+                  authorRole: sourcePost.authorRole || sourceAuthorChar?.role || '',
+                  authorColor: sourcePost.authorColor || sourceAuthorChar?.color || '',
+                  partyName: sourcePost.partyName || sourceAuthorChar?.partyName || '',
+                  partyLogo: sourcePost.partyLogo || sourceAuthorChar?.partyLogo || '',
                   date: sourcePost.date || '',
                   timestamp: sourcePost.timestamp || null,
                   isAnonymous: !!sourcePost.isAnonymous,
@@ -1066,18 +1068,168 @@ module.exports = function initSocketHandlers(deps) {
   // ========== [FIN CITÃ‰S SOCKET] ==========
 
   // ========== [DIPLOMATIE] SOCKET EVENTS ==========
+  const DIPLO_STATUS_VALUES = new Set(['allie', 'pacte_non_agression', 'partenariat', 'neutre', 'observateur', 'tension', 'sanction', 'blocus', 'hostile', 'conflit_froid', 'guerre']);
+  const DIPLO_CONTEXT_VALUES = new Set(['general', 'pacte_defensif', 'axe_economique', 'coalition_gouvernementale', 'coalition_electorale', 'soutien_strategique', 'mediation', 'opposition_parlementaire', 'rivalite_electorale', 'rivalite_ideologique', 'guerre_commerciale', 'contentieux_territorial', 'insurrection_proxy']);
+
+  function normalizePartyKey(name = '') {
+      return String(name || '').trim().toLowerCase().replace(/\s+/g, '-');
+  }
+
+  function buildDiploGroupKey(scope, entityKeys) {
+      return `${scope}:${entityKeys.join('|')}:${Date.now()}`;
+  }
+
+  function buildPairList(items) {
+      const pairs = [];
+      for(let i = 0; i < items.length - 1; i++) {
+          for(let j = i + 1; j < items.length; j++) pairs.push([items[i], items[j]]);
+      }
+      return pairs;
+  }
+
+  async function getPoliticalPartiesCatalog() {
+      const chars = await Character.find({ partyName: { $exists: true, $ne: '' } }).select('partyName partyLogo').lean();
+      const catalog = new Map();
+      chars.forEach(char => {
+          const name = String(char.partyName || '').trim();
+          if(!name) return;
+          const key = normalizePartyKey(name);
+          const current = catalog.get(key) || { key, name, logo: '' };
+          if(!current.logo && char.partyLogo) current.logo = char.partyLogo;
+          catalog.set(key, current);
+      });
+      return [...catalog.values()].sort((left, right) => left.name.localeCompare(right.name, 'fr'));
+  }
+
+  async function getDiplomacyRelationsPayload() {
+      const [cityRelations, partyRelations] = await Promise.all([
+          CityRelation.find()
+              .populate('cityA', 'name flag archipel')
+              .populate('cityB', 'name flag archipel')
+              .sort({ updatedAt: -1 }),
+          PartyRelation.find().sort({ updatedAt: -1 }).lean()
+      ]);
+
+      const cityPayload = cityRelations.map(relation => ({
+          ...(relation.toObject ? relation.toObject() : relation),
+          relationScope: 'city'
+      }));
+      const partyPayload = partyRelations.map(relation => ({
+          ...relation,
+          relationScope: 'party'
+      }));
+
+      return [...cityPayload, ...partyPayload]
+          .sort((left, right) => new Date(right.updatedAt || 0) - new Date(left.updatedAt || 0));
+  }
+
+  async function emitDiplomacyRelations(target) {
+      target.emit('city_relations_data', await getDiplomacyRelationsPayload());
+  }
+
+  async function saveCityRelationPair(idA, idB, payload, relationId = null) {
+      const [safeA, safeB] = [String(idA), String(idB)].sort();
+      let relation;
+      if(relationId) {
+          relation = await CityRelation.findById(relationId);
+      } else {
+          relation = await CityRelation.findOne({
+              $or: [
+                  { cityA: safeA, cityB: safeB },
+                  { cityA: safeB, cityB: safeA }
+              ]
+          });
+      }
+      if(!relation) relation = new CityRelation({ cityA: safeA, cityB: safeB });
+      relation.cityA = safeA;
+      relation.cityB = safeB;
+      relation.status = payload.status;
+      relation.contextCategory = payload.contextCategory;
+      relation.description = payload.description;
+      relation.initiatedBy = payload.initiatedBy;
+      relation.allianceGroupKey = payload.allianceGroupKey || '';
+      if(payload.sinceDate) relation.since = payload.sinceDate;
+      await relation.save();
+  }
+
+  async function savePartyRelationPair(partyA, partyB, payload, relationId = null) {
+      const [leftParty, rightParty] = [partyA, partyB].sort((left, right) => left.key.localeCompare(right.key));
+      let relation;
+      if(relationId) {
+          relation = await PartyRelation.findById(relationId);
+      } else {
+          relation = await PartyRelation.findOne({
+              $or: [
+                  { 'partyA.key': leftParty.key, 'partyB.key': rightParty.key },
+                  { 'partyA.key': rightParty.key, 'partyB.key': leftParty.key }
+              ]
+          });
+      }
+      if(!relation) relation = new PartyRelation({ partyA: leftParty, partyB: rightParty });
+      relation.partyA = leftParty;
+      relation.partyB = rightParty;
+      relation.status = payload.status;
+      relation.contextCategory = payload.contextCategory;
+      relation.description = payload.description;
+      relation.initiatedBy = payload.initiatedBy;
+      relation.allianceGroupKey = payload.allianceGroupKey || '';
+      if(payload.sinceDate) relation.since = payload.sinceDate;
+      await relation.save();
+  }
+
   socket.on('request_city_relations', async () => {
-      const relations = await CityRelation.find()
-          .populate('cityA', 'name flag archipel')
-          .populate('cityB', 'name flag archipel')
-          .sort({ updatedAt: -1 });
-      socket.emit('city_relations_data', relations);
+      await emitDiplomacyRelations(socket);
   });
 
-  socket.on('admin_upsert_city_relation', async ({ relationId, cityAId, cityBId, cityIds, status, description, initiatedBy, since }) => {
+  socket.on('request_political_parties', async () => {
+      socket.emit('political_parties_data', await getPoliticalPartiesCatalog());
+  });
+
+  socket.on('admin_upsert_city_relation', async ({ relationId, relationScope, cityAId, cityBId, cityIds, partyKeys, status, contextCategory, description, initiatedBy, since, allianceGroupKey }) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
+
+      const scope = relationScope === 'party' ? 'party' : 'city';
+      const safeStatus = DIPLO_STATUS_VALUES.has(status) ? status : 'neutre';
+      const safeContext = DIPLO_CONTEXT_VALUES.has(contextCategory) ? contextCategory : 'general';
+      const payload = {
+          status: safeStatus,
+          contextCategory: safeContext,
+          description: description || '',
+          initiatedBy: initiatedBy || '',
+          sinceDate: since ? new Date(since) : null,
+          allianceGroupKey: ''
+      };
+
+      if(scope === 'party') {
+          const partyCatalog = await getPoliticalPartiesCatalog();
+          const catalogMap = new Map(partyCatalog.map(party => [party.key, party]));
+          const normalizedPartyKeys = [...new Set((Array.isArray(partyKeys) ? partyKeys : []).map(key => String(key || '').trim()).filter(Boolean))]
+              .sort();
+          const parties = normalizedPartyKeys.map(key => catalogMap.get(key)).filter(Boolean);
+          if(parties.length < 2) return;
+          if(safeStatus !== 'allie' && parties.length !== 2) return;
+
+          const groupKey = safeStatus === 'allie' && parties.length > 2
+              ? (allianceGroupKey || buildDiploGroupKey('party', parties.map(party => party.key)))
+              : '';
+          payload.allianceGroupKey = groupKey;
+
+          if(allianceGroupKey) await PartyRelation.deleteMany({ allianceGroupKey });
+
+          if(groupKey) {
+              const pairs = buildPairList(parties);
+              for(const [partyA, partyB] of pairs) {
+                  await savePartyRelationPair(partyA, partyB, payload);
+              }
+          } else {
+              await savePartyRelationPair(parties[0], parties[1], payload, relationId || null);
+          }
+
+          await emitDiplomacyRelations(io);
+          return;
+      }
 
       const normalizedCityIds = [...new Set(
           (Array.isArray(cityIds) && cityIds.length ? cityIds : [cityAId, cityBId])
@@ -1085,87 +1237,39 @@ module.exports = function initSocketHandlers(deps) {
               .filter(Boolean)
       )].sort();
       if(normalizedCityIds.length < 2) return;
+      if(safeStatus !== 'allie' && normalizedCityIds.length !== 2) return;
 
-      const isAllianceBatch = !relationId && status === 'allie' && normalizedCityIds.length > 2;
-      if(!isAllianceBatch && normalizedCityIds.length !== 2) return;
+      const groupKey = safeStatus === 'allie' && normalizedCityIds.length > 2
+          ? (allianceGroupKey || buildDiploGroupKey('city', normalizedCityIds))
+          : '';
+      payload.allianceGroupKey = groupKey;
 
-      const sinceDate = since ? new Date(since) : null;
+      if(allianceGroupKey) await CityRelation.deleteMany({ allianceGroupKey });
 
-      if(isAllianceBatch) {
-          for(let i = 0; i < normalizedCityIds.length - 1; i++) {
-              for(let j = i + 1; j < normalizedCityIds.length; j++) {
-                  const idA = normalizedCityIds[i];
-                  const idB = normalizedCityIds[j];
-                  let rel = await CityRelation.findOne({
-                      $or: [
-                          { cityA: idA, cityB: idB },
-                          { cityA: idB, cityB: idA }
-                      ]
-                  });
-                  if(!rel) rel = new CityRelation({ cityA: idA, cityB: idB });
-                  rel.cityA = idA;
-                  rel.cityB = idB;
-                  rel.status = 'allie';
-                  rel.description = description || '';
-                  rel.initiatedBy = initiatedBy || '';
-                  if(sinceDate) rel.since = sinceDate;
-                  await rel.save();
-              }
+      if(groupKey) {
+          const pairs = buildPairList(normalizedCityIds);
+          for(const [idA, idB] of pairs) {
+              await saveCityRelationPair(idA, idB, payload);
           }
-
-          const relations = await CityRelation.find()
-              .populate('cityA', 'name flag archipel')
-              .populate('cityB', 'name flag archipel')
-              .sort({ updatedAt: -1 });
-          io.emit('city_relations_data', relations);
-          return;
-      }
-
-      // Normaliser l'ordre pour garantir l'unicitÃ© bidirectionnelle
-      const [idA, idB] = normalizedCityIds;
-
-      let rel;
-      if(relationId) {
-          rel = await CityRelation.findById(relationId);
-          if(!rel) return;
       } else {
-          rel = await CityRelation.findOne({
-              $or: [
-                  { cityA: idA, cityB: idB },
-                  { cityA: idB, cityB: idA }
-              ]
-          });
-          if(!rel) rel = new CityRelation({ cityA: idA, cityB: idB });
+          await saveCityRelationPair(normalizedCityIds[0], normalizedCityIds[1], payload, relationId || null);
       }
 
-      rel.cityA        = idA;
-      rel.cityB        = idB;
-      rel.status       = status || 'neutre';
-      rel.description  = description || '';
-      rel.initiatedBy  = initiatedBy || '';
-    if(sinceDate) rel.since = sinceDate;
-
-      await rel.save();
-
-      const relations = await CityRelation.find()
-          .populate('cityA', 'name flag archipel')
-          .populate('cityB', 'name flag archipel')
-          .sort({ updatedAt: -1 });
-      io.emit('city_relations_data', relations);
+      await emitDiplomacyRelations(io);
   });
 
-  socket.on('admin_delete_city_relation', async ({ relationId }) => {
+  socket.on('admin_delete_city_relation', async ({ relationId, relationScope, allianceGroupKey }) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
 
-      await CityRelation.findByIdAndDelete(relationId);
+      const scope = relationScope === 'party' ? 'party' : 'city';
+      const Model = scope === 'party' ? PartyRelation : CityRelation;
 
-      const relations = await CityRelation.find()
-          .populate('cityA', 'name flag archipel')
-          .populate('cityB', 'name flag archipel')
-          .sort({ updatedAt: -1 });
-      io.emit('city_relations_data', relations);
+      if(allianceGroupKey) await Model.deleteMany({ allianceGroupKey });
+      else if(relationId) await Model.findByIdAndDelete(relationId);
+
+      await emitDiplomacyRelations(io);
   });
   // ========== [FIN DIPLOMATIE SOCKET] ==========
 

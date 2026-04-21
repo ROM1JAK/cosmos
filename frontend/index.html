@@ -940,8 +940,13 @@
                     <!-- Barre de filtres + bouton admin -->
                     <div class="diplo-toolbar">
                         <div class="diplo-filters">
-                            <select id="diplo-filter-city" class="diplo-select" onchange="renderDiplomacy()">
-                                <option value="">Toutes les cités</option>
+                            <select id="diplo-filter-scope" class="diplo-select" onchange="populateDiploFilters(); renderDiplomacy()">
+                                <option value="">Toutes les relations</option>
+                                <option value="city">Cités</option>
+                                <option value="party">Partis politiques</option>
+                            </select>
+                            <select id="diplo-filter-entity" class="diplo-select" onchange="renderDiplomacy()">
+                                <option value="">Toutes les entités</option>
                             </select>
                             <select id="diplo-filter-status" class="diplo-select" onchange="renderDiplomacy()">
                                 <option value="">Tous les statuts</option>
@@ -1564,10 +1569,16 @@
                 <button onclick="closeDiploModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
             </div>
             <input type="hidden" id="diploRelationId">
-            <label class="cfl">Cités concernées</label>
-            <select id="diploCityIds" class="modal-input diplo-multiselect" multiple size="8">
+            <input type="hidden" id="diploAllianceGroupKey">
+            <label class="cfl">Type de relation</label>
+            <select id="diploRelationScope" class="modal-input" onchange="populateDiploModalSelects()">
+                <option value="city">Entre cités</option>
+                <option value="party">Entre partis politiques</option>
             </select>
-            <div class="diplo-modal-help">Sélectionne 2 cités pour une relation classique. Avec le statut Allié, tu peux en sélectionner 3 ou plus pour créer automatiquement l'alliance entre toutes les cités choisies.</div>
+            <label class="cfl" style="margin-top:10px;">Entités concernées</label>
+            <select id="diploEntityIds" class="modal-input diplo-multiselect" multiple size="8">
+            </select>
+            <div id="diplo-modal-help" class="diplo-modal-help">Sélectionne 2 entités pour une relation classique. Avec le statut Allié, tu peux en sélectionner 3 ou plus pour créer ou modifier une alliance collective.</div>
             <label class="cfl" style="margin-top:10px;">Statut diplomatique</label>
             <select id="diploStatus" class="modal-input">
                 <option value="allie">🤝 Allié — Alliance militaire & économique</option>
@@ -1581,6 +1592,22 @@
                 <option value="hostile">☠️ Relations hostiles</option>
                 <option value="conflit_froid">❄️ Conflit froid (proxy)</option>
                 <option value="guerre">💥 En guerre ouverte</option>
+            </select>
+            <label class="cfl" style="margin-top:10px;">Contexte allié / ennemi</label>
+            <select id="diploContextCategory" class="modal-input">
+                <option value="general">Contexte général</option>
+                <option value="pacte_defensif">Allié — Pacte défensif</option>
+                <option value="axe_economique">Allié — Axe économique</option>
+                <option value="coalition_gouvernementale">Allié — Coalition gouvernementale</option>
+                <option value="coalition_electorale">Allié — Coalition électorale</option>
+                <option value="soutien_strategique">Allié — Soutien stratégique</option>
+                <option value="mediation">Neutre — Médiation</option>
+                <option value="opposition_parlementaire">Ennemi — Opposition parlementaire</option>
+                <option value="rivalite_electorale">Ennemi — Rivalité électorale</option>
+                <option value="rivalite_ideologique">Ennemi — Rivalité idéologique</option>
+                <option value="guerre_commerciale">Ennemi — Guerre commerciale</option>
+                <option value="contentieux_territorial">Ennemi — Contentieux territorial</option>
+                <option value="insurrection_proxy">Ennemi — Conflit par procuration</option>
             </select>
             <label class="cfl" style="margin-top:10px;">Initiée par (personnage / événement)</label>
             <input type="text" id="diploInitiatedBy" class="modal-input" placeholder="Ex: Commandant Arvan, Traité de Solara…">

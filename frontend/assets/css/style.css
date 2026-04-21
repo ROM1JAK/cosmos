@@ -1273,6 +1273,12 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .diplo-alliance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .diplo-alliance-city { display: flex; align-items: center; gap: 8px; min-width: 0; background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; }
 .diplo-alliance-city .diplo-city-name { font-size: 0.78rem; }
+.diplo-scope-label { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
+.diplo-card-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.diplo-context-badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 0.67rem; font-weight: 700; border: 1px solid transparent; }
+.diplo-context-ally { background: rgba(35,165,89,0.12); border-color: rgba(35,165,89,0.26); color: #65d991; }
+.diplo-context-enemy { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.28); color: #ff9191; }
+.diplo-context-neutral { background: rgba(107,114,128,0.15); border-color: rgba(107,114,128,0.28); color: #c4c9d4; }
 
 /* Badge statut */
 .diplo-status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 8px; color: white; }

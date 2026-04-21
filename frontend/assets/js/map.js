@@ -135,6 +135,7 @@
     }
 
     const related = cityRelationsData
+      .filter(rel => (rel.relationScope || 'city') === 'city')
       .filter(rel => String(rel.cityA?._id) === String(city._id) || String(rel.cityB?._id) === String(city._id))
       .sort((left, right) => {
         const leftTier = DIPLO_STATUS_META[left.status]?.tier ?? 99;

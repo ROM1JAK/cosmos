@@ -30,10 +30,16 @@ const DIPLO_CONTEXT_VALUES = [
     'insurrection_proxy'
 ];
 
-const CityRelationSchema = new mongoose.Schema({
-    cityA:       { type: mongoose.Schema.Types.ObjectId, ref: 'City', required: true },
-    cityB:       { type: mongoose.Schema.Types.ObjectId, ref: 'City', required: true },
-    status:      {
+const PartySnapshotSchema = new mongoose.Schema({
+    key: { type: String, required: true },
+    name: { type: String, required: true },
+    logo: { type: String, default: '' }
+}, { _id: false });
+
+const PartyRelationSchema = new mongoose.Schema({
+    partyA: { type: PartySnapshotSchema, required: true },
+    partyB: { type: PartySnapshotSchema, required: true },
+    status: {
         type: String,
         enum: DIPLO_STATUS_VALUES,
         default: 'neutre'
@@ -45,11 +51,10 @@ const CityRelationSchema = new mongoose.Schema({
     },
     allianceGroupKey: { type: String, default: '' },
     description: { type: String, default: '' },
-    since:       { type: Date, default: Date.now },
+    since: { type: Date, default: Date.now },
     initiatedBy: { type: String, default: '' }
 }, { timestamps: true });
 
-// Unicité bidirectionnelle (A↔B = B↔A)
-CityRelationSchema.index({ cityA: 1, cityB: 1 }, { unique: true });
+PartyRelationSchema.index({ 'partyA.key': 1, 'partyB.key': 1 }, { unique: true });
 
-module.exports = mongoose.model('CityRelation', CityRelationSchema);
+module.exports = mongoose.model('PartyRelation', PartyRelationSchema);

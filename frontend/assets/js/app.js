@@ -152,7 +152,7 @@ function switchView(view) {
         const actuBtn = document.getElementById('btn-view-actualites');
         if(actuBtn) actuBtn.classList.remove('nav-notify');
     }
-    if(view === 'cites') { loadCities(); loadCityRelations(); }
+    if(view === 'cites') { loadCities(); loadCityRelations(); loadPoliticalParties(); }
     if(view === 'bourse') { loadBourse(); updateBourseAdminUI(); syncBourseRankingState(); syncBourseFilterUI(); restorePersistentScroll('bourse-scroll'); }
     if(view === 'wiki') { loadWiki(); }
     if(view === 'accueil') { renderAccueil(); socket.emit('request_feed'); socket.emit('request_events'); socket.emit('request_presse'); socket.emit('request_world_timeline'); if(!stocksData.length) socket.emit('request_stocks'); }
@@ -2444,6 +2444,32 @@ function updateFeedTypingUI() {
     else { ind.classList.add('hidden'); }
 }
 
+async function handlePostMediaUpload(file, successLabel = 'Prêt !') {
+    if(!file) return null;
+    const statusNode = document.getElementById('postFileStatus');
+    const mediaUrlNode = document.getElementById('postMediaUrl');
+    if(statusNode) {
+        statusNode.style.display = 'block';
+        statusNode.textContent = 'Upload...';
+    }
+    const url = await uploadToCloudinary(file);
+    if(url && mediaUrlNode) {
+        mediaUrlNode.value = url;
+        if(statusNode) statusNode.textContent = successLabel;
+    }
+    return url;
+}
+
+document.getElementById('postContent').addEventListener('paste', async (event) => {
+    const clipboardItems = Array.from(event.clipboardData?.items || []);
+    const imageItem = clipboardItems.find(item => item.type && item.type.startsWith('image/'));
+    if(!imageItem) return;
+    const file = imageItem.getAsFile();
+    if(!file) return;
+    event.preventDefault();
+    await handlePostMediaUpload(file, 'Image collée prête !');
+});
+
 function togglePollUI() {
     const ui = document.getElementById('poll-creation-ui'); pollUIOpen = !pollUIOpen;
     if(pollUIOpen) { ui.classList.remove('hidden'); pollOptions = []; addPollOption(); addPollOption(); } 
@@ -2462,11 +2488,7 @@ function closePollUI() { document.getElementById('poll-creation-ui').classList.a
 
 async function previewPostFile() {
     const file = document.getElementById('postMediaFile').files[0];
-    if(file) {
-        document.getElementById('postFileStatus').style.display = 'block'; document.getElementById('postFileStatus').textContent = "Upload...";
-        const url = await uploadToCloudinary(file);
-        if(url) { document.getElementById('postMediaUrl').value = url; document.getElementById('postFileStatus').textContent = "Prêt !"; }
-    }
+    if(file) await handlePostMediaUpload(file, 'Prêt !');
 }
 
 function findPostByIdInCaches(postId) {
@@ -4818,29 +4840,61 @@ async function adminUploadFlag() {
 
 // ==================== [DIPLOMATIE] ====================
 let cityRelationsData = [];
+let politicalPartiesData = [];
+let renderedDiplomacyRelationsCache = [];
 let currentDiploTab = 'geo';
 
-// Libellés et icônes par statut
 const DIPLO_STATUS_META = {
-    allie:               { label: 'Allié',                    icon: '🤝', tier: 0 },
-    pacte_non_agression: { label: 'Pacte de Non-Agression',   icon: '🛡️', tier: 1 },
-    partenariat:         { label: 'Partenariat économique',   icon: '💼', tier: 2 },
-    neutre:              { label: 'Neutre',                   icon: '⚪', tier: 3 },
-    observateur:         { label: 'Sous surveillance',        icon: '👁️', tier: 4 },
-    tension:             { label: 'Tension diplomatique',     icon: '⚠️', tier: 5 },
-    sanction:            { label: 'Sanctions économiques',    icon: '🚫', tier: 6 },
-    blocus:              { label: 'Blocus',                   icon: '⛔', tier: 7 },
-    hostile:             { label: 'Relations hostiles',       icon: '☠️', tier: 8 },
-    conflit_froid:       { label: 'Conflit froid',            icon: '❄️', tier: 9 },
-    guerre:              { label: 'En guerre ouverte',        icon: '💥', tier: 10 }
+    allie:               { label: 'Allié', icon: '🤝', tier: 0 },
+    pacte_non_agression: { label: 'Pacte de Non-Agression', icon: '🛡️', tier: 1 },
+    partenariat:         { label: 'Partenariat économique', icon: '💼', tier: 2 },
+    neutre:              { label: 'Neutre', icon: '⚪', tier: 3 },
+    observateur:         { label: 'Sous surveillance', icon: '👁️', tier: 4 },
+    tension:             { label: 'Tension diplomatique', icon: '⚠️', tier: 5 },
+    sanction:            { label: 'Sanctions économiques', icon: '🚫', tier: 6 },
+    blocus:              { label: 'Blocus', icon: '⛔', tier: 7 },
+    hostile:             { label: 'Relations hostiles', icon: '☠️', tier: 8 },
+    conflit_froid:       { label: 'Conflit froid', icon: '❄️', tier: 9 },
+    guerre:              { label: 'En guerre ouverte', icon: '💥', tier: 10 }
+};
+
+const DIPLO_CONTEXT_META = {
+    general: { label: 'Contexte général', family: 'neutral' },
+    pacte_defensif: { label: 'Pacte défensif', family: 'ally' },
+    axe_economique: { label: 'Axe économique', family: 'ally' },
+    coalition_gouvernementale: { label: 'Coalition gouvernementale', family: 'ally' },
+    coalition_electorale: { label: 'Coalition électorale', family: 'ally' },
+    soutien_strategique: { label: 'Soutien stratégique', family: 'ally' },
+    mediation: { label: 'Médiation', family: 'neutral' },
+    opposition_parlementaire: { label: 'Opposition parlementaire', family: 'enemy' },
+    rivalite_electorale: { label: 'Rivalité électorale', family: 'enemy' },
+    rivalite_ideologique: { label: 'Rivalité idéologique', family: 'enemy' },
+    guerre_commerciale: { label: 'Guerre commerciale', family: 'enemy' },
+    contentieux_territorial: { label: 'Contentieux territorial', family: 'enemy' },
+    insurrection_proxy: { label: 'Conflit par procuration', family: 'enemy' }
+};
+
+const DIPLO_SCOPE_META = {
+    city: { label: 'Cités', empty: 'Aucune cité disponible.' },
+    party: { label: 'Partis politiques', empty: 'Aucun parti politique disponible.' }
 };
 
 function loadCityRelations() {
     socket.emit('request_city_relations');
 }
 
+function loadPoliticalParties() {
+    socket.emit('request_political_parties');
+}
+
+socket.on('political_parties_data', (parties) => {
+    politicalPartiesData = Array.isArray(parties) ? parties : [];
+    populateDiploFilters();
+    populateDiploModalSelects();
+});
+
 socket.on('city_relations_data', (relations) => {
-    cityRelationsData = relations;
+    cityRelationsData = Array.isArray(relations) ? relations : [];
     populateDiploFilters();
     renderDiplomacy();
     if(IS_ADMIN) {
@@ -4855,136 +4909,141 @@ function switchCitesTab(tab) {
     document.getElementById('cites-tab-diplo').classList.toggle('hidden', tab !== 'diplo');
     document.getElementById('subtab-geo').classList.toggle('active', tab === 'geo');
     document.getElementById('subtab-diplo').classList.toggle('active', tab === 'diplo');
-    if(tab === 'diplo' && !cityRelationsData.length) loadCityRelations();
+    if(tab === 'diplo') {
+        if(!cityRelationsData.length) loadCityRelations();
+        if(!politicalPartiesData.length) loadPoliticalParties();
+    }
+}
+
+function getDiploEntitiesForScope(scope) {
+    if(scope === 'party') {
+        return politicalPartiesData.map(party => ({
+            scope: 'party',
+            key: String(party.key),
+            id: `party:${party.key}`,
+            name: party.name,
+            logo: party.logo || ''
+        }));
+    }
+    return citiesData.map(city => ({
+        scope: 'city',
+        key: String(city._id),
+        id: `city:${city._id}`,
+        name: city.name,
+        logo: city.flag || ''
+    }));
+}
+
+function getDiploRelationEntities(relation) {
+    if(relation.relationScope === 'party') {
+        return [relation.partyA, relation.partyB]
+            .filter(Boolean)
+            .map(party => ({
+                scope: 'party',
+                key: String(party.key),
+                id: `party:${party.key}`,
+                name: party.name,
+                logo: party.logo || ''
+            }));
+    }
+    return [relation.cityA, relation.cityB]
+        .filter(Boolean)
+        .map(city => ({
+            scope: 'city',
+            key: String(city._id),
+            id: `city:${city._id}`,
+            name: city.name,
+            logo: city.flag || ''
+        }));
+}
+
+function buildDiploContextBadge(contextCategory) {
+    const meta = DIPLO_CONTEXT_META[contextCategory] || DIPLO_CONTEXT_META.general;
+    return `<span class="diplo-context-badge diplo-context-${meta.family}">${escapeHtml(meta.label)}</span>`;
 }
 
 function populateDiploFilters() {
-    const sel = document.getElementById('diplo-filter-city');
-    if(!sel) return;
-    const current = sel.value;
-    // Collecter toutes les cités impliquées
-    const citySet = new Map();
-    cityRelationsData.forEach(r => {
-        if(r.cityA) citySet.set(String(r.cityA._id), r.cityA.name);
-        if(r.cityB) citySet.set(String(r.cityB._id), r.cityB.name);
-    });
-    // Compléter avec citiesData
-    citiesData.forEach(c => citySet.set(String(c._id), c.name));
-    const sorted = [...citySet.entries()].sort((a,b) => a[1].localeCompare(b[1]));
+    const scopeSel = document.getElementById('diplo-filter-scope');
+    const entitySel = document.getElementById('diplo-filter-entity');
+    if(!scopeSel || !entitySel) return;
 
-    sel.innerHTML = '<option value="">Toutes les cités</option>';
-    sorted.forEach(([id, name]) => {
+    const currentScope = scopeSel.value || '';
+    const currentEntity = entitySel.value || '';
+    const scopeOptions = currentScope ? [currentScope] : ['city', 'party'];
+    const entities = scopeOptions.flatMap(scope => getDiploEntitiesForScope(scope));
+        
+    entitySel.innerHTML = '<option value="">Toutes les entités</option>';
+    entities.sort((left, right) => left.name.localeCompare(right.name, 'fr')).forEach(entity => {
         const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = name;
-        if(id === current) opt.selected = true;
-        sel.appendChild(opt);
+        opt.value = entity.id;
+        opt.textContent = `${entity.name} · ${DIPLO_SCOPE_META[entity.scope]?.label || entity.scope}`;
+        if(entity.id === currentEntity) opt.selected = true;
+        entitySel.appendChild(opt);
     });
 
-    // Remplir aussi les selects de la modale
     populateDiploModalSelects();
 }
 
 function populateDiploModalSelects() {
-    const sel = document.getElementById('diploCityIds');
+    const sel = document.getElementById('diploEntityIds');
+    const scope = document.getElementById('diploRelationScope')?.value || 'city';
+    const help = document.getElementById('diplo-modal-help');
     if(!sel) return;
+
     const previousValues = new Set(Array.from(sel.selectedOptions).map(opt => String(opt.value)));
+    const entities = getDiploEntitiesForScope(scope).sort((left, right) => left.name.localeCompare(right.name, 'fr'));
+
     sel.innerHTML = '';
-    const sorted = [...citiesData].sort((a,b) => a.name.localeCompare(b.name));
-    sorted.forEach(c => {
+    entities.forEach(entity => {
         const opt = document.createElement('option');
-        opt.value = String(c._id);
-        opt.textContent = c.name;
-        if(previousValues.has(String(c._id))) opt.selected = true;
+        opt.value = entity.key;
+        opt.textContent = entity.name;
+        if(previousValues.has(String(entity.key))) opt.selected = true;
         sel.appendChild(opt);
     });
-}
 
-function getDiploRelationCities(relation) {
-    return [relation.cityA, relation.cityB].filter(Boolean);
+    if(help) {
+        help.textContent = `Sélectionne 2 ${scope === 'party' ? 'partis' : 'cités'} pour une relation classique. Avec le statut Allié, tu peux en sélectionner 3 ou plus pour créer ou modifier une alliance collective.`;
+    }
 }
 
 function groupDiplomacyRelations(relations) {
     const grouped = [];
-    const allianceBuckets = new Map();
+    const groupedBuckets = new Map();
 
     relations.forEach(relation => {
-        if(relation.status !== 'allie') {
+        const entities = getDiploRelationEntities(relation);
+        if(relation.status !== 'allie' || !relation.allianceGroupKey || entities.length !== 2) {
             grouped.push(relation);
             return;
         }
-        const signature = [
-            relation.status || '',
-            relation.since ? new Date(relation.since).toISOString().slice(0, 10) : '',
-            relation.initiatedBy || '',
-            relation.description || ''
-        ].join('||');
-        if(!allianceBuckets.has(signature)) allianceBuckets.set(signature, []);
-        allianceBuckets.get(signature).push(relation);
+        const bucketKey = `${relation.relationScope || 'city'}::${relation.allianceGroupKey}`;
+        if(!groupedBuckets.has(bucketKey)) groupedBuckets.set(bucketKey, []);
+        groupedBuckets.get(bucketKey).push(relation);
     });
 
-    allianceBuckets.forEach(bucket => {
-        const adjacency = new Map();
-        const cityMap = new Map();
-
+    groupedBuckets.forEach(bucket => {
+        const entityMap = new Map();
         bucket.forEach(relation => {
-            const cities = getDiploRelationCities(relation);
-            if(cities.length !== 2) {
-                grouped.push(relation);
-                return;
-            }
-            const [cityA, cityB] = cities;
-            const idA = String(cityA._id);
-            const idB = String(cityB._id);
-            cityMap.set(idA, cityA);
-            cityMap.set(idB, cityB);
-            if(!adjacency.has(idA)) adjacency.set(idA, new Set());
-            if(!adjacency.has(idB)) adjacency.set(idB, new Set());
-            adjacency.get(idA).add(idB);
-            adjacency.get(idB).add(idA);
+            getDiploRelationEntities(relation).forEach(entity => entityMap.set(entity.id, entity));
         });
-
-        const visited = new Set();
-        adjacency.forEach((_, startId) => {
-            if(visited.has(startId)) return;
-            const stack = [startId];
-            const componentIds = [];
-            visited.add(startId);
-            while(stack.length) {
-                const currentId = stack.pop();
-                componentIds.push(currentId);
-                (adjacency.get(currentId) || []).forEach(nextId => {
-                    if(visited.has(nextId)) return;
-                    visited.add(nextId);
-                    stack.push(nextId);
-                });
-            }
-
-            const componentSet = new Set(componentIds);
-            const componentRelations = bucket.filter(relation => {
-                const relationCityIds = getDiploRelationCities(relation).map(city => String(city._id));
-                return relationCityIds.length === 2 && relationCityIds.every(id => componentSet.has(id));
-            });
-            const componentCities = componentIds
-                .map(id => cityMap.get(id))
-                .filter(Boolean)
-                .sort((left, right) => (left.name || '').localeCompare(right.name || ''));
-
-            if(componentCities.length >= 3) {
-                const sample = componentRelations[0];
-                grouped.push({
-                    _id: `alliance-group:${componentIds.sort().join('-')}:${sample?._id || ''}`,
-                    status: 'allie',
-                    since: sample?.since || null,
-                    initiatedBy: sample?.initiatedBy || '',
-                    description: sample?.description || '',
-                    cities: componentCities,
-                    relations: componentRelations,
-                    isGroupedAlliance: true
-                });
-            } else {
-                grouped.push(...componentRelations);
-            }
+        const entities = [...entityMap.values()].sort((left, right) => left.name.localeCompare(right.name, 'fr'));
+        if(entities.length < 3) {
+            grouped.push(...bucket);
+            return;
+        }
+        const sample = bucket[0];
+        grouped.push({
+            _id: `diplo-group:${sample.relationScope}:${sample.allianceGroupKey}`,
+            relationScope: sample.relationScope || 'city',
+            status: sample.status,
+            contextCategory: sample.contextCategory || 'general',
+            since: sample.since || null,
+            initiatedBy: sample.initiatedBy || '',
+            description: sample.description || '',
+            allianceGroupKey: sample.allianceGroupKey || '',
+            entities,
+            isGroupedAlliance: true
         });
     });
 
@@ -4995,130 +5054,138 @@ function renderDiplomacy() {
     const grid = document.getElementById('diplo-relations-grid');
     if(!grid) return;
 
-    const filterCity   = document.getElementById('diplo-filter-city')?.value || '';
+    const filterScope = document.getElementById('diplo-filter-scope')?.value || '';
+    const filterEntity = document.getElementById('diplo-filter-entity')?.value || '';
     const filterStatus = document.getElementById('diplo-filter-status')?.value || '';
 
     let list = groupDiplomacyRelations(cityRelationsData);
 
-    if(filterCity) {
-        list = list.filter(r => {
-            const cities = r.isGroupedAlliance ? (r.cities || []) : getDiploRelationCities(r);
-            return cities.some(city => String(city?._id) === filterCity);
+    if(filterScope) list = list.filter(relation => (relation.relationScope || 'city') === filterScope);
+    if(filterEntity) {
+        list = list.filter(relation => {
+            const entities = relation.isGroupedAlliance ? (relation.entities || []) : getDiploRelationEntities(relation);
+            return entities.some(entity => entity.id === filterEntity);
         });
     }
-    if(filterStatus) list = list.filter(r => r.status === filterStatus);
+    if(filterStatus) list = list.filter(relation => relation.status === filterStatus);
 
-    // Trier par gravité décroissante (guerre en premier), puis par nom
-    list.sort((a,b) => {
-        const ta = DIPLO_STATUS_META[a.status]?.tier ?? 99;
-        const tb = DIPLO_STATUS_META[b.status]?.tier ?? 99;
-        const aName = a.isGroupedAlliance ? (a.cities?.[0]?.name || '') : (a.cityA?.name || '');
-        const bName = b.isGroupedAlliance ? (b.cities?.[0]?.name || '') : (b.cityA?.name || '');
-        return tb - ta || aName.localeCompare(bName);
+    list.sort((left, right) => {
+        const leftTier = DIPLO_STATUS_META[left.status]?.tier ?? 99;
+        const rightTier = DIPLO_STATUS_META[right.status]?.tier ?? 99;
+        const leftName = (left.isGroupedAlliance ? left.entities?.[0]?.name : getDiploRelationEntities(left)[0]?.name) || '';
+        const rightName = (right.isGroupedAlliance ? right.entities?.[0]?.name : getDiploRelationEntities(right)[0]?.name) || '';
+        return rightTier - leftTier || leftName.localeCompare(rightName, 'fr');
     });
+
+    renderedDiplomacyRelationsCache = list;
 
     if(!list.length) {
         grid.innerHTML = '<div class="rank-empty" style="grid-column:1/-1;">Aucune relation diplomatique correspondante.</div>';
         return;
     }
 
-    grid.innerHTML = list.map(r => renderDiploCard(r)).join('');
+    grid.innerHTML = list.map(relation => renderDiploCard(relation)).join('');
 }
 
-function renderDiploCard(r) {
-    const meta = DIPLO_STATUS_META[r.status] || { label: r.status, icon: '❓' };
-    const since = r.since ? new Date(r.since).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' }) : '';
-    const idStr = r._id;
+function renderDiploEntityToken(entity) {
+    const media = entity.logo
+        ? `<img src="${escapeHtml(entity.logo)}" class="diplo-city-flag" alt="">`
+        : `<div class="diplo-city-flag-ph"><i class="fa-solid ${entity.scope === 'party' ? 'fa-flag' : 'fa-city'}"></i></div>`;
+    return `
+        <div class="diplo-alliance-city">
+            ${media}
+            <div class="diplo-city-name">${escapeHtml(entity.name || '—')}</div>
+        </div>`;
+}
 
-    if(r.isGroupedAlliance) {
-        const citiesMarkup = (r.cities || []).map(city => {
-            const flag = city?.flag
-                ? `<img src="${escapeHtml(city.flag)}" class="diplo-city-flag" alt="">`
-                : `<div class="diplo-city-flag-ph"><i class="fa-solid fa-flag"></i></div>`;
-            return `
-                <div class="diplo-alliance-city">
-                    ${flag}
-                    <div class="diplo-city-name">${escapeHtml(city?.name || '—')}</div>
-                </div>`;
-        }).join('');
+function renderDiploCard(relation) {
+    const meta = DIPLO_STATUS_META[relation.status] || { label: relation.status, icon: '❓' };
+    const since = relation.since ? new Date(relation.since).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+    const contextBadge = buildDiploContextBadge(relation.contextCategory || 'general');
+    const scopeLabel = DIPLO_SCOPE_META[relation.relationScope || 'city']?.label || 'Relation';
+    const adminActions = IS_ADMIN ? `
+        <div class="diplo-card-actions">
+            <button class="diplo-card-btn" onclick="openDiploModal('${String(relation._id).replace(/'/g, "\\'")}')"><i class="fa-solid fa-pen"></i> Modifier</button>
+            <button class="diplo-card-btn danger" onclick="deleteDiploRelation('${String(relation._id).replace(/'/g, "\\'")}')"><i class="fa-solid fa-trash"></i> Supprimer</button>
+        </div>` : '';
 
+    if(relation.isGroupedAlliance) {
         return `
         <div class="diplo-card diplo-card-grouped-alliance">
-            <div class="diplo-card-banner diplo-banner-${r.status}"></div>
+            <div class="diplo-card-banner diplo-banner-${relation.status}"></div>
             <div class="diplo-card-body">
                 <div class="diplo-alliance-head">
-                    <div class="diplo-alliance-title">Alliance collective</div>
-                    <div class="diplo-alliance-count">${r.cities.length} cités</div>
+                    <div>
+                        <div class="diplo-alliance-title">Alliance collective</div>
+                        <div class="diplo-scope-label">${escapeHtml(scopeLabel)}</div>
+                    </div>
+                    <div class="diplo-alliance-count">${relation.entities.length} ${relation.relationScope === 'party' ? 'partis' : 'cités'}</div>
                 </div>
-                <div class="diplo-alliance-grid">${citiesMarkup}</div>
-                <span class="diplo-status-badge diplo-badge-${r.status}">${meta.icon} ${meta.label}</span>
+                <div class="diplo-alliance-grid">${(relation.entities || []).map(renderDiploEntityToken).join('')}</div>
+                <div class="diplo-card-tags"><span class="diplo-status-badge diplo-badge-${relation.status}">${meta.icon} ${meta.label}</span>${contextBadge}</div>
                 ${since ? `<div class="diplo-card-meta"><i class="fa-regular fa-calendar"></i> Depuis le ${since}</div>` : ''}
-                ${r.initiatedBy ? `<div class="diplo-card-meta"><i class="fa-solid fa-user"></i> ${escapeHtml(r.initiatedBy)}</div>` : ''}
-                ${r.description ? `<div class="diplo-card-desc">${escapeHtml(r.description)}</div>` : ''}
+                ${relation.initiatedBy ? `<div class="diplo-card-meta"><i class="fa-solid fa-user"></i> ${escapeHtml(relation.initiatedBy)}</div>` : ''}
+                ${relation.description ? `<div class="diplo-card-desc">${escapeHtml(relation.description)}</div>` : ''}
+                ${adminActions}
             </div>
         </div>`;
     }
 
-    const flagA = r.cityA?.flag
-        ? `<img src="${escapeHtml(r.cityA.flag)}" class="diplo-city-flag" alt="">`
-        : `<div class="diplo-city-flag-ph"><i class="fa-solid fa-flag"></i></div>`;
-    const flagB = r.cityB?.flag
-        ? `<img src="${escapeHtml(r.cityB.flag)}" class="diplo-city-flag" alt="">`
-        : `<div class="diplo-city-flag-ph"><i class="fa-solid fa-flag"></i></div>`;
-
-    const adminActions = IS_ADMIN ? `
-        <div class="diplo-card-actions">
-            <button class="diplo-card-btn" onclick="openDiploModal('${idStr}')"><i class="fa-solid fa-pen"></i> Modifier</button>
-            <button class="diplo-card-btn danger" onclick="deleteDiploRelation('${idStr}')"><i class="fa-solid fa-trash"></i> Supprimer</button>
-        </div>` : '';
-
+    const entities = getDiploRelationEntities(relation);
+    const [entityA, entityB] = entities;
     return `
     <div class="diplo-card">
-        <div class="diplo-card-banner diplo-banner-${r.status}"></div>
+        <div class="diplo-card-banner diplo-banner-${relation.status}"></div>
         <div class="diplo-card-body">
             <div class="diplo-card-cities">
                 <div class="diplo-cities-pair">
-                    ${flagA}
-                    <div class="diplo-cities-names">
-                        <div class="diplo-city-name">${escapeHtml(r.cityA?.name || '—')}</div>
-                        <div class="diplo-city-name" style="opacity:0.7;">${escapeHtml(r.cityB?.name || '—')}</div>
-                    </div>
-                    ${flagB}
+                    ${renderDiploEntityToken(entityA || { scope: relation.relationScope || 'city', name: '—', logo: '' })}
+                    <div class="diplo-vs">${relation.relationScope === 'party' ? 'Face à' : 'VS'}</div>
+                    ${renderDiploEntityToken(entityB || { scope: relation.relationScope || 'city', name: '—', logo: '' })}
                 </div>
             </div>
-            <span class="diplo-status-badge diplo-badge-${r.status}">${meta.icon} ${meta.label}</span>
+            <div class="diplo-scope-label">${escapeHtml(scopeLabel)}</div>
+            <div class="diplo-card-tags"><span class="diplo-status-badge diplo-badge-${relation.status}">${meta.icon} ${meta.label}</span>${contextBadge}</div>
             ${since ? `<div class="diplo-card-meta"><i class="fa-regular fa-calendar"></i> Depuis le ${since}</div>` : ''}
-            ${r.initiatedBy ? `<div class="diplo-card-meta"><i class="fa-solid fa-user"></i> ${escapeHtml(r.initiatedBy)}</div>` : ''}
-            ${r.description ? `<div class="diplo-card-desc">${escapeHtml(r.description)}</div>` : ''}
+            ${relation.initiatedBy ? `<div class="diplo-card-meta"><i class="fa-solid fa-user"></i> ${escapeHtml(relation.initiatedBy)}</div>` : ''}
+            ${relation.description ? `<div class="diplo-card-desc">${escapeHtml(relation.description)}</div>` : ''}
             ${adminActions}
         </div>
     </div>`;
 }
 
 function openDiploModal(relationId) {
-    populateDiploModalSelects();
+    const relation = relationId
+        ? renderedDiplomacyRelationsCache.find(item => String(item._id) === String(relationId)) || cityRelationsData.find(item => String(item._id) === String(relationId))
+        : null;
+    const scopeInput = document.getElementById('diploRelationScope');
+    const entitySelect = document.getElementById('diploEntityIds');
+
     document.getElementById('diploRelationId').value = '';
-    const citySelect = document.getElementById('diploCityIds');
-    Array.from(citySelect.options).forEach(opt => { opt.selected = false; });
+    document.getElementById('diploAllianceGroupKey').value = '';
+    scopeInput.value = relation?.relationScope || 'city';
+    populateDiploModalSelects();
+    Array.from(entitySelect.options).forEach(opt => { opt.selected = false; });
     document.getElementById('diploStatus').value = 'neutre';
+    document.getElementById('diploContextCategory').value = 'general';
     document.getElementById('diploInitiatedBy').value = '';
     document.getElementById('diploDesc').value = '';
     document.getElementById('diploSince').value = new Date().toISOString().split('T')[0];
 
-    if(relationId) {
-        const rel = cityRelationsData.find(r => String(r._id) === String(relationId));
-        if(rel) {
-            document.getElementById('diploRelationId').value = String(rel._id);
-            const selectedIds = new Set([String(rel.cityA?._id || ''), String(rel.cityB?._id || '')].filter(Boolean));
-            Array.from(citySelect.options).forEach(opt => {
-                opt.selected = selectedIds.has(String(opt.value));
-            });
-            document.getElementById('diploStatus').value = rel.status || 'neutre';
-            document.getElementById('diploInitiatedBy').value = rel.initiatedBy || '';
-            document.getElementById('diploDesc').value = rel.description || '';
-            if(rel.since) document.getElementById('diploSince').value = new Date(rel.since).toISOString().split('T')[0];
-        }
+    if(relation) {
+        const selectedValues = new Set((relation.isGroupedAlliance ? relation.entities : getDiploRelationEntities(relation)).map(entity => String(entity.key)));
+        Array.from(entitySelect.options).forEach(opt => {
+            opt.selected = selectedValues.has(String(opt.value));
+        });
+        if(!relation.isGroupedAlliance) document.getElementById('diploRelationId').value = String(relation._id);
+        if(relation.allianceGroupKey) document.getElementById('diploAllianceGroupKey').value = relation.allianceGroupKey;
+        document.getElementById('diploStatus').value = relation.status || 'neutre';
+        document.getElementById('diploContextCategory').value = relation.contextCategory || 'general';
+        document.getElementById('diploInitiatedBy').value = relation.initiatedBy || '';
+        document.getElementById('diploDesc').value = relation.description || '';
+        if(relation.since) document.getElementById('diploSince').value = new Date(relation.since).toISOString().split('T')[0];
     }
+
     document.getElementById('diplo-modal').classList.remove('hidden');
     snapForm('diplo-modal');
 }
@@ -5128,23 +5195,30 @@ function closeDiploModal() {
 }
 
 function submitDiploRelation() {
-    const cityIds      = Array.from(document.getElementById('diploCityIds').selectedOptions).map(opt => String(opt.value));
-    const status       = document.getElementById('diploStatus').value;
-    const initiatedBy  = document.getElementById('diploInitiatedBy').value.trim();
-    const description  = document.getElementById('diploDesc').value.trim();
-    const since        = document.getElementById('diploSince').value;
-    const relationId   = document.getElementById('diploRelationId').value;
+    const relationScope = document.getElementById('diploRelationScope').value || 'city';
+    const selectedIds = Array.from(document.getElementById('diploEntityIds').selectedOptions).map(opt => String(opt.value));
+    const status = document.getElementById('diploStatus').value;
+    const contextCategory = document.getElementById('diploContextCategory').value;
+    const initiatedBy = document.getElementById('diploInitiatedBy').value.trim();
+    const description = document.getElementById('diploDesc').value.trim();
+    const since = document.getElementById('diploSince').value;
+    const relationId = document.getElementById('diploRelationId').value;
+    const allianceGroupKey = document.getElementById('diploAllianceGroupKey').value;
 
-    if(cityIds.length < 2) return alert('Sélectionnez au moins deux cités.');
-    if(relationId && cityIds.length !== 2) return alert('Une relation existante ne peut concerner que deux cités.');
-    if(status !== 'allie' && cityIds.length !== 2) return alert('Les relations hors alliance doivent concerner exactement deux cités.');
+    if(selectedIds.length < 2) return alert(`Sélectionnez au moins deux ${relationScope === 'party' ? 'partis' : 'cités'}.`);
+    if(!allianceGroupKey && relationId && selectedIds.length !== 2) return alert('Une relation simple ne peut concerner que deux entités.');
+    if(status !== 'allie' && selectedIds.length !== 2) return alert('Les relations hors alliance collective doivent concerner exactement deux entités.');
 
     socket.emit('admin_upsert_city_relation', {
         relationId: relationId || null,
-        cityIds,
-        cityAId: cityIds[0] || '',
-        cityBId: cityIds[1] || '',
+        relationScope,
+        allianceGroupKey: allianceGroupKey || '',
+        cityIds: relationScope === 'city' ? selectedIds : [],
+        cityAId: relationScope === 'city' ? (selectedIds[0] || '') : '',
+        cityBId: relationScope === 'city' ? (selectedIds[1] || '') : '',
+        partyKeys: relationScope === 'party' ? selectedIds : [],
         status,
+        contextCategory,
         initiatedBy,
         description,
         since
@@ -5154,8 +5228,14 @@ function submitDiploRelation() {
 }
 
 function deleteDiploRelation(relationId) {
-    if(!confirm('Supprimer cette relation diplomatique ?')) return;
-    socket.emit('admin_delete_city_relation', { relationId });
+    const relation = renderedDiplomacyRelationsCache.find(item => String(item._id) === String(relationId)) || cityRelationsData.find(item => String(item._id) === String(relationId));
+    if(!relation) return;
+    if(!confirm(relation.allianceGroupKey ? 'Supprimer toute cette alliance collective ?' : 'Supprimer cette relation diplomatique ?')) return;
+    socket.emit('admin_delete_city_relation', {
+        relationId: relation.isGroupedAlliance ? null : relationId,
+        relationScope: relation.relationScope || 'city',
+        allianceGroupKey: relation.allianceGroupKey || ''
+    });
 }
 // ==================== [FIN DIPLOMATIE] ====================
 

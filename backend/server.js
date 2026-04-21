@@ -60,6 +60,7 @@ const AdminLog = require('./models/AdminLog');
 // ========== [CITES] ==========
 const City = require('./models/City');
 const CityRelation = require('./models/CityRelation');
+const PartyRelation = require('./models/PartyRelation');
 const MapMarker = require('./models/MapMarker');
 const MapOverlay = require('./models/MapOverlay');
 
@@ -735,6 +736,7 @@ initSocketHandlers({
 	AdminLog,
 	City,
 	CityRelation,
+	PartyRelation,
 	MapMarker,
 	MapOverlay,
 	Stock,
