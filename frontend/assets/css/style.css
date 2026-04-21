@@ -1225,15 +1225,26 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 
 /* Couleurs par statut */
 .diplo-allie            .diplo-dot, .diplo-badge-allie            { background: #23a559; }
+.diplo-pacte_defensif   .diplo-dot, .diplo-badge-pacte_defensif   { background: #2dd4bf; }
+.diplo-axe_economique   .diplo-dot, .diplo-badge-axe_economique   { background: #14b8a6; }
+.diplo-coalition_gouvernementale .diplo-dot, .diplo-badge-coalition_gouvernementale { background: #3b82f6; }
+.diplo-coalition_electorale .diplo-dot, .diplo-badge-coalition_electorale { background: #2563eb; }
+.diplo-soutien_strategique .diplo-dot, .diplo-badge-soutien_strategique { background: #6366f1; }
 .diplo-pacte_non_agression .diplo-dot, .diplo-badge-pacte_non_agression { background: #00d4aa; }
 .diplo-partenariat      .diplo-dot, .diplo-badge-partenariat      { background: #6c63ff; }
 .diplo-neutre           .diplo-dot, .diplo-badge-neutre           { background: #6b7280; }
 .diplo-observateur      .diplo-dot, .diplo-badge-observateur      { background: #60a5fa; }
 .diplo-tension          .diplo-dot, .diplo-badge-tension          { background: #f59e0b; }
+.diplo-opposition_parlementaire .diplo-dot, .diplo-badge-opposition_parlementaire { background: #eab308; }
+.diplo-rivalite_electorale .diplo-dot, .diplo-badge-rivalite_electorale { background: #f97316; }
+.diplo-rivalite_ideologique .diplo-dot, .diplo-badge-rivalite_ideologique { background: #ef4444; }
 .diplo-sanction         .diplo-dot, .diplo-badge-sanction         { background: #fb923c; }
+.diplo-guerre_commerciale .diplo-dot, .diplo-badge-guerre_commerciale { background: #dc2626; }
 .diplo-blocus           .diplo-dot, .diplo-badge-blocus           { background: #f97316; }
 .diplo-hostile          .diplo-dot, .diplo-badge-hostile          { background: #ef4444; }
+.diplo-contentieux_territorial .diplo-dot, .diplo-badge-contentieux_territorial { background: #b91c1c; }
 .diplo-conflit_froid    .diplo-dot, .diplo-badge-conflit_froid    { background: #818cf8; }
+.diplo-insurrection_proxy .diplo-dot, .diplo-badge-insurrection_proxy { background: #7f1d1d; }
 .diplo-guerre           .diplo-dot, .diplo-badge-guerre           { background: #da373c; }
 
 /* Grille des relations */
@@ -1246,15 +1257,26 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 /* Bannière de couleur en haut de la carte */
 .diplo-card-banner { height: 4px; width: 100%; }
 .diplo-banner-allie            { background: linear-gradient(90deg, #23a559, #00d4aa); }
+.diplo-banner-pacte_defensif   { background: linear-gradient(90deg, #2dd4bf, #14b8a6); }
+.diplo-banner-axe_economique   { background: linear-gradient(90deg, #14b8a6, #0f766e); }
+.diplo-banner-coalition_gouvernementale { background: linear-gradient(90deg, #3b82f6, #2563eb); }
+.diplo-banner-coalition_electorale { background: linear-gradient(90deg, #2563eb, #1d4ed8); }
+.diplo-banner-soutien_strategique { background: linear-gradient(90deg, #6366f1, #4338ca); }
 .diplo-banner-pacte_non_agression { background: linear-gradient(90deg, #00d4aa, #3b82f6); }
 .diplo-banner-partenariat      { background: linear-gradient(90deg, #6c63ff, #818cf8); }
 .diplo-banner-neutre           { background: var(--border); }
 .diplo-banner-observateur      { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
 .diplo-banner-tension          { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.diplo-banner-opposition_parlementaire { background: linear-gradient(90deg, #eab308, #f59e0b); }
+.diplo-banner-rivalite_electorale { background: linear-gradient(90deg, #f97316, #ea580c); }
+.diplo-banner-rivalite_ideologique { background: linear-gradient(90deg, #ef4444, #dc2626); }
 .diplo-banner-sanction         { background: linear-gradient(90deg, #fb923c, #f59e0b); }
+.diplo-banner-guerre_commerciale { background: linear-gradient(90deg, #dc2626, #991b1b); }
 .diplo-banner-blocus           { background: linear-gradient(90deg, #f97316, #ef4444); }
 .diplo-banner-hostile          { background: linear-gradient(90deg, #ef4444, #da373c); }
+.diplo-banner-contentieux_territorial { background: linear-gradient(90deg, #b91c1c, #7f1d1d); }
 .diplo-banner-conflit_froid    { background: linear-gradient(90deg, #818cf8, #6b7280); }
+.diplo-banner-insurrection_proxy { background: linear-gradient(90deg, #7f1d1d, #450a0a); }
 .diplo-banner-guerre           { background: linear-gradient(90deg, #da373c, #7f1d1d); }
 
 /* Corps de la carte */
@@ -1273,25 +1295,34 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .diplo-alliance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .diplo-alliance-city { display: flex; align-items: center; gap: 8px; min-width: 0; background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; }
 .diplo-alliance-city .diplo-city-name { font-size: 0.78rem; }
+.diplo-alliance-more { align-self: flex-start; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text-normal); border-radius: 999px; padding: 6px 10px; font-size: 0.72rem; cursor: pointer; }
+.diplo-alliance-more:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.18); }
 .diplo-scope-label { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
 .diplo-card-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.diplo-context-badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 0.67rem; font-weight: 700; border: 1px solid transparent; }
-.diplo-context-ally { background: rgba(35,165,89,0.12); border-color: rgba(35,165,89,0.26); color: #65d991; }
-.diplo-context-enemy { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.28); color: #ff9191; }
-.diplo-context-neutral { background: rgba(107,114,128,0.15); border-color: rgba(107,114,128,0.28); color: #c4c9d4; }
 
 /* Badge statut */
 .diplo-status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 8px; color: white; }
 .diplo-badge-allie            { background: rgba(35,165,89,0.18); border-color: rgba(35,165,89,0.35); color: #4ade80; }
+.diplo-badge-pacte_defensif   { background: rgba(45,212,191,0.14); border-color: rgba(45,212,191,0.28); color: #5eead4; }
+.diplo-badge-axe_economique   { background: rgba(20,184,166,0.14); border-color: rgba(20,184,166,0.28); color: #5eead4; }
+.diplo-badge-coalition_gouvernementale { background: rgba(59,130,246,0.14); border-color: rgba(59,130,246,0.3); color: #93c5fd; }
+.diplo-badge-coalition_electorale { background: rgba(37,99,235,0.16); border-color: rgba(37,99,235,0.3); color: #93c5fd; }
+.diplo-badge-soutien_strategique { background: rgba(99,102,241,0.16); border-color: rgba(99,102,241,0.3); color: #c7d2fe; }
 .diplo-badge-pacte_non_agression { background: rgba(0,212,170,0.14); border-color: rgba(0,212,170,0.3); color: #34d399; }
 .diplo-badge-partenariat      { background: rgba(108,99,255,0.15); border-color: rgba(108,99,255,0.3); color: #a78bfa; }
 .diplo-badge-neutre           { background: rgba(107,114,128,0.15); border-color: rgba(107,114,128,0.25); color: #9ca3af; }
 .diplo-badge-observateur      { background: rgba(96,165,250,0.15); border-color: rgba(96,165,250,0.3); color: #60a5fa; }
 .diplo-badge-tension          { background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.3); color: #fbbf24; }
+.diplo-badge-opposition_parlementaire { background: rgba(234,179,8,0.15); border-color: rgba(234,179,8,0.3); color: #fde047; }
+.diplo-badge-rivalite_electorale { background: rgba(249,115,22,0.16); border-color: rgba(249,115,22,0.3); color: #fdba74; }
+.diplo-badge-rivalite_ideologique { background: rgba(239,68,68,0.16); border-color: rgba(239,68,68,0.32); color: #fca5a5; }
 .diplo-badge-sanction         { background: rgba(251,146,60,0.15); border-color: rgba(251,146,60,0.3); color: #fb923c; }
+.diplo-badge-guerre_commerciale { background: rgba(220,38,38,0.18); border-color: rgba(220,38,38,0.34); color: #fca5a5; }
 .diplo-badge-blocus           { background: rgba(249,115,22,0.18); border-color: rgba(249,115,22,0.35); color: #f97316; }
 .diplo-badge-hostile          { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.3); color: #f87171; }
+.diplo-badge-contentieux_territorial { background: rgba(185,28,28,0.18); border-color: rgba(185,28,28,0.34); color: #fca5a5; }
 .diplo-badge-conflit_froid    { background: rgba(129,140,248,0.15); border-color: rgba(129,140,248,0.3); color: #818cf8; }
+.diplo-badge-insurrection_proxy { background: rgba(127,29,29,0.22); border-color: rgba(127,29,29,0.38); color: #fca5a5; }
 .diplo-badge-guerre           { background: rgba(218,55,60,0.2); border-color: rgba(218,55,60,0.4); color: #f87171; }
 
 /* Détails carte */

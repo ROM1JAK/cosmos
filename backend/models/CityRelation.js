@@ -2,15 +2,26 @@ const mongoose = require('mongoose');
 
 const DIPLO_STATUS_VALUES = [
     'allie',
+    'pacte_defensif',
+    'axe_economique',
+    'coalition_gouvernementale',
+    'coalition_electorale',
+    'soutien_strategique',
     'pacte_non_agression',
     'partenariat',
     'neutre',
     'observateur',
     'tension',
+    'opposition_parlementaire',
+    'rivalite_electorale',
+    'rivalite_ideologique',
     'sanction',
+    'guerre_commerciale',
     'blocus',
     'hostile',
+    'contentieux_territorial',
     'conflit_froid',
+    'insurrection_proxy',
     'guerre'
 ];
 

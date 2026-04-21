@@ -1068,7 +1068,8 @@ module.exports = function initSocketHandlers(deps) {
   // ========== [FIN CITÃ‰S SOCKET] ==========
 
   // ========== [DIPLOMATIE] SOCKET EVENTS ==========
-  const DIPLO_STATUS_VALUES = new Set(['allie', 'pacte_non_agression', 'partenariat', 'neutre', 'observateur', 'tension', 'sanction', 'blocus', 'hostile', 'conflit_froid', 'guerre']);
+    const DIPLO_STATUS_VALUES = new Set(['allie', 'pacte_defensif', 'axe_economique', 'coalition_gouvernementale', 'coalition_electorale', 'soutien_strategique', 'pacte_non_agression', 'partenariat', 'neutre', 'observateur', 'tension', 'opposition_parlementaire', 'rivalite_electorale', 'rivalite_ideologique', 'sanction', 'guerre_commerciale', 'blocus', 'hostile', 'contentieux_territorial', 'conflit_froid', 'insurrection_proxy', 'guerre']);
+    const DIPLO_GROUPABLE_STATUSES = new Set(['allie', 'pacte_defensif', 'axe_economique', 'coalition_gouvernementale', 'coalition_electorale', 'soutien_strategique']);
   const DIPLO_CONTEXT_VALUES = new Set(['general', 'pacte_defensif', 'axe_economique', 'coalition_gouvernementale', 'coalition_electorale', 'soutien_strategique', 'mediation', 'opposition_parlementaire', 'rivalite_electorale', 'rivalite_ideologique', 'guerre_commerciale', 'contentieux_territorial', 'insurrection_proxy']);
 
   function normalizePartyKey(name = '') {
@@ -1209,9 +1210,9 @@ module.exports = function initSocketHandlers(deps) {
               .sort();
           const parties = normalizedPartyKeys.map(key => catalogMap.get(key)).filter(Boolean);
           if(parties.length < 2) return;
-          if(safeStatus !== 'allie' && parties.length !== 2) return;
+          if(!DIPLO_GROUPABLE_STATUSES.has(safeStatus) && parties.length !== 2) return;
 
-          const groupKey = safeStatus === 'allie' && parties.length > 2
+          const groupKey = DIPLO_GROUPABLE_STATUSES.has(safeStatus) && parties.length > 2
               ? (allianceGroupKey || buildDiploGroupKey('party', parties.map(party => party.key)))
               : '';
           payload.allianceGroupKey = groupKey;
@@ -1237,9 +1238,9 @@ module.exports = function initSocketHandlers(deps) {
               .filter(Boolean)
       )].sort();
       if(normalizedCityIds.length < 2) return;
-      if(safeStatus !== 'allie' && normalizedCityIds.length !== 2) return;
+      if(!DIPLO_GROUPABLE_STATUSES.has(safeStatus) && normalizedCityIds.length !== 2) return;
 
-      const groupKey = safeStatus === 'allie' && normalizedCityIds.length > 2
+      const groupKey = DIPLO_GROUPABLE_STATUSES.has(safeStatus) && normalizedCityIds.length > 2
           ? (allianceGroupKey || buildDiploGroupKey('city', normalizedCityIds))
           : '';
       payload.allianceGroupKey = groupKey;

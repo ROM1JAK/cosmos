@@ -586,12 +586,29 @@ function buildAutoLikeCountDisplay(authorChar = null, postData = {}) {
 	return formatCompactCountLabel(estimatedLikes);
 }
 
-function buildDisplayPost(post, authorChar = null) {
+function buildDisplayPost(post, authorChar = null, authorMap = null) {
 	const displayPost = post.toObject ? post.toObject() : { ...post };
+	if (!displayPost.isAnonymous) {
+		displayPost.authorName = displayPost.authorName || authorChar?.name || 'Auteur';
+		displayPost.authorAvatar = displayPost.authorAvatar || authorChar?.avatar || '';
+		displayPost.authorRole = displayPost.authorRole || authorChar?.role || '';
+		displayPost.authorColor = displayPost.authorColor || authorChar?.color || 'white';
+		displayPost.partyName = displayPost.partyName || authorChar?.partyName || '';
+		displayPost.partyLogo = displayPost.partyLogo || authorChar?.partyLogo || '';
+	}
 	if (displayPost.isAnonymous) {
 		displayPost.authorName = 'Source Anonyme';
 		displayPost.authorAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E";
 		displayPost.authorRole = 'Leak';
+	}
+	if (displayPost.quotedPost && !displayPost.quotedPost.isAnonymous && authorMap) {
+		const quotedAuthor = authorMap.get(String(displayPost.quotedPost.authorCharId || ''));
+		displayPost.quotedPost.authorName = displayPost.quotedPost.authorName || quotedAuthor?.name || 'Auteur';
+		displayPost.quotedPost.authorAvatar = displayPost.quotedPost.authorAvatar || quotedAuthor?.avatar || '';
+		displayPost.quotedPost.authorRole = displayPost.quotedPost.authorRole || quotedAuthor?.role || '';
+		displayPost.quotedPost.authorColor = displayPost.quotedPost.authorColor || quotedAuthor?.color || 'white';
+		displayPost.quotedPost.partyName = displayPost.quotedPost.partyName || quotedAuthor?.partyName || '';
+		displayPost.quotedPost.partyLogo = displayPost.quotedPost.partyLogo || quotedAuthor?.partyLogo || '';
 	}
 	displayPost.authorIsOfficial = !!authorChar?.isOfficial;
 	displayPost.authorFollowers = Array.isArray(authorChar?.followers) ? authorChar.followers : [];
@@ -607,13 +624,13 @@ function buildDisplayPost(post, authorChar = null) {
 }
 
 async function enrichPostsForDisplay(posts) {
-	const authorIds = [...new Set(posts.map(post => String(post.authorCharId || '')).filter(Boolean))];
+	const authorIds = [...new Set(posts.flatMap(post => [String(post.authorCharId || ''), String(post.quotedPost?.authorCharId || '')]).filter(Boolean))];
 	const authorMap = new Map();
 	if (authorIds.length) {
-		const authors = await Character.find({ _id: { $in: authorIds } }).select('_id isOfficial followers followerCountDisplay companies');
+		const authors = await Character.find({ _id: { $in: authorIds } }).select('_id name avatar role color partyName partyLogo isOfficial followers followerCountDisplay companies');
 		authors.forEach(author => authorMap.set(String(author._id), author));
 	}
-	return posts.map(post => buildDisplayPost(post, authorMap.get(String(post.authorCharId || ''))));
+	return posts.map(post => buildDisplayPost(post, authorMap.get(String(post.authorCharId || '')), authorMap));
 }
 
 async function getFeedPosts(limit = 50) {

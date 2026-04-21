@@ -951,15 +951,26 @@
                             <select id="diplo-filter-status" class="diplo-select" onchange="renderDiplomacy()">
                                 <option value="">Tous les statuts</option>
                                 <option value="allie">🤝 Allié</option>
+                                <option value="pacte_defensif">🛡️ Pacte défensif</option>
+                                <option value="axe_economique">💹 Axe économique</option>
+                                <option value="coalition_gouvernementale">🏛️ Coalition gouvernementale</option>
+                                <option value="coalition_electorale">🗳️ Coalition électorale</option>
+                                <option value="soutien_strategique">🛰️ Soutien stratégique</option>
                                 <option value="pacte_non_agression">🛡️ Pacte de Non-Agression</option>
                                 <option value="partenariat">🤝 Partenariat économique</option>
                                 <option value="neutre">⚪ Neutre</option>
                                 <option value="observateur">👁️ Sous surveillance</option>
                                 <option value="tension">⚠️ Tension diplomatique</option>
+                                <option value="opposition_parlementaire">🏛️ Opposition parlementaire</option>
+                                <option value="rivalite_electorale">🗳️ Rivalité électorale</option>
+                                <option value="rivalite_ideologique">🧭 Rivalité idéologique</option>
                                 <option value="sanction">🚫 Sanctions économiques</option>
+                                <option value="guerre_commerciale">📉 Guerre commerciale</option>
                                 <option value="blocus">⛔ Blocus</option>
                                 <option value="hostile">☠️ Hostile</option>
+                                <option value="contentieux_territorial">🗺️ Contentieux territorial</option>
                                 <option value="conflit_froid">❄️ Conflit froid</option>
+                                <option value="insurrection_proxy">🔥 Conflit par procuration</option>
                                 <option value="guerre">💥 En guerre</option>
                             </select>
                         </div>
@@ -969,15 +980,25 @@
                     <!-- Résumé légende statuts -->
                     <div class="diplo-legend">
                         <div class="diplo-legend-item diplo-allie"><span class="diplo-dot"></span>Allié</div>
+                        <div class="diplo-legend-item diplo-pacte_defensif"><span class="diplo-dot"></span>Pacte défensif</div>
+                        <div class="diplo-legend-item diplo-axe_economique"><span class="diplo-dot"></span>Axe économique</div>
                         <div class="diplo-legend-item diplo-pacte_non_agression"><span class="diplo-dot"></span>PNA</div>
+                        <div class="diplo-legend-item diplo-coalition_gouvernementale"><span class="diplo-dot"></span>Coalition gouv.</div>
+                        <div class="diplo-legend-item diplo-coalition_electorale"><span class="diplo-dot"></span>Coalition élect.</div>
                         <div class="diplo-legend-item diplo-partenariat"><span class="diplo-dot"></span>Partenariat</div>
                         <div class="diplo-legend-item diplo-neutre"><span class="diplo-dot"></span>Neutre</div>
                         <div class="diplo-legend-item diplo-observateur"><span class="diplo-dot"></span>Surveillance</div>
                         <div class="diplo-legend-item diplo-tension"><span class="diplo-dot"></span>Tension</div>
+                        <div class="diplo-legend-item diplo-opposition_parlementaire"><span class="diplo-dot"></span>Opposition</div>
+                        <div class="diplo-legend-item diplo-rivalite_electorale"><span class="diplo-dot"></span>Rivalité élect.</div>
+                        <div class="diplo-legend-item diplo-rivalite_ideologique"><span class="diplo-dot"></span>Rivalité idéo.</div>
                         <div class="diplo-legend-item diplo-sanction"><span class="diplo-dot"></span>Sanctions</div>
+                        <div class="diplo-legend-item diplo-guerre_commerciale"><span class="diplo-dot"></span>Guerre comm.</div>
                         <div class="diplo-legend-item diplo-blocus"><span class="diplo-dot"></span>Blocus</div>
                         <div class="diplo-legend-item diplo-hostile"><span class="diplo-dot"></span>Hostile</div>
+                        <div class="diplo-legend-item diplo-contentieux_territorial"><span class="diplo-dot"></span>Contentieux</div>
                         <div class="diplo-legend-item diplo-conflit_froid"><span class="diplo-dot"></span>Conflit froid</div>
+                        <div class="diplo-legend-item diplo-insurrection_proxy"><span class="diplo-dot"></span>Proxy</div>
                         <div class="diplo-legend-item diplo-guerre"><span class="diplo-dot"></span>Guerre</div>
                     </div>
 
@@ -1582,32 +1603,27 @@
             <label class="cfl" style="margin-top:10px;">Statut diplomatique</label>
             <select id="diploStatus" class="modal-input">
                 <option value="allie">🤝 Allié — Alliance militaire & économique</option>
+                <option value="pacte_defensif">🛡️ Pacte défensif</option>
+                <option value="axe_economique">💹 Axe économique</option>
+                <option value="coalition_gouvernementale">🏛️ Coalition gouvernementale</option>
+                <option value="coalition_electorale">🗳️ Coalition électorale</option>
+                <option value="soutien_strategique">🛰️ Soutien stratégique</option>
                 <option value="pacte_non_agression">🛡️ Pacte de Non-Agression</option>
                 <option value="partenariat">💼 Partenariat économique</option>
                 <option value="neutre" selected>⚪ Neutre</option>
                 <option value="observateur">👁️ Sous surveillance</option>
                 <option value="tension">⚠️ Tension diplomatique</option>
+                <option value="opposition_parlementaire">🏛️ Opposition parlementaire</option>
+                <option value="rivalite_electorale">🗳️ Rivalité électorale</option>
+                <option value="rivalite_ideologique">🧭 Rivalité idéologique</option>
                 <option value="sanction">🚫 Sanctions économiques</option>
+                <option value="guerre_commerciale">📉 Guerre commerciale</option>
                 <option value="blocus">⛔ Blocus</option>
                 <option value="hostile">☠️ Relations hostiles</option>
+                <option value="contentieux_territorial">🗺️ Contentieux territorial</option>
                 <option value="conflit_froid">❄️ Conflit froid (proxy)</option>
+                <option value="insurrection_proxy">🔥 Conflit par procuration</option>
                 <option value="guerre">💥 En guerre ouverte</option>
-            </select>
-            <label class="cfl" style="margin-top:10px;">Contexte allié / ennemi</label>
-            <select id="diploContextCategory" class="modal-input">
-                <option value="general">Contexte général</option>
-                <option value="pacte_defensif">Allié — Pacte défensif</option>
-                <option value="axe_economique">Allié — Axe économique</option>
-                <option value="coalition_gouvernementale">Allié — Coalition gouvernementale</option>
-                <option value="coalition_electorale">Allié — Coalition électorale</option>
-                <option value="soutien_strategique">Allié — Soutien stratégique</option>
-                <option value="mediation">Neutre — Médiation</option>
-                <option value="opposition_parlementaire">Ennemi — Opposition parlementaire</option>
-                <option value="rivalite_electorale">Ennemi — Rivalité électorale</option>
-                <option value="rivalite_ideologique">Ennemi — Rivalité idéologique</option>
-                <option value="guerre_commerciale">Ennemi — Guerre commerciale</option>
-                <option value="contentieux_territorial">Ennemi — Contentieux territorial</option>
-                <option value="insurrection_proxy">Ennemi — Conflit par procuration</option>
             </select>
             <label class="cfl" style="margin-top:10px;">Initiée par (personnage / événement)</label>
             <input type="text" id="diploInitiatedBy" class="modal-input" placeholder="Ex: Commandant Arvan, Traité de Solara…">
