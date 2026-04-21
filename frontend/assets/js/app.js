@@ -2552,6 +2552,9 @@ function buildQuotedPostMarkup(post, options = {}) {
         ? `<div class="quoted-post-author" style="color:${author.color}">${escapeHtml(author.name)}${post.partyName && post.partyLogo && !author.anonymous ? `<span class="party-badge"><img src="${post.partyLogo}" class="party-logo"> ${escapeHtml(post.partyName)}</span>` : ''}</div>`
         : '';
     const roleLine = author.role ? `<div class="quoted-post-role">${escapeHtml(author.role)}</div>` : '';
+    const hasVisibleHeader = !!(author.avatar || authorLine || roleLine || post.date);
+    const hasVisibleBody = !!(badges || post.content || mediaHtml || nestedQuote);
+    if(!hasVisibleHeader && !hasVisibleBody) return '';
     return `
         <div class="quoted-post-card${preview ? ' quoted-post-card-preview' : ''}${nested ? ' quoted-post-card-nested' : ''}" ${safeId ? `onclick="event.stopPropagation(); openQuotedPost('${safeId}')"` : ''}>
             <div class="quoted-post-head">
