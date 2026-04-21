@@ -3945,9 +3945,10 @@ function renderArticleBodyMarkup(post) {
 
 function buildArticleCardMarkup(post) {
     const { titleText } = parseArticleContent(post.content || '');
-    const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="article-del-btn" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
-    const editBtn = (post.ownerId === PLAYER_ID || IS_ADMIN) ? `<button class="article-edit-btn" onclick="event.stopPropagation(); openArticleEditModal('${post._id}')"><i class="fa-solid fa-pen"></i></button>` : '';
-    const headlineBtn = IS_ADMIN ? `<button class="article-headline-btn" onclick="event.stopPropagation(); toggleHeadline('${post._id}', ${!post.isHeadline})" title="${post.isHeadline ? 'Retirer de la Une' : 'Mettre à la Une'}"><i class="fa-solid fa-star"></i> ${post.isHeadline ? 'Retirer la Une' : 'La Une'}</button>` : '';
+    const isForbiddenDossier = !!post.isForbiddenDossier;
+    const delBtn = !isForbiddenDossier && (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="article-del-btn" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
+    const editBtn = !isForbiddenDossier && (post.ownerId === PLAYER_ID || IS_ADMIN) ? `<button class="article-edit-btn" onclick="event.stopPropagation(); openArticleEditModal('${post._id}')"><i class="fa-solid fa-pen"></i></button>` : '';
+    const headlineBtn = !isForbiddenDossier && IS_ADMIN ? `<button class="article-headline-btn" onclick="event.stopPropagation(); toggleHeadline('${post._id}', ${!post.isHeadline})" title="${post.isHeadline ? 'Retirer de la Une' : 'Mettre à la Une'}"><i class="fa-solid fa-star"></i> ${post.isHeadline ? 'Retirer la Une' : 'La Une'}</button>` : '';
 
     let bannerHTML = '';
     if(post.mediaUrl && post.mediaType === 'image') bannerHTML = `<img src="${post.mediaUrl}" class="article-banner">`;
@@ -3996,6 +3997,7 @@ function createArticleElement(post, options = {}) {
     div.className = 'article-card';
     if(post.isHeadline) div.classList.add('article-headline');
     if(post.urgencyLevel === 'urgent') div.classList.add('article-breaking');
+    if(post.isForbiddenDossier) div.classList.add('article-forbidden');
     div.id = options.id || `article-${post._id}`;
     div.style.cssText = buildArticleThemeStyle(post.articleTheme || DEFAULT_ARTICLE_THEME);
     div.innerHTML = buildArticleCardMarkup(post);
@@ -4008,8 +4010,64 @@ function createArticleElement(post, options = {}) {
     return div;
 }
 
+function normalizeForbiddenPressQuery(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase();
+}
+
+function buildForbiddenDossierArticle() {
+    return {
+        _id: 'forbidden-dossier-kael',
+        isArticle: true,
+        isForbiddenDossier: true,
+        isHeadline: false,
+        urgencyLevel: 'enquete',
+        authorName: 'Cellule Archive',
+        authorAvatar: 'assets/img/icone.png',
+        authorRole: 'Source non reconnue',
+        authorColor: '#c84f4f',
+        partyName: '',
+        partyLogo: '',
+        journalName: 'Archives Ombra',
+        journalLogo: '',
+        mediaUrl: '',
+        mediaType: '',
+        likes: [],
+        comments: [],
+        likeCountLabel: '0',
+        likeCountValue: 0,
+        date: '00/00/2084 03:13',
+        timestamp: new Date('2084-01-01T03:13:00Z'),
+        content: `[TITRE]Dossier Kael[/TITRE]\n[HTML]<p><strong>Document saisi</strong> dans une archive non indexee.</p><blockquote>Le sujet KAEL n'a jamais existe officiellement.</blockquote><p><span data-font-size="small">Reference: Chambre noire // Niveau de diffusion: interdit</span></p><p>Temoignages contradictoires, cartes retouchees, registres diplomatiques incomplets. Plusieurs sources mentionnent une intervention avant l'effacement total du dossier.</p><p>[DONNEE SUPPRIMEE] [TEMOIN REDACTED] [LOCALISATION SOUS SCELLES]</p>[/HTML]`,
+        articleTheme: {
+            name: 'forbidden-dossier',
+            label: 'Dossier interdit',
+            paper: '#221715',
+            surface: '#2d1b18',
+            ink: '#f3d6c9',
+            muted: '#b88d80',
+            accent: '#b31217'
+        }
+    };
+}
+
+function getVisiblePresseArticles() {
+    const normalizedFilter = normalizeForbiddenPressQuery(presseJournalFilter);
+    if(normalizedFilter === 'dossier kael') {
+        return [buildForbiddenDossierArticle(), ...presseArticlesCache];
+    }
+    let articles = [...presseArticlesCache];
+    if(presseJournalFilter) {
+        articles = articles.filter(a => (a.journalName || '').toLowerCase().includes(presseJournalFilter));
+    }
+    return articles;
+}
+
 function openArticleFullscreen(postId) {
-    const post = presseArticlesCache.find(item => String(item._id) === String(postId));
+    const post = getVisiblePresseArticles().find(item => String(item._id) === String(postId));
     if(!post) return;
     currentArticleFullscreenId = String(postId);
     const content = document.getElementById('article-fullscreen-content');
@@ -4038,10 +4096,7 @@ function renderPresseStream() {
     const c = document.getElementById('presse-stream');
     if(!c) return;
     c.innerHTML = '';
-    let articles = [...presseArticlesCache];
-    if(presseJournalFilter) {
-        articles = articles.filter(a => (a.journalName || '').toLowerCase().includes(presseJournalFilter));
-    }
+    const articles = getVisiblePresseArticles();
     if(articles.length === 0) {
         c.innerHTML = presseJournalFilter
             ? '<div style="text-align:center; padding:40px; color:#555;"><i class="fa-solid fa-filter-circle-xmark" style="font-size:2rem; margin-bottom:12px; display:block;"></i>Aucun article pour ce journal.</div>'
