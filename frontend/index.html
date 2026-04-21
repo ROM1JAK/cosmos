@@ -647,7 +647,7 @@
                 <div class="presse-toolbar">
                     <div class="presse-search-wrap">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="text" id="presseJournalSearch" list="presse-journal-list" placeholder="Rechercher un journal..." oninput="onPresseJournalSearch(this.value)">
+                        <input type="text" id="presseJournalSearch" list="presse-journal-list" placeholder="Rechercher un journal..." oninput="onPresseJournalSearch(this.value)" onkeydown="handlePresseJournalSearchKeydown(event)">
                         <datalist id="presse-journal-list"></datalist>
                     </div>
                     <button class="btn-secondary" style="padding:7px 11px;" onclick="clearPresseJournalSearch()"><i class="fa-solid fa-eraser"></i> Reset</button>
@@ -667,12 +667,13 @@
                     <div class="presse-compose-modal-topbar">
                         <div class="presse-write-header" style="margin-bottom:0;">
                             <i class="fa-solid fa-feather-pointed"></i>
-                            <span>Rédiger un article</span>
+                            <span id="presseComposeTitle">Rédiger un article</span>
                         </div>
                         <button type="button" class="presse-compose-close" onclick="closePresseComposer()" aria-label="Fermer l'éditeur Presse">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
+                    <div id="presseForbiddenHint" class="presse-forbidden-hint hidden">Mode archive restreinte actif. Les publications seront enregistrées dans Dossier Kael.</div>
                     <div class="presse-journal-row">
                         <div class="presse-journal-logo-preview" id="presseJournalLogoPreview"><i class="fa-solid fa-newspaper"></i></div>
                         <div style="flex:1; min-width:0;">

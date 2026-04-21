@@ -665,6 +665,12 @@ body[data-theme="ombra"] { --accent: #7c3aed; --accent-glow: rgba(124,58,237,0.3
 .presse-live-card .presse-live-title { color: var(--article-ink, #1a1008); }
 .presse-live-card .presse-live-meta { color: color-mix(in srgb, var(--article-ink, #1a1008) 56%, transparent); }
 .presse-live-card .presse-live-body { color: color-mix(in srgb, var(--article-ink, #1a1008) 90%, transparent); }
+.presse-forbidden-hint { margin: 0 0 12px; padding: 10px 12px; border: 1px solid rgba(179,18,23,0.32); border-radius: 12px; background: linear-gradient(180deg, rgba(179,18,23,0.18), rgba(179,18,23,0.08)); color: #f3c7c7; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.03em; }
+.presse-write-box.presse-write-box-forbidden .presse-editor-shell { border-color: rgba(179,18,23,0.32); background: linear-gradient(180deg, rgba(179,18,23,0.08), rgba(255,255,255,0.01)); }
+.presse-write-box.presse-write-box-forbidden .presse-format-toolbar { background: rgba(179,18,23,0.08); border-bottom-color: rgba(179,18,23,0.24); }
+.presse-write-box.presse-write-box-forbidden .presse-title-input:focus,
+.presse-write-box.presse-write-box-forbidden .presse-urgency-select:focus { border-color: rgba(255,120,120,0.68); }
+.presse-write-box.presse-write-box-forbidden .presse-live-preview { border-color: rgba(179,18,23,0.24); background: linear-gradient(145deg, rgba(179,18,23,0.08), rgba(255,255,255,0.01)); }
 .presse-title-input { width: 100%; background: var(--bg-primary); border: 1px solid var(--border); color: white; padding: 12px 14px; border-radius: var(--radius-sm); margin-bottom: 10px; font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; }
 .presse-title-input:focus { outline: none; border-color: var(--accent); }
 .presse-title-input::placeholder { color: var(--text-dim); font-weight: 400; }

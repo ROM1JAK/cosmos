@@ -1061,10 +1061,51 @@ function selectPresseChar(charId) {
     const dd = document.getElementById('presse-char-dropdown'); if(dd) dd.classList.add('hidden');
     updatePresseCharUI();
 }
+
+function isForbiddenPresseMode() {
+    return normalizeForbiddenPressQuery(presseJournalFilter) === 'dossier kael';
+}
+
+function syncPresseComposerMode() {
+    const writeBox = document.getElementById('presse-write-box');
+    const title = document.getElementById('presseComposeTitle');
+    const hint = document.getElementById('presseForbiddenHint');
+    const isForbiddenMode = isForbiddenPresseMode() && IS_ADMIN;
+    if(writeBox) writeBox.classList.toggle('presse-write-box-forbidden', isForbiddenMode);
+    if(title) title.textContent = isForbiddenMode ? 'Rédiger un dossier Kael' : 'Rédiger un article';
+    if(hint) hint.classList.toggle('hidden', !isForbiddenMode);
+}
+
+async function prepareForbiddenDossierComposer() {
+    const titleInput = document.getElementById('presseTitle');
+    const journalNameInput = document.getElementById('presseJournalName');
+    const journalLogoInput = document.getElementById('presseJournalLogo');
+    const logoPreview = document.getElementById('presseJournalLogoPreview');
+    const urgencyInput = document.getElementById('presseUrgency');
+    if(journalNameInput) journalNameInput.value = 'Dossier Kael';
+    if(journalLogoInput) journalLogoInput.value = '';
+    const logoFileInput = document.getElementById('presseJournalLogoFile');
+    if(logoFileInput) logoFileInput.value = '';
+    if(logoPreview) logoPreview.innerHTML = '<i class="fa-solid fa-file-shield"></i>';
+    if(titleInput && !titleInput.value.trim()) titleInput.value = 'Dossier Kael — ';
+    if(urgencyInput && !urgencyInput.value) urgencyInput.value = 'enquete';
+    currentPresseTheme = normalizeArticleTheme(buildForbiddenDossierArticle().articleTheme);
+    await hydrateArticleThemeChoices('', 'presseContentEditor', currentPresseTheme);
+    syncPresseComposerMode();
+    updatePresseComposerUX();
+}
+
+async function openForbiddenDossierComposer() {
+    if(!IS_ADMIN || !isForbiddenPresseMode()) return;
+    setPresseComposerOpen(true);
+    await prepareForbiddenDossierComposer();
+}
+
 function setPresseComposerOpen(forceOpen) {
     isPresseComposerOpen = typeof forceOpen === 'boolean' ? forceOpen : !isPresseComposerOpen;
     updatePresseWriteBox();
     if(isPresseComposerOpen) {
+        if(IS_ADMIN && isForbiddenPresseMode()) prepareForbiddenDossierComposer();
         requestAnimationFrame(() => {
             const titleInput = document.getElementById('presseTitle');
             if(titleInput) titleInput.focus();
@@ -1087,11 +1128,12 @@ function updatePresseWriteBox() {
     if(!composerModal || !notice || !toggleButton) return;
     const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
     const isJournalist = char && (char.role && (char.role.toLowerCase().includes('journaliste') || char.isOfficial));
-    if(isJournalist) {
+    const canWriteForbidden = IS_ADMIN && isForbiddenPresseMode();
+    if(isJournalist || canWriteForbidden) {
         toggleButton.classList.remove('hidden');
         toggleButton.innerHTML = isPresseComposerOpen
             ? '<i class="fa-solid fa-xmark"></i> Fermer l\'éditeur'
-            : '<i class="fa-solid fa-feather-pointed"></i> Créer un article';
+            : (canWriteForbidden ? '<i class="fa-solid fa-file-shield"></i> Ouvrir Dossier Kael' : '<i class="fa-solid fa-feather-pointed"></i> Créer un article');
         composerModal.classList.toggle('hidden', !isPresseComposerOpen);
         notice.classList.add('hidden');
     } else {
@@ -1100,6 +1142,14 @@ function updatePresseWriteBox() {
         composerModal.classList.add('hidden');
         notice.classList.remove('hidden');
     }
+    syncPresseComposerMode();
+}
+
+function handlePresseJournalSearchKeydown(event) {
+    if(event.key !== 'Enter') return;
+    if(!IS_ADMIN || !isForbiddenPresseMode()) return;
+    event.preventDefault();
+    openForbiddenDossierComposer();
 }
 
 document.addEventListener('keydown', (event) => {
@@ -3847,6 +3897,7 @@ async function previewPresseJournalLogo() {
 
 function onPresseJournalSearch(value) {
     presseJournalFilter = (value || '').trim().toLowerCase();
+    updatePresseWriteBox();
     renderPresseStream();
 }
 
@@ -3854,6 +3905,7 @@ function clearPresseJournalSearch() {
     const input = document.getElementById('presseJournalSearch');
     if(input) input.value = '';
     presseJournalFilter = '';
+    updatePresseWriteBox();
     renderPresseStream();
 }
 
@@ -3874,6 +3926,7 @@ async function previewPresseFile() {
 }
 
 function submitArticle() {
+    const isForbiddenMode = IS_ADMIN && isForbiddenPresseMode();
     const title = document.getElementById('presseTitle').value.trim();
     const editorHtml = syncArticleEditor('presseContentEditor');
     const content = editorHtmlToStorage(editorHtml);
@@ -3886,9 +3939,9 @@ function submitArticle() {
     const pressePubId = isPresseP ? document.getElementById('pressePubStockId')?.value : null;
     const linkedStock = pressePubId ? stocksData.find(stock => String(stock._id) === String(pressePubId)) : null;
     if(!title && !contentText) return alert("Article vide.");
-    if(!currentPresseCharId) return alert("Aucun journaliste sélectionné.");
-    const char = myCharacters.find(c => c._id === currentPresseCharId);
-    if(!char) return alert("Personnage introuvable.");
+    const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
+    if(!isForbiddenMode && !currentPresseCharId) return alert("Aucun journaliste sélectionné.");
+    if(!isForbiddenMode && !char) return alert("Personnage introuvable.");
 
     let mediaType = null;
     if(mediaUrl) {
@@ -3897,16 +3950,40 @@ function submitArticle() {
         else mediaType = 'image';
     }
 
+    const articleAuthor = isForbiddenMode
+        ? {
+            authorCharId: '',
+            authorName: 'Cellule Archive',
+            authorAvatar: 'assets/img/icone.png',
+            authorRole: 'Source non reconnue',
+            authorColor: '#c84f4f',
+            partyName: '',
+            partyLogo: ''
+        }
+        : {
+            authorCharId: char._id,
+            authorName: char.name,
+            authorAvatar: char.avatar,
+            authorRole: char.role,
+            authorColor: char.color,
+            partyName: char.partyName,
+            partyLogo: char.partyLogo
+        };
+
+    const articleTheme = isForbiddenMode
+        ? normalizeArticleTheme(buildForbiddenDossierArticle().articleTheme)
+        : normalizeArticleTheme(currentPresseTheme || DEFAULT_ARTICLE_THEME);
+
     const articleData = {
-        authorCharId: char._id, authorName: char.name, authorAvatar: char.avatar, authorRole: char.role, authorColor: char.color,
-        partyName: char.partyName, partyLogo: char.partyLogo,
+        ...articleAuthor,
         content: `[TITRE]${title}[/TITRE]\n${content}`,
         mediaUrl, mediaType,
         date: new Date().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }), ownerId: PLAYER_ID,
-        journalName, journalLogo,
+        journalName: isForbiddenMode ? 'Dossier Kael' : journalName,
+        journalLogo: isForbiddenMode ? '' : journalLogo,
         isAnonymous: false, isBreakingNews: urgencyLevel === 'urgent',
-        urgencyLevel,
-        articleTheme: normalizeArticleTheme(currentPresseTheme || DEFAULT_ARTICLE_THEME),
+        urgencyLevel: isForbiddenMode ? 'enquete' : urgencyLevel,
+        articleTheme,
         isArticle: true, poll: null,
         isSponsored: !!isPresseP,
         linkedStockId: pressePubId || '',
@@ -3945,7 +4022,7 @@ function renderArticleBodyMarkup(post) {
 
 function buildArticleCardMarkup(post) {
     const { titleText } = parseArticleContent(post.content || '');
-    const isForbiddenDossier = !!post.isForbiddenDossier;
+    const isForbiddenDossier = isForbiddenDossierArticle(post);
     const delBtn = !isForbiddenDossier && (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="article-del-btn" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
     const editBtn = !isForbiddenDossier && (post.ownerId === PLAYER_ID || IS_ADMIN) ? `<button class="article-edit-btn" onclick="event.stopPropagation(); openArticleEditModal('${post._id}')"><i class="fa-solid fa-pen"></i></button>` : '';
     const headlineBtn = !isForbiddenDossier && IS_ADMIN ? `<button class="article-headline-btn" onclick="event.stopPropagation(); toggleHeadline('${post._id}', ${!post.isHeadline})" title="${post.isHeadline ? 'Retirer de la Une' : 'Mettre à la Une'}"><i class="fa-solid fa-star"></i> ${post.isHeadline ? 'Retirer la Une' : 'La Une'}</button>` : '';
@@ -3997,7 +4074,7 @@ function createArticleElement(post, options = {}) {
     div.className = 'article-card';
     if(post.isHeadline) div.classList.add('article-headline');
     if(post.urgencyLevel === 'urgent') div.classList.add('article-breaking');
-    if(post.isForbiddenDossier) div.classList.add('article-forbidden');
+    if(isForbiddenDossierArticle(post)) div.classList.add('article-forbidden');
     div.id = options.id || `article-${post._id}`;
     div.style.cssText = buildArticleThemeStyle(post.articleTheme || DEFAULT_ARTICLE_THEME);
     div.innerHTML = buildArticleCardMarkup(post);
@@ -4017,6 +4094,13 @@ function normalizeForbiddenPressQuery(value) {
         .trim()
         .toLowerCase();
 }
+
+    function isForbiddenDossierArticle(post) {
+        if(!post) return false;
+        return !!post.isForbiddenDossier
+        || normalizeForbiddenPressQuery(post.journalName) === 'dossier kael'
+        || normalizeForbiddenPressQuery(post.articleTheme?.name) === 'forbidden-dossier';
+    }
 
 function buildForbiddenDossierArticle() {
     return {
@@ -4055,9 +4139,8 @@ function buildForbiddenDossierArticle() {
 }
 
 function getVisiblePresseArticles() {
-    const normalizedFilter = normalizeForbiddenPressQuery(presseJournalFilter);
-    if(normalizedFilter === 'dossier kael') {
-        return [buildForbiddenDossierArticle(), ...presseArticlesCache];
+    if(isForbiddenPresseMode()) {
+        return [buildForbiddenDossierArticle(), ...presseArticlesCache.filter(isForbiddenDossierArticle)];
     }
     let articles = [...presseArticlesCache];
     if(presseJournalFilter) {
