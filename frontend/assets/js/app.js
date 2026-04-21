@@ -76,6 +76,7 @@ let pollOptions = [];
 let pollUIOpen = false; 
 let isTopNavMenuOpen = false;
 let currentRepostTarget = null;
+let currentEditingPostId = null;
 const quotedPostSnapshotCache = new Map();
 
 // OMBRA
@@ -2605,17 +2606,118 @@ function clearRepostComposer() {
     renderFeedRepostPreview();
 }
 
+function updatePostComposerUi() {
+    const editInput = document.getElementById('editPostId');
+    const editPreview = document.getElementById('feed-edit-preview');
+    const submitBtn = document.getElementById('submitPostBtn');
+    const isEditing = !!currentEditingPostId;
+    if(editInput) editInput.value = currentEditingPostId || '';
+    if(submitBtn) submitBtn.textContent = isEditing ? 'Enregistrer' : 'Publier';
+    if(!editPreview) return;
+    if(!isEditing) {
+        editPreview.classList.add('hidden');
+        editPreview.innerHTML = '';
+        return;
+    }
+    editPreview.classList.remove('hidden');
+    editPreview.innerHTML = `
+        <div class="feed-repost-preview-head">
+            <span><i class="fa-solid fa-pen"></i> Edition du post</span>
+            <button type="button" class="feed-repost-cancel" onclick="cancelPostEdit()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div style="font-size:0.82rem; color:var(--text-muted, #aaa);">Tu modifies le texte de ce post.</div>`;
+}
+
+function resetPostComposer() {
+    const contentNode = document.getElementById('postContent');
+    const mediaUrlNode = document.getElementById('postMediaUrl');
+    const mediaFileNode = document.getElementById('postMediaFile');
+    const statusNode = document.getElementById('postFileStatus');
+    const anonymousNode = document.getElementById('postAnonymous');
+    const breakingNode = document.getElementById('postBreakingNews');
+    const countNode = document.getElementById('char-count');
+    const pollNode = document.getElementById('poll-creation-ui');
+    if(contentNode) contentNode.value = '';
+    if(mediaUrlNode) mediaUrlNode.value = '';
+    if(mediaFileNode) mediaFileNode.value = '';
+    if(statusNode) {
+        statusNode.style.display = 'none';
+        statusNode.textContent = '';
+    }
+    if(anonymousNode) anonymousNode.checked = false;
+    if(breakingNode) breakingNode.checked = false;
+    if(countNode) countNode.textContent = '0/1000';
+    pollOptions = [];
+    if(pollNode) pollNode.classList.add('hidden');
+    pollUIOpen = false;
+    const pubCb = document.getElementById('postIsPub');
+    if(pubCb) {
+        pubCb.checked = false;
+        toggleFeedPubSelect();
+    }
+    currentEditingPostId = null;
+    clearRepostComposer();
+    updatePostComposerUi();
+}
+
+function cancelPostEdit() {
+    resetPostComposer();
+}
+
+function startPostEdit(postId) {
+    const post = findPostByIdInCaches(postId)
+        || feedPostsCache.find(item => String(item._id) === String(postId))
+        || null;
+    if(!post || post.ownerId !== PLAYER_ID) return;
+    currentEditingPostId = String(post._id);
+    clearRepostComposer();
+    const contentNode = document.getElementById('postContent');
+    const mediaUrlNode = document.getElementById('postMediaUrl');
+    const mediaFileNode = document.getElementById('postMediaFile');
+    const statusNode = document.getElementById('postFileStatus');
+    const countNode = document.getElementById('char-count');
+    const anonymousNode = document.getElementById('postAnonymous');
+    const breakingNode = document.getElementById('postBreakingNews');
+    const repostNode = document.getElementById('repostPostId');
+    if(contentNode) {
+        contentNode.value = post.content || '';
+        contentNode.focus();
+        contentNode.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    if(mediaUrlNode) mediaUrlNode.value = '';
+    if(mediaFileNode) mediaFileNode.value = '';
+    if(statusNode) {
+        statusNode.style.display = 'none';
+        statusNode.textContent = '';
+    }
+    if(countNode) countNode.textContent = `${(post.content || '').length}/1000`;
+    if(anonymousNode) anonymousNode.checked = !!post.isAnonymous;
+    if(breakingNode) breakingNode.checked = !!post.isBreakingNews;
+    if(repostNode) repostNode.value = '';
+    updatePostComposerUi();
+}
+
 function submitPost() {
     const content = document.getElementById('postContent').value.trim();
     const mediaUrl = document.getElementById('postMediaUrl').value.trim();
     const repostPostId = document.getElementById('repostPostId')?.value || '';
+    const editPostId = document.getElementById('editPostId')?.value || '';
     const isAnonymous = document.getElementById('postAnonymous').checked;
     const isBreakingNews = document.getElementById('postBreakingNews').checked;
     const isPub = document.getElementById('postIsPub')?.checked;
     const pubStockId = isPub ? document.getElementById('postPubStockId')?.value : null;
     const linkedStock = pubStockId ? stocksData.find(stock => String(stock._id) === String(pubStockId)) : null;
     
-    if(!content && !mediaUrl && !repostPostId) return alert("Contenu vide.");
+    if(!editPostId && !content && !mediaUrl && !repostPostId) return alert("Contenu vide.");
+    if(editPostId) {
+        socket.emit('edit_post', {
+            postId: editPostId,
+            content,
+            ownerId: PLAYER_ID
+        });
+        resetPostComposer();
+        return;
+    }
     if(!currentFeedCharId) return alert("Aucun perso sélectionné pour le Feed.");
     const char = myCharacters.find(c => c._id === currentFeedCharId);
     if(!char) return alert("Perso invalide.");
@@ -2650,11 +2752,7 @@ function submitPost() {
     // Pub boost bourse
     if(isPub && pubStockId) socket.emit('pub_boost_stock', { stockId: pubStockId });
     
-    document.getElementById('postContent').value = ""; document.getElementById('postMediaUrl').value = ""; document.getElementById('postMediaFile').value = ""; 
-    document.getElementById('postFileStatus').style.display = 'none'; document.getElementById('postAnonymous').checked = false; document.getElementById('postBreakingNews').checked = false;
-    document.getElementById('char-count').textContent = `0/1000`; pollOptions = []; document.getElementById('poll-creation-ui').classList.add('hidden'); pollUIOpen = false;
-    const pubCb = document.getElementById('postIsPub'); if(pubCb) { pubCb.checked = false; toggleFeedPubSelect(); }
-    clearRepostComposer();
+    resetPostComposer();
 }
 
 function votePoll(postId, optionIndex) {
@@ -2841,6 +2939,7 @@ function createPostElement(post) {
     
     const isLiked = post.likes.includes(currentFeedCharId); 
     const delBtn = (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="action-item" style="position:absolute; top:16px; right:16px; color:#da373c;" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
+    const editBtn = post.ownerId === PLAYER_ID ? `<button class="action-item" onclick="event.stopPropagation(); startPostEdit('${post._id}')"><i class="fa-solid fa-pen"></i> Modifier</button>` : '';
     const badges = [
         post.authorIsOfficial ? '<span class="post-smart-badge official"><i class="fa-solid fa-building-columns"></i> Officiel</span>' : '',
         post.isSponsored ? `<span class="post-smart-badge sponsored"><i class="fa-solid fa-badge-dollar"></i> ${escapeHtml(post.linkedCompanyName || 'Pub')}</span>` : '',
@@ -2909,6 +3008,7 @@ function createPostElement(post) {
                 <button class="action-item ${isLiked?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${getPostLikeCountLabel(post)}</button>
                 <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
                 <button class="action-item" onclick="event.stopPropagation(); prepareRepost('${post._id}')"><i class="fa-solid fa-retweet"></i> Repost</button>
+                ${editBtn}
                 ${IS_ADMIN ? `<button class="action-item" onclick="event.stopPropagation(); openAdminStatsModal('${post._id}', '${getPostLikeCountLabel(post).replace(/'/g, "\\'")}')" title="Admin: modifier likes" style="color:var(--warning);"><i class="fa-solid fa-pen"></i></button>` : ''}
             </div>
         ${bodyWrapperEnd}

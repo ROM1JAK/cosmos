@@ -487,6 +487,7 @@
                 
                                 <div class="post-create-box">
                                     <textarea id="postContent" placeholder="Quoi de neuf ?"></textarea>
+                                    <div id="feed-edit-preview" class="feed-repost-preview hidden"></div>
                                     <div id="feed-repost-preview" class="feed-repost-preview hidden"></div>
                                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
                                         <div style="display:flex; gap:10px;">
@@ -497,7 +498,7 @@
                                         </div>
                                         <div style="display:flex; gap:10px; align-items:center;">
                                             <span id="char-count" style="font-size:0.8em; color:#666;">0/1000</span>
-                                            <button class="btn-primary" onclick="submitPost()">Publier</button>
+                                            <button id="submitPostBtn" class="btn-primary" onclick="submitPost()">Publier</button>
                                         </div>
                                     </div>
                                     <div id="poll-creation-ui" class="hidden" style="background:#1e1f22; padding:10px; border-radius:4px; margin-bottom:10px;">
@@ -518,6 +519,7 @@
                                     <input type="hidden" id="postMediaUrl">
                                     <input type="hidden" id="pollData">
                                     <input type="hidden" id="repostPostId">
+                                    <input type="hidden" id="editPostId">
                                 </div>
                 
                                 <div id="feed-typing-indicator" class="feed-typing-indicator hidden"></div>
