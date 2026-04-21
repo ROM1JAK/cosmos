@@ -1074,15 +1074,55 @@ module.exports = function initSocketHandlers(deps) {
       socket.emit('city_relations_data', relations);
   });
 
-  socket.on('admin_upsert_city_relation', async ({ relationId, cityAId, cityBId, status, description, initiatedBy, since }) => {
+  socket.on('admin_upsert_city_relation', async ({ relationId, cityAId, cityBId, cityIds, status, description, initiatedBy, since }) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
 
-      if(!cityAId || !cityBId || cityAId === cityBId) return;
+      const normalizedCityIds = [...new Set(
+          (Array.isArray(cityIds) && cityIds.length ? cityIds : [cityAId, cityBId])
+              .map(id => String(id || '').trim())
+              .filter(Boolean)
+      )].sort();
+      if(normalizedCityIds.length < 2) return;
+
+      const isAllianceBatch = !relationId && status === 'allie' && normalizedCityIds.length > 2;
+      if(!isAllianceBatch && normalizedCityIds.length !== 2) return;
+
+      const sinceDate = since ? new Date(since) : null;
+
+      if(isAllianceBatch) {
+          for(let i = 0; i < normalizedCityIds.length - 1; i++) {
+              for(let j = i + 1; j < normalizedCityIds.length; j++) {
+                  const idA = normalizedCityIds[i];
+                  const idB = normalizedCityIds[j];
+                  let rel = await CityRelation.findOne({
+                      $or: [
+                          { cityA: idA, cityB: idB },
+                          { cityA: idB, cityB: idA }
+                      ]
+                  });
+                  if(!rel) rel = new CityRelation({ cityA: idA, cityB: idB });
+                  rel.cityA = idA;
+                  rel.cityB = idB;
+                  rel.status = 'allie';
+                  rel.description = description || '';
+                  rel.initiatedBy = initiatedBy || '';
+                  if(sinceDate) rel.since = sinceDate;
+                  await rel.save();
+              }
+          }
+
+          const relations = await CityRelation.find()
+              .populate('cityA', 'name flag archipel')
+              .populate('cityB', 'name flag archipel')
+              .sort({ updatedAt: -1 });
+          io.emit('city_relations_data', relations);
+          return;
+      }
 
       // Normaliser l'ordre pour garantir l'unicitÃ© bidirectionnelle
-      const [idA, idB] = [cityAId, cityBId].sort();
+      const [idA, idB] = normalizedCityIds;
 
       let rel;
       if(relationId) {
@@ -1103,7 +1143,7 @@ module.exports = function initSocketHandlers(deps) {
       rel.status       = status || 'neutre';
       rel.description  = description || '';
       rel.initiatedBy  = initiatedBy || '';
-      if(since) rel.since = new Date(since);
+    if(sinceDate) rel.since = sinceDate;
 
       await rel.save();
 

@@ -1214,6 +1214,9 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .diplo-filters { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
 .diplo-select { background: var(--bg-secondary); border: 1px solid var(--border); color: white; padding: 7px 10px; border-radius: var(--radius-sm); font-size: 0.78rem; cursor: pointer; min-width: 150px; }
 .diplo-select:focus { outline: none; border-color: var(--accent); }
+.diplo-multiselect { min-height: 180px; padding: 8px 10px; }
+.diplo-multiselect option { padding: 6px 8px; border-radius: 6px; }
+.diplo-modal-help { margin-top: 8px; font-size: 0.72rem; line-height: 1.45; color: var(--text-muted); }
 
 /* Légende */
 .diplo-legend { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; padding: 10px 14px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); }
@@ -1263,6 +1266,13 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 .diplo-vs { font-size: 0.65rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; flex-shrink: 0; padding: 0 2px; }
 .diplo-cities-pair { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
 .diplo-cities-names { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 2px; }
+.diplo-card-grouped-alliance .diplo-card-body { display: flex; flex-direction: column; gap: 10px; }
+.diplo-alliance-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.diplo-alliance-title { font-family: var(--font-display); font-size: 0.92rem; font-weight: 800; color: white; }
+.diplo-alliance-count { font-size: 0.72rem; font-weight: 700; color: var(--accent-soft); background: rgba(35,165,89,0.12); border: 1px solid rgba(35,165,89,0.28); border-radius: 999px; padding: 4px 9px; }
+.diplo-alliance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.diplo-alliance-city { display: flex; align-items: center; gap: 8px; min-width: 0; background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; }
+.diplo-alliance-city .diplo-city-name { font-size: 0.78rem; }
 
 /* Badge statut */
 .diplo-status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 8px; color: white; }

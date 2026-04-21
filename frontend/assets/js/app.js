@@ -4886,20 +4886,109 @@ function populateDiploFilters() {
 }
 
 function populateDiploModalSelects() {
-    ['diploCityA', 'diploCityB'].forEach(id => {
-        const sel = document.getElementById(id);
-        if(!sel) return;
-        const prev = sel.value;
-        sel.innerHTML = '<option value="">— Choisir une cité —</option>';
-        const sorted = [...citiesData].sort((a,b) => a.name.localeCompare(b.name));
-        sorted.forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = String(c._id);
-            opt.textContent = c.name;
-            if(String(c._id) === prev) opt.selected = true;
-            sel.appendChild(opt);
+    const sel = document.getElementById('diploCityIds');
+    if(!sel) return;
+    const previousValues = new Set(Array.from(sel.selectedOptions).map(opt => String(opt.value)));
+    sel.innerHTML = '';
+    const sorted = [...citiesData].sort((a,b) => a.name.localeCompare(b.name));
+    sorted.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = String(c._id);
+        opt.textContent = c.name;
+        if(previousValues.has(String(c._id))) opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
+
+function getDiploRelationCities(relation) {
+    return [relation.cityA, relation.cityB].filter(Boolean);
+}
+
+function groupDiplomacyRelations(relations) {
+    const grouped = [];
+    const allianceBuckets = new Map();
+
+    relations.forEach(relation => {
+        if(relation.status !== 'allie') {
+            grouped.push(relation);
+            return;
+        }
+        const signature = [
+            relation.status || '',
+            relation.since ? new Date(relation.since).toISOString().slice(0, 10) : '',
+            relation.initiatedBy || '',
+            relation.description || ''
+        ].join('||');
+        if(!allianceBuckets.has(signature)) allianceBuckets.set(signature, []);
+        allianceBuckets.get(signature).push(relation);
+    });
+
+    allianceBuckets.forEach(bucket => {
+        const adjacency = new Map();
+        const cityMap = new Map();
+
+        bucket.forEach(relation => {
+            const cities = getDiploRelationCities(relation);
+            if(cities.length !== 2) {
+                grouped.push(relation);
+                return;
+            }
+            const [cityA, cityB] = cities;
+            const idA = String(cityA._id);
+            const idB = String(cityB._id);
+            cityMap.set(idA, cityA);
+            cityMap.set(idB, cityB);
+            if(!adjacency.has(idA)) adjacency.set(idA, new Set());
+            if(!adjacency.has(idB)) adjacency.set(idB, new Set());
+            adjacency.get(idA).add(idB);
+            adjacency.get(idB).add(idA);
+        });
+
+        const visited = new Set();
+        adjacency.forEach((_, startId) => {
+            if(visited.has(startId)) return;
+            const stack = [startId];
+            const componentIds = [];
+            visited.add(startId);
+            while(stack.length) {
+                const currentId = stack.pop();
+                componentIds.push(currentId);
+                (adjacency.get(currentId) || []).forEach(nextId => {
+                    if(visited.has(nextId)) return;
+                    visited.add(nextId);
+                    stack.push(nextId);
+                });
+            }
+
+            const componentSet = new Set(componentIds);
+            const componentRelations = bucket.filter(relation => {
+                const relationCityIds = getDiploRelationCities(relation).map(city => String(city._id));
+                return relationCityIds.length === 2 && relationCityIds.every(id => componentSet.has(id));
+            });
+            const componentCities = componentIds
+                .map(id => cityMap.get(id))
+                .filter(Boolean)
+                .sort((left, right) => (left.name || '').localeCompare(right.name || ''));
+
+            if(componentCities.length >= 3) {
+                const sample = componentRelations[0];
+                grouped.push({
+                    _id: `alliance-group:${componentIds.sort().join('-')}:${sample?._id || ''}`,
+                    status: 'allie',
+                    since: sample?.since || null,
+                    initiatedBy: sample?.initiatedBy || '',
+                    description: sample?.description || '',
+                    cities: componentCities,
+                    relations: componentRelations,
+                    isGroupedAlliance: true
+                });
+            } else {
+                grouped.push(...componentRelations);
+            }
         });
     });
+
+    return grouped;
 }
 
 function renderDiplomacy() {
@@ -4909,16 +4998,23 @@ function renderDiplomacy() {
     const filterCity   = document.getElementById('diplo-filter-city')?.value || '';
     const filterStatus = document.getElementById('diplo-filter-status')?.value || '';
 
-    let list = [...cityRelationsData];
+    let list = groupDiplomacyRelations(cityRelationsData);
 
-    if(filterCity)   list = list.filter(r => String(r.cityA?._id) === filterCity || String(r.cityB?._id) === filterCity);
+    if(filterCity) {
+        list = list.filter(r => {
+            const cities = r.isGroupedAlliance ? (r.cities || []) : getDiploRelationCities(r);
+            return cities.some(city => String(city?._id) === filterCity);
+        });
+    }
     if(filterStatus) list = list.filter(r => r.status === filterStatus);
 
     // Trier par gravité décroissante (guerre en premier), puis par nom
     list.sort((a,b) => {
         const ta = DIPLO_STATUS_META[a.status]?.tier ?? 99;
         const tb = DIPLO_STATUS_META[b.status]?.tier ?? 99;
-        return tb - ta || (a.cityA?.name || '').localeCompare(b.cityA?.name || '');
+        const aName = a.isGroupedAlliance ? (a.cities?.[0]?.name || '') : (a.cityA?.name || '');
+        const bName = b.isGroupedAlliance ? (b.cities?.[0]?.name || '') : (b.cityA?.name || '');
+        return tb - ta || aName.localeCompare(bName);
     });
 
     if(!list.length) {
@@ -4933,6 +5029,35 @@ function renderDiploCard(r) {
     const meta = DIPLO_STATUS_META[r.status] || { label: r.status, icon: '❓' };
     const since = r.since ? new Date(r.since).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' }) : '';
     const idStr = r._id;
+
+    if(r.isGroupedAlliance) {
+        const citiesMarkup = (r.cities || []).map(city => {
+            const flag = city?.flag
+                ? `<img src="${escapeHtml(city.flag)}" class="diplo-city-flag" alt="">`
+                : `<div class="diplo-city-flag-ph"><i class="fa-solid fa-flag"></i></div>`;
+            return `
+                <div class="diplo-alliance-city">
+                    ${flag}
+                    <div class="diplo-city-name">${escapeHtml(city?.name || '—')}</div>
+                </div>`;
+        }).join('');
+
+        return `
+        <div class="diplo-card diplo-card-grouped-alliance">
+            <div class="diplo-card-banner diplo-banner-${r.status}"></div>
+            <div class="diplo-card-body">
+                <div class="diplo-alliance-head">
+                    <div class="diplo-alliance-title">Alliance collective</div>
+                    <div class="diplo-alliance-count">${r.cities.length} cités</div>
+                </div>
+                <div class="diplo-alliance-grid">${citiesMarkup}</div>
+                <span class="diplo-status-badge diplo-badge-${r.status}">${meta.icon} ${meta.label}</span>
+                ${since ? `<div class="diplo-card-meta"><i class="fa-regular fa-calendar"></i> Depuis le ${since}</div>` : ''}
+                ${r.initiatedBy ? `<div class="diplo-card-meta"><i class="fa-solid fa-user"></i> ${escapeHtml(r.initiatedBy)}</div>` : ''}
+                ${r.description ? `<div class="diplo-card-desc">${escapeHtml(r.description)}</div>` : ''}
+            </div>
+        </div>`;
+    }
 
     const flagA = r.cityA?.flag
         ? `<img src="${escapeHtml(r.cityA.flag)}" class="diplo-city-flag" alt="">`
@@ -4973,8 +5098,8 @@ function renderDiploCard(r) {
 function openDiploModal(relationId) {
     populateDiploModalSelects();
     document.getElementById('diploRelationId').value = '';
-    document.getElementById('diploCityA').value = '';
-    document.getElementById('diploCityB').value = '';
+    const citySelect = document.getElementById('diploCityIds');
+    Array.from(citySelect.options).forEach(opt => { opt.selected = false; });
     document.getElementById('diploStatus').value = 'neutre';
     document.getElementById('diploInitiatedBy').value = '';
     document.getElementById('diploDesc').value = '';
@@ -4984,8 +5109,10 @@ function openDiploModal(relationId) {
         const rel = cityRelationsData.find(r => String(r._id) === String(relationId));
         if(rel) {
             document.getElementById('diploRelationId').value = String(rel._id);
-            document.getElementById('diploCityA').value = String(rel.cityA?._id || '');
-            document.getElementById('diploCityB').value = String(rel.cityB?._id || '');
+            const selectedIds = new Set([String(rel.cityA?._id || ''), String(rel.cityB?._id || '')].filter(Boolean));
+            Array.from(citySelect.options).forEach(opt => {
+                opt.selected = selectedIds.has(String(opt.value));
+            });
             document.getElementById('diploStatus').value = rel.status || 'neutre';
             document.getElementById('diploInitiatedBy').value = rel.initiatedBy || '';
             document.getElementById('diploDesc').value = rel.description || '';
@@ -5001,18 +5128,27 @@ function closeDiploModal() {
 }
 
 function submitDiploRelation() {
-    const cityAId      = document.getElementById('diploCityA').value;
-    const cityBId      = document.getElementById('diploCityB').value;
+    const cityIds      = Array.from(document.getElementById('diploCityIds').selectedOptions).map(opt => String(opt.value));
     const status       = document.getElementById('diploStatus').value;
     const initiatedBy  = document.getElementById('diploInitiatedBy').value.trim();
     const description  = document.getElementById('diploDesc').value.trim();
     const since        = document.getElementById('diploSince').value;
     const relationId   = document.getElementById('diploRelationId').value;
 
-    if(!cityAId || !cityBId) return alert('Sélectionnez deux cités.');
-    if(cityAId === cityBId) return alert('Les deux cités doivent être différentes.');
+    if(cityIds.length < 2) return alert('Sélectionnez au moins deux cités.');
+    if(relationId && cityIds.length !== 2) return alert('Une relation existante ne peut concerner que deux cités.');
+    if(status !== 'allie' && cityIds.length !== 2) return alert('Les relations hors alliance doivent concerner exactement deux cités.');
 
-    socket.emit('admin_upsert_city_relation', { relationId: relationId || null, cityAId, cityBId, status, initiatedBy, description, since });
+    socket.emit('admin_upsert_city_relation', {
+        relationId: relationId || null,
+        cityIds,
+        cityAId: cityIds[0] || '',
+        cityBId: cityIds[1] || '',
+        status,
+        initiatedBy,
+        description,
+        since
+    });
     _unsavedBypass = true;
     closeDiploModal();
 }
