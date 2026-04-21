@@ -674,82 +674,104 @@
                         </button>
                     </div>
                     <div id="presseForbiddenHint" class="presse-forbidden-hint hidden">Mode archive restreinte actif. Les publications seront enregistrées dans Dossier Kael.</div>
-                    <div class="presse-journal-row">
-                        <div class="presse-journal-logo-preview" id="presseJournalLogoPreview"><i class="fa-solid fa-newspaper"></i></div>
-                        <div style="flex:1; min-width:0;">
-                            <input type="text" id="presseJournalName" placeholder="Nom du journal (ex: Le Courrier d'Aguerta)" class="presse-title-input" style="margin-bottom:8px; font-size:0.95rem;">
-                            <label class="file-upload-label" style="margin:0;"><span><i class="fa-solid fa-image"></i> Logo du journal</span><input type="file" id="presseJournalLogoFile" accept="image/*" onchange="previewPresseJournalLogo()"></label>
-                        </div>
-                    </div>
-                    <div class="presse-theme-panel">
-                        <div class="presse-theme-header">
-                            <span><i class="fa-solid fa-palette"></i> Thème de fond</span>
-                            <small>Auto-généré depuis le logo, puis ajustable</small>
-                        </div>
-                        <div id="presseThemeChoices" class="presse-theme-choices"></div>
-                    </div>
-                    <input type="text" id="presseTitle" placeholder="Titre de l'article..." class="presse-title-input">
-                    <div class="presse-ux-row">
-                        <div class="presse-preset-wrap">
-                            <label for="pressePreset">Preset mise en page</label>
-                            <div class="presse-preset-controls">
-                                <select id="pressePreset" class="presse-urgency-select">
-                                    <option value="">— Choisir —</option>
-                                    <option value="flash">Flash info</option>
-                                    <option value="chronique">Chronique</option>
-                                    <option value="interview">Interview</option>
-                                    <option value="enquete">Dossier enquête</option>
-                                </select>
-                                <button class="btn-secondary" onclick="applyPressePreset()"><i class="fa-solid fa-wand-magic-sparkles"></i> Appliquer</button>
+                    <div class="presse-compose-grid">
+                        <div class="presse-compose-main">
+                            <div class="presse-journal-row">
+                                <div class="presse-journal-logo-preview" id="presseJournalLogoPreview"><i class="fa-solid fa-newspaper"></i></div>
+                                <div style="flex:1; min-width:0;">
+                                    <input type="text" id="presseJournalName" placeholder="Nom du journal (ex: Le Courrier d'Aguerta)" class="presse-title-input" style="margin-bottom:8px; font-size:0.95rem;">
+                                    <label class="file-upload-label" style="margin:0;"><span><i class="fa-solid fa-image"></i> Logo du journal</span><input type="file" id="presseJournalLogoFile" accept="image/*" onchange="previewPresseJournalLogo()"></label>
+                                </div>
                             </div>
+                            <div class="presse-theme-panel">
+                                <div class="presse-theme-header">
+                                    <span><i class="fa-solid fa-palette"></i> Thème de fond</span>
+                                    <small>Auto-généré depuis le logo, puis ajustable</small>
+                                </div>
+                                <div id="presseThemeChoices" class="presse-theme-choices"></div>
+                            </div>
+                            <input type="text" id="presseTitle" placeholder="Titre de l'article..." class="presse-title-input presse-main-title-input">
+                            <div class="presse-ux-row">
+                                <div class="presse-preset-wrap">
+                                    <label for="pressePreset">Preset mise en page</label>
+                                    <div class="presse-preset-controls">
+                                        <select id="pressePreset" class="presse-urgency-select">
+                                            <option value="">— Choisir —</option>
+                                            <option value="flash">Flash info</option>
+                                            <option value="chronique">Chronique</option>
+                                            <option value="interview">Interview</option>
+                                            <option value="enquete">Dossier enquête</option>
+                                        </select>
+                                        <button class="btn-secondary" onclick="applyPressePreset()"><i class="fa-solid fa-wand-magic-sparkles"></i> Appliquer</button>
+                                    </div>
+                                </div>
+                                <div class="presse-reading-stats" id="presseReadingStats">
+                                    <span id="presseWordCount">0 mots</span>
+                                    <span id="presseReadTime">0 min de lecture</span>
+                                </div>
+                            </div>
+                            <div class="presse-editor-shell">
+                                <div class="presse-format-toolbar">
+                                    <div class="presse-format-group">
+                                        <span class="presse-format-group-label">Structure</span>
+                                        <button type="button" class="btn-secondary" onclick="applyPresseFormat('H1', 'presseContentEditor')">Titre</button>
+                                        <button type="button" class="btn-secondary" onclick="applyPresseFormat('H2', 'presseContentEditor')">Intertitre</button>
+                                        <button type="button" class="btn-secondary" onclick="applyPresseFormat('P', 'presseContentEditor')">Corps</button>
+                                        <button type="button" class="btn-secondary" onclick="applyPresseFormat('QUOTE', 'presseContentEditor')">Citation</button>
+                                        <button type="button" class="btn-secondary" onclick="applyPresseFormat('LIST', 'presseContentEditor')">Liste</button>
+                                    </div>
+                                    <div class="presse-format-group">
+                                        <span class="presse-format-group-label">Style</span>
+                                        <button type="button" class="btn-secondary" onclick="applyPresseFormat('B', 'presseContentEditor')">Gras</button>
+                                        <button type="button" class="btn-secondary" onclick="applyPresseFormat('I', 'presseContentEditor')">Italique</button>
+                                        <button type="button" class="btn-secondary" onclick="applyPresseFormat('U', 'presseContentEditor')">Souligné</button>
+                                        <button type="button" class="btn-secondary" onclick="applyPresseFormat('SMALL', 'presseContentEditor')">Petit texte</button>
+                                        <select class="presse-fontsize-select" onchange="applyPresseFontSize(this.value, 'presseContentEditor'); this.value='';">
+                                            <option value="">Taille</option>
+                                            <option value="small">Petite</option>
+                                            <option value="normal">Normale</option>
+                                            <option value="large">Grande</option>
+                                            <option value="xlarge">Très grande</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="presse-editor-hint">Utilise les titres pour structurer l'article et garde la prévisualisation ouverte pour contrôler le rendu final.</div>
+                                <div id="presseContentEditor" class="presse-rich-editor" contenteditable="true" data-placeholder="Contenu de l'article..."></div>
+                            </div>
+                            <div class="presse-compose-actions">
+                                <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-image"></i><input type="file" id="presseMediaFile" accept="image/*,video/*" class="hidden" onchange="previewPresseFile()"></label>
+                                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                                    <select id="presseUrgency" class="presse-urgency-select">
+                                        <option value="">— Niveau —</option>
+                                        <option value="urgent">🚨 URGENT</option>
+                                        <option value="enquete">🔍 ENQUÊTE</option>
+                                        <option value="officiel">📢 COMMUNIQUÉ OFFICIEL</option>
+                                        <option value="economie">📉 ÉCONOMIE</option>
+                                    </select>
+                                    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.85rem;"><input type="checkbox" id="presseIsPub" onchange="togglePressePubSelect()"> 📢 Pub</label>
+                                    <button class="btn-primary" onclick="submitArticle()">Publier</button>
+                                </div>
+                            </div>
+                            <div id="presse-pub-stock-wrap" class="hidden" style="margin-top:8px;">
+                                <select id="pressePubStockId" class="char-input" style="width:100%;margin-bottom:3px;"><option value="">— Entreprise concernée —</option></select>
+                                <div style="font-size:0.65rem;color:var(--accent-soft);"><i class="fa-solid fa-chart-line"></i> Boost bourse +0.10 – +0.50%</div>
+                            </div>
+                            <input type="hidden" id="presseMediaUrl">
+                            <input type="hidden" id="presseJournalLogo">
                         </div>
-                        <div class="presse-reading-stats" id="presseReadingStats">
-                            <span id="presseWordCount">0 mots</span>
-                            <span id="presseReadTime">0 min de lecture</span>
-                        </div>
+                        <aside class="presse-compose-side">
+                            <div class="presse-preview-panel">
+                                <div class="presse-preview-panel-head">
+                                    <div>
+                                        <div class="presse-preview-kicker">Aperçu éditeur</div>
+                                        <strong>Rendu article</strong>
+                                    </div>
+                                    <span class="presse-preview-panel-copy">Mise à jour en direct</span>
+                                </div>
+                                <div class="presse-live-preview" id="presseLivePreview"></div>
+                            </div>
+                        </aside>
                     </div>
-                    <div class="presse-editor-shell">
-                        <div class="presse-format-toolbar">
-                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('H1', 'presseContentEditor')">Grand titre</button>
-                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('H2', 'presseContentEditor')">Sous-titre</button>
-                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('P', 'presseContentEditor')">Paragraphe</button>
-                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('QUOTE', 'presseContentEditor')">Citation</button>
-                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('B', 'presseContentEditor')">Gras</button>
-                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('I', 'presseContentEditor')">Italique</button>
-                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('U', 'presseContentEditor')">Souligné</button>
-                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('SMALL', 'presseContentEditor')">Petit</button>
-                            <button type="button" class="btn-secondary" onclick="applyPresseFormat('LIST', 'presseContentEditor')">Liste</button>
-                            <select class="presse-fontsize-select" onchange="applyPresseFontSize(this.value, 'presseContentEditor'); this.value='';">
-                                <option value="">Taille</option>
-                                <option value="small">Petite</option>
-                                <option value="normal">Normale</option>
-                                <option value="large">Grande</option>
-                                <option value="xlarge">Très grande</option>
-                            </select>
-                        </div>
-                        <div id="presseContentEditor" class="presse-rich-editor" contenteditable="true" data-placeholder="Contenu de l'article..."></div>
-                    </div>
-                    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; flex-wrap:wrap; gap:8px;">
-                        <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-image"></i><input type="file" id="presseMediaFile" accept="image/*,video/*" class="hidden" onchange="previewPresseFile()"></label>
-                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                            <select id="presseUrgency" class="presse-urgency-select">
-                                <option value="">— Niveau —</option>
-                                <option value="urgent">🚨 URGENT</option>
-                                <option value="enquete">🔍 ENQUÊTE</option>
-                                <option value="officiel">📢 COMMUNIQUÉ OFFICIEL</option>
-                                <option value="economie">📉 ÉCONOMIE</option>
-                            </select>
-                            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.85rem;"><input type="checkbox" id="presseIsPub" onchange="togglePressePubSelect()"> 📢 Pub</label>
-                            <button class="btn-primary" onclick="submitArticle()">Publier</button>
-                        </div>
-                    </div>
-                    <div id="presse-pub-stock-wrap" class="hidden" style="margin-top:8px;">
-                        <select id="pressePubStockId" class="char-input" style="width:100%;margin-bottom:3px;"><option value="">— Entreprise concernée —</option></select>
-                        <div style="font-size:0.65rem;color:var(--accent-soft);"><i class="fa-solid fa-chart-line"></i> Boost bourse +0.10 – +0.50%</div>
-                    </div>
-                    <div class="presse-live-preview" id="presseLivePreview"></div>
-                    <input type="hidden" id="presseMediaUrl">
-                    <input type="hidden" id="presseJournalLogo">
                 </div>
             </div>
         </div>
