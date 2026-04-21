@@ -2308,6 +2308,14 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
         gap: 12px;
     }
     .nav-bar-row { width: 100%; padding: 0; }
+    #btn-nav-account {
+        position: static;
+        left: auto;
+        z-index: auto;
+        flex: 1;
+        min-width: 0;
+        max-width: calc(100% - 56px);
+    }
     .nav-hamburger-btn { display: flex; align-items: center; }
     .nav-links {
         display: none;

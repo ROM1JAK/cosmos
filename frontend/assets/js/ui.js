@@ -1,9 +1,14 @@
 window.CosmosModules = window.CosmosModules || {};
 window.CosmosModules.ui = { scope: 'ui', mode: 'module' };
 
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
-  document.getElementById('mobile-overlay').classList.toggle('open');
+function toggleSidebar(forceOpen) {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('mobile-overlay');
+  if (!sidebar || !overlay) return;
+  const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !sidebar.classList.contains('open');
+  sidebar.classList.toggle('open', shouldOpen);
+  overlay.classList.toggle('open', shouldOpen);
+  if (shouldOpen && typeof closeTopNavMenu === 'function') closeTopNavMenu();
 }
 
 function toggleCreateForm() {
