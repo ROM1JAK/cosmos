@@ -586,10 +586,15 @@ function buildAutoLikeCountDisplay(authorChar = null, postData = {}) {
 	return formatCompactCountLabel(estimatedLikes);
 }
 
+function sanitizePostAuthorLabel(value) {
+	const label = String(value || '').trim();
+	return /^(auteur|auteur inconnu)$/i.test(label) ? '' : label;
+}
+
 function buildDisplayPost(post, authorChar = null, authorMap = null) {
 	const displayPost = post.toObject ? post.toObject() : { ...post };
 	if (!displayPost.isAnonymous) {
-		displayPost.authorName = displayPost.authorName || authorChar?.name || 'Auteur';
+		displayPost.authorName = sanitizePostAuthorLabel(displayPost.authorName) || authorChar?.name || '';
 		displayPost.authorAvatar = displayPost.authorAvatar || authorChar?.avatar || '';
 		displayPost.authorRole = displayPost.authorRole || authorChar?.role || '';
 		displayPost.authorColor = displayPost.authorColor || authorChar?.color || 'white';
@@ -603,7 +608,7 @@ function buildDisplayPost(post, authorChar = null, authorMap = null) {
 	}
 	if (displayPost.quotedPost && !displayPost.quotedPost.isAnonymous && authorMap) {
 		const quotedAuthor = authorMap.get(String(displayPost.quotedPost.authorCharId || ''));
-		displayPost.quotedPost.authorName = displayPost.quotedPost.authorName || quotedAuthor?.name || 'Auteur';
+		displayPost.quotedPost.authorName = sanitizePostAuthorLabel(displayPost.quotedPost.authorName) || quotedAuthor?.name || '';
 		displayPost.quotedPost.authorAvatar = displayPost.quotedPost.authorAvatar || quotedAuthor?.avatar || '';
 		displayPost.quotedPost.authorRole = displayPost.quotedPost.authorRole || quotedAuthor?.role || '';
 		displayPost.quotedPost.authorColor = displayPost.quotedPost.authorColor || quotedAuthor?.color || 'white';
