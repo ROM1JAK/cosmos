@@ -75,6 +75,8 @@ let isReseauRailExpanded = localStorage.getItem(RESEAU_RAIL_STORAGE_KEY) === 'ex
 let pollOptions = [];
 let pollUIOpen = false; 
 let isTopNavMenuOpen = false;
+let currentRepostTarget = null;
+const quotedPostSnapshotCache = new Map();
 
 // OMBRA
 let ombraAlias = null;
@@ -2467,16 +2469,127 @@ async function previewPostFile() {
     }
 }
 
+function findPostByIdInCaches(postId) {
+    return feedPostsCache.find(post => String(post._id) === String(postId))
+        || presseArticlesCache.find(post => String(post._id) === String(postId))
+        || (Array.isArray(currentProfileChar?.lastPosts) ? currentProfileChar.lastPosts.find(post => String(post._id) === String(postId)) : null)
+        || null;
+}
+
+function getQuotedPostDisplayAuthor(post) {
+    if(!post) return { name: '', avatar: '', role: '', color: 'white', anonymous: false };
+    if(post.isAnonymous) {
+        return {
+            name: 'Source Anonyme',
+            avatar: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23383a40' width='100' height='100'/%3E%3Ctext x='50' y='55' font-size='50' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3E%3F%3C/text%3E%3C/svg%3E",
+            role: 'Leak',
+            color: '#a6accd',
+            anonymous: true
+        };
+    }
+    return {
+        name: post.authorName || 'Auteur inconnu',
+        avatar: post.authorAvatar || '',
+        role: post.authorRole || '',
+        color: post.authorColor || 'white',
+        anonymous: false
+    };
+}
+
+function openQuotedPost(postId) {
+    const sourcePost = findPostByIdInCaches(postId) || quotedPostSnapshotCache.get(String(postId)) || null;
+    if(sourcePost) openPostDetail(postId, sourcePost);
+}
+
+function buildQuotedPostMarkup(post, options = {}) {
+    if(!post) return '';
+    if(post._id) quotedPostSnapshotCache.set(String(post._id), post);
+    const { preview = false, nested = false } = options;
+    const author = getQuotedPostDisplayAuthor(post);
+    const safeId = String(post._id || '').replace(/'/g, "\\'");
+    let mediaHtml = '';
+    if(post.mediaUrl) {
+        if(post.mediaType === 'video' || String(post.mediaUrl).includes('/video/upload')) {
+            const ytId = getYoutubeId(post.mediaUrl);
+            mediaHtml = ytId
+                ? `<iframe class="quoted-post-media" src="https://www.youtube.com/embed/${ytId}" frameborder="0" allowfullscreen></iframe>`
+                : `<video class="quoted-post-media" controls src="${post.mediaUrl}"></video>`;
+        } else if(post.mediaType === 'audio') {
+            mediaHtml = `<audio class="quoted-post-audio" controls src="${post.mediaUrl}"></audio>`;
+        } else {
+            mediaHtml = `<img src="${post.mediaUrl}" class="quoted-post-media" alt="media post cité">`;
+        }
+    }
+    const badges = [
+        post.isBreakingNews ? '<span class="quoted-post-badge breaking">Breaking</span>' : '',
+        post.isSponsored ? `<span class="quoted-post-badge sponsored">${escapeHtml(post.linkedCompanyName || 'Pub')}</span>` : ''
+    ].filter(Boolean).join('');
+    const nestedQuote = !nested && post.quotedPost ? buildQuotedPostMarkup(post.quotedPost, { nested: true }) : '';
+    return `
+        <div class="quoted-post-card${preview ? ' quoted-post-card-preview' : ''}${nested ? ' quoted-post-card-nested' : ''}" ${safeId ? `onclick="event.stopPropagation(); openQuotedPost('${safeId}')"` : ''}>
+            <div class="quoted-post-head">
+                <img src="${author.avatar}" class="quoted-post-avatar" onerror="this.style.opacity=0">
+                <div class="quoted-post-meta">
+                    <div class="quoted-post-author" style="color:${author.color}">${escapeHtml(author.name)}${post.partyName && post.partyLogo && !author.anonymous ? `<span class="party-badge"><img src="${post.partyLogo}" class="party-logo"> ${escapeHtml(post.partyName)}</span>` : ''}</div>
+                    <div class="quoted-post-role">${escapeHtml(author.role || '')}</div>
+                </div>
+                <span class="quoted-post-date">${escapeHtml(post.date || '')}</span>
+            </div>
+            ${badges ? `<div class="quoted-post-badges">${badges}</div>` : ''}
+            ${post.content ? `<div class="quoted-post-content">${formatText(post.content)}</div>` : ''}
+            ${mediaHtml}
+            ${nestedQuote}
+        </div>`;
+}
+
+function renderFeedRepostPreview() {
+    const preview = document.getElementById('feed-repost-preview');
+    const input = document.getElementById('repostPostId');
+    if(!preview || !input) return;
+    if(!currentRepostTarget) {
+        preview.classList.add('hidden');
+        preview.innerHTML = '';
+        input.value = '';
+        return;
+    }
+    input.value = currentRepostTarget._id || '';
+    preview.classList.remove('hidden');
+    preview.innerHTML = `
+        <div class="feed-repost-preview-head">
+            <span><i class="fa-solid fa-retweet"></i> Repost avec commentaire</span>
+            <button type="button" class="feed-repost-cancel" onclick="clearRepostComposer()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        ${buildQuotedPostMarkup(currentRepostTarget, { preview: true })}`;
+}
+
+function prepareRepost(postId) {
+    const sourcePost = findPostByIdInCaches(postId);
+    if(!sourcePost) return;
+    currentRepostTarget = sourcePost;
+    renderFeedRepostPreview();
+    const textarea = document.getElementById('postContent');
+    if(textarea) {
+        textarea.focus();
+        textarea.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+}
+
+function clearRepostComposer() {
+    currentRepostTarget = null;
+    renderFeedRepostPreview();
+}
+
 function submitPost() {
     const content = document.getElementById('postContent').value.trim();
     const mediaUrl = document.getElementById('postMediaUrl').value.trim();
+    const repostPostId = document.getElementById('repostPostId')?.value || '';
     const isAnonymous = document.getElementById('postAnonymous').checked;
     const isBreakingNews = document.getElementById('postBreakingNews').checked;
     const isPub = document.getElementById('postIsPub')?.checked;
     const pubStockId = isPub ? document.getElementById('postPubStockId')?.value : null;
     const linkedStock = pubStockId ? stocksData.find(stock => String(stock._id) === String(pubStockId)) : null;
     
-    if(!content && !mediaUrl) return alert("Contenu vide.");
+    if(!content && !mediaUrl && !repostPostId) return alert("Contenu vide.");
     if(!currentFeedCharId) return alert("Aucun perso sélectionné pour le Feed.");
     const char = myCharacters.find(c => c._id === currentFeedCharId);
     if(!char) return alert("Perso invalide.");
@@ -2500,6 +2613,7 @@ function submitPost() {
         partyName: char.partyName, partyLogo: char.partyLogo, content, mediaUrl, mediaType, 
         date: new Date().toLocaleDateString(), ownerId: PLAYER_ID, isAnonymous, isBreakingNews, poll,
         isSponsored: !!isPub,
+        repostPostId,
         linkedStockId: pubStockId || '',
         linkedCompanyName: linkedStock?.companyName || ''
     };
@@ -2514,6 +2628,7 @@ function submitPost() {
     document.getElementById('postFileStatus').style.display = 'none'; document.getElementById('postAnonymous').checked = false; document.getElementById('postBreakingNews').checked = false;
     document.getElementById('char-count').textContent = `0/1000`; pollOptions = []; document.getElementById('poll-creation-ui').classList.add('hidden'); pollUIOpen = false;
     const pubCb = document.getElementById('postIsPub'); if(pubCb) { pubCb.checked = false; toggleFeedPubSelect(); }
+    clearRepostComposer();
 }
 
 function votePoll(postId, optionIndex) {
@@ -2744,6 +2859,8 @@ function createPostElement(post) {
     
     const bodyWrapperStart = isJournalistMode ? `<div class="post-article-body">` : ``;
     const bodyWrapperEnd = isJournalistMode ? `</div>` : ``;
+    const postContentHTML = post.content ? `<div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>` : '';
+    const quotedPostHTML = post.quotedPost ? buildQuotedPostMarkup(post.quotedPost) : '';
 
     div.innerHTML = `
         ${bannerHTML}
@@ -2758,12 +2875,14 @@ function createPostElement(post) {
                 <span class="post-date">${post.date}</span>
             </div>
             ${badges ? `<div class="post-smart-badges">${badges}</div>` : ''}
-            <div class="post-content" onclick="openPostDetail('${post._id}')">${formatText(post.content)}</div>
+            ${postContentHTML}
+            ${quotedPostHTML}
             ${mediaHTML}
             ${pollHTML}
             <div class="post-actions">
                 <button class="action-item ${isLiked?'liked':''}" onclick="event.stopPropagation(); toggleLike('${post._id}')"><i class="fa-solid fa-heart"></i> ${getPostLikeCountLabel(post)}</button>
                 <button class="action-item" onclick="event.stopPropagation(); openPostDetail('${post._id}')"><i class="fa-solid fa-comment"></i> ${post.comments.length}</button>
+                <button class="action-item" onclick="event.stopPropagation(); prepareRepost('${post._id}')"><i class="fa-solid fa-retweet"></i> Repost</button>
                 ${IS_ADMIN ? `<button class="action-item" onclick="event.stopPropagation(); openAdminStatsModal('${post._id}', '${getPostLikeCountLabel(post).replace(/'/g, "\\'")}')" title="Admin: modifier likes" style="color:var(--warning);"><i class="fa-solid fa-pen"></i></button>` : ''}
             </div>
         ${bodyWrapperEnd}

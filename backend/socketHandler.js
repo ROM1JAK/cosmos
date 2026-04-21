@@ -683,6 +683,33 @@ module.exports = function initSocketHandlers(deps) {
 
   socket.on('create_post', async (postData) => {
       let authorChar = postData.authorCharId ? await Character.findById(postData.authorCharId) : null;
+      if(postData.repostPostId) {
+          const sourcePost = await Post.findById(postData.repostPostId).lean();
+          if(sourcePost && !sourcePost.isArticle) {
+              postData.quotedPost = {
+                  _id: String(sourcePost._id),
+                  content: sourcePost.content || '',
+                  mediaUrl: sourcePost.mediaUrl || '',
+                  mediaType: sourcePost.mediaType || '',
+                  authorCharId: sourcePost.authorCharId || '',
+                  authorName: sourcePost.authorName || '',
+                  authorAvatar: sourcePost.authorAvatar || '',
+                  authorRole: sourcePost.authorRole || '',
+                  authorColor: sourcePost.authorColor || '',
+                  partyName: sourcePost.partyName || '',
+                  partyLogo: sourcePost.partyLogo || '',
+                  date: sourcePost.date || '',
+                  timestamp: sourcePost.timestamp || null,
+                  isAnonymous: !!sourcePost.isAnonymous,
+                  isBreakingNews: !!sourcePost.isBreakingNews,
+                  isSponsored: !!sourcePost.isSponsored,
+                  linkedCompanyName: sourcePost.linkedCompanyName || ''
+              };
+          } else {
+              postData.repostPostId = '';
+              postData.quotedPost = null;
+          }
+      }
       if(!postData.isArticle && !String(postData.likeCountDisplay || '').trim()) {
           postData.likeCountDisplay = buildAutoLikeCountDisplay(authorChar, postData);
       }

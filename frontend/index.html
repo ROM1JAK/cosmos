@@ -487,6 +487,7 @@
                 
                                 <div class="post-create-box">
                                     <textarea id="postContent" placeholder="Quoi de neuf ?"></textarea>
+                                    <div id="feed-repost-preview" class="feed-repost-preview hidden"></div>
                                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
                                         <div style="display:flex; gap:10px;">
                                              <label class="btn-icon" style="cursor:pointer;"><i class="fa-solid fa-image"></i><input type="file" id="postMediaFile" accept="image/*,video/*" class="hidden" onchange="previewPostFile()"></label>
@@ -516,6 +517,7 @@
                                     </div>
                                     <input type="hidden" id="postMediaUrl">
                                     <input type="hidden" id="pollData">
+                                    <input type="hidden" id="repostPostId">
                                 </div>
                 
                                 <div id="feed-typing-indicator" class="feed-typing-indicator hidden"></div>

@@ -401,6 +401,10 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 #postContent { width: 100%; background: var(--bg-primary); border: 1px solid var(--border); color: white; padding: 12px 14px; border-radius: var(--radius); margin-top: 5px; margin-bottom: 12px; resize: vertical; font-family: var(--font-main); font-size: 0.92rem; line-height: 1.5; transition: border-color 0.2s; }
 #postContent:focus { outline: none; border-color: var(--accent); }
 #postContent::placeholder { color: var(--text-muted); }
+.feed-repost-preview { margin: 4px 0 12px; border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015)); padding: 12px; }
+.feed-repost-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; color: var(--text-muted); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.feed-repost-cancel { width: 30px; height: 30px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text-normal); cursor: pointer; }
+.feed-repost-cancel:hover { background: rgba(255,255,255,0.06); }
 .post-card { background: var(--bg-secondary); border-radius: var(--radius-xl); border: 1px solid var(--border); padding: 20px !important; animation: fade 0.3s; position: relative; transition: all 0.2s; overflow: hidden; }
 .post-card:hover { background: var(--bg-hover); border-color: rgba(255,255,255,0.08); transform: translateY(-1px); box-shadow: 0 6px 24px rgba(0,0,0,0.2); }
 .post-card.post-highlight { border-color: rgba(255,215,0,0.4) !important; background: rgba(255,215,0,0.04); }
@@ -413,6 +417,23 @@ body { background-color: var(--bg-primary); color: var(--text-normal); font-fami
 .post-role { font-size: 0.7rem; color: var(--text-muted); background: var(--bg-tertiary); border: 1px solid var(--border); padding: 1px 7px; border-radius: 4px; align-self: flex-start; margin-top: 3px; font-weight: 500; }
 .post-date { font-size: 0.72rem; color: var(--text-muted); margin-left: auto; white-space: nowrap; }
 .post-content { color: var(--text-normal); font-size: 0.95rem; line-height: 1.65; white-space: pre-wrap; margin-bottom: 14px; cursor: pointer; }
+.quoted-post-card { margin: 0 0 14px; padding: 12px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.14); cursor: pointer; transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease; }
+.quoted-post-card:hover { border-color: rgba(108,99,255,0.24); background: rgba(108,99,255,0.05); transform: translateY(-1px); }
+.quoted-post-card-preview { margin-bottom: 0; }
+.quoted-post-card-nested { margin: 10px 0 0; background: rgba(255,255,255,0.025); }
+.quoted-post-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.quoted-post-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,0.08); flex-shrink: 0; }
+.quoted-post-meta { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.quoted-post-author { font-family: var(--font-display); font-size: 0.88rem; font-weight: 700; color: white; min-width: 0; }
+.quoted-post-role { font-size: 0.68rem; color: var(--text-muted); }
+.quoted-post-date { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
+.quoted-post-badges { display: flex; gap: 6px; flex-wrap: wrap; margin: -2px 0 8px; }
+.quoted-post-badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+.quoted-post-badge.breaking { background: rgba(255,71,87,0.12); color: #ff8792; }
+.quoted-post-badge.sponsored { background: rgba(245,158,11,0.12); color: #f7bf5d; }
+.quoted-post-content { font-size: 0.87rem; line-height: 1.6; color: var(--text-normal); white-space: pre-wrap; overflow-wrap: anywhere; }
+.quoted-post-media { width: 100%; max-height: 280px; border-radius: 14px; object-fit: cover; margin-top: 10px; display: block; }
+.quoted-post-audio { width: 100%; margin-top: 10px; }
 .post-media { max-width: 100%; border-radius: var(--radius); margin-top: 8px; max-height: 400px; display: block; }
 .post-actions { border-top: 1px solid var(--border); padding-top: 10px; display: flex; gap: 4px; }
 .action-item { display: flex; align-items: center; gap: 5px; color: var(--text-muted); cursor: pointer; font-size: 0.83rem; font-weight: 600; transition: all 0.18s; background: var(--bg-tertiary); border: 1px solid transparent; padding: 5px 12px; border-radius: 20px; font-family: var(--font-main); }
