@@ -4665,8 +4665,14 @@ function renderArticleBodyMarkup(post) {
     return '<div class="article-content"></div>';
 }
 
+function getArticleMentionedCities(post) {
+    const source = [post?.content, post?.authorRole, post?.journalName].filter(Boolean).join(' ').toLowerCase();
+    return citiesData.filter(city => city?.name && source.includes(String(city.name).toLowerCase())).slice(0, 4);
+}
+
 function buildArticleCardMarkup(post) {
     const { titleText } = parseArticleContent(post.content || '');
+    const mentionedCities = getArticleMentionedCities(post);
     const isForbiddenDossier = isForbiddenDossierArticle(post);
     const delBtn = !isForbiddenDossier && (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="article-del-btn" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
     const editBtn = !isForbiddenDossier && (post.ownerId === PLAYER_ID || IS_ADMIN) ? `<button class="article-edit-btn" onclick="event.stopPropagation(); openArticleEditModal('${post._id}')"><i class="fa-solid fa-pen"></i></button>` : '';
@@ -4700,6 +4706,7 @@ function buildArticleCardMarkup(post) {
             <div class="article-published-at"><i class="fa-regular fa-clock"></i> ${escapeHtml(publishedAt)}</div>
             <div class="article-separator"></div>
             ${renderArticleBodyMarkup(post)}
+            ${mentionedCities.length ? `<div class="article-linked-modules"><div class="article-linked-title">Cités citées</div><div class="article-linked-list">${mentionedCities.map(city => `<button class="article-linked-chip module-cites" onclick="event.stopPropagation(); openCityDetailById('${city._id}')">${escapeHtml(city.name)}</button>`).join('')}</div></div>` : ''}
             <div class="article-footer-signature" onclick="event.stopPropagation(); openProfile('${post.authorName.replace(/'/g, "\\'")}')">
                 <img src="${post.authorAvatar}" class="article-sig-avatar">
                 <div>
@@ -5522,6 +5529,73 @@ function openCityDetail(city) {
     renderCityDetailContent(city);
 }
 
+function openCityDetailById(cityId) {
+    const city = citiesData.find(item => String(item._id) === String(cityId));
+    if(city) openCityDetail(city);
+}
+
+function openDiplomacyForCity(cityId) {
+    switchView('cites');
+    switchCitesTab('diplo');
+    const scopeSel = document.getElementById('diplo-filter-scope');
+    if(scopeSel) scopeSel.value = 'city';
+    populateDiploFilters();
+    const entitySel = document.getElementById('diplo-filter-entity');
+    if(entitySel) entitySel.value = String(cityId);
+    renderDiplomacy();
+}
+
+function getCityRelatedEntries(city) {
+    const searchParts = [city?.name, city?.capitale, city?.archipel]
+        .filter(Boolean)
+        .map(value => String(value).toLowerCase());
+    const matchesCityText = value => {
+        const text = String(value || '').toLowerCase();
+        return searchParts.some(part => part && text.includes(part));
+    };
+
+    return {
+        relatedPosts: feedPostsCache.filter(post => matchesCityText([post.content, post.authorRole, post.linkedCompanyName].filter(Boolean).join(' '))).slice(0, 4),
+        relatedArticles: presseArticlesCache.filter(article => matchesCityText([article.content, article.journalName, article.authorRole].filter(Boolean).join(' '))).slice(0, 4),
+        relatedTimeline: worldTimelineCache.filter(item => matchesCityText([item.title, item.summary].filter(Boolean).join(' '))).slice(0, 4),
+        relatedRelations: cityRelationsData.filter(rel => (rel.relationScope || 'city') === 'city').filter(rel => String(rel.cityA?._id) === String(city._id) || String(rel.cityB?._id) === String(city._id)).slice(0, 4)
+    };
+}
+
+function renderCityConnections(city) {
+    const linksSection = document.getElementById('cityDetailModuleLinks');
+    const relatedSection = document.getElementById('cityDetailRelated');
+    if(!linksSection || !relatedSection) return;
+
+    const { relatedPosts, relatedArticles, relatedTimeline, relatedRelations } = getCityRelatedEntries(city);
+    linksSection.innerHTML = `
+        <button class="city-link-card module-reseau" onclick="${relatedPosts.length ? `openTimelineTarget('feed', { postId: '${relatedPosts[0]._id}' })` : `switchView('feed')`}"><span>Réseau</span><strong>Voir les posts liés</strong></button>
+        <button class="city-link-card module-presse" onclick="switchView('presse')"><span>Presse</span><strong>Voir la couverture liée</strong></button>
+        <button class="city-link-card module-cites" onclick="openDiplomacyForCity('${city._id}')"><span>Diplomatie</span><strong>Ouvrir la fiche diplomatique</strong></button>
+        <button class="city-link-card module-map" onclick="switchView('map')"><span>Map</span><strong>Retour à la carte</strong></button>`;
+
+    relatedSection.innerHTML = `
+        <div class="city-related-card">
+            <div class="city-related-card-head module-reseau"><span>Réseau</span><strong>${relatedPosts.length}</strong></div>
+            ${relatedPosts.length ? relatedPosts.map(post => `<button class="city-related-item" onclick="openTimelineTarget('feed', { postId: '${post._id}' })"><span>${escapeHtml(post.authorName || 'Source')}</span><strong>${escapeHtml(extractTextPreview(post.content || '', 88))}</strong></button>`).join('') : '<div class="city-related-empty">Aucun post lié.</div>'}
+        </div>
+        <div class="city-related-card">
+            <div class="city-related-card-head module-presse"><span>Presse</span><strong>${relatedArticles.length}</strong></div>
+            ${relatedArticles.length ? relatedArticles.map(article => `<button class="city-related-item" onclick="openArticleFullscreen('${article._id}')"><span>${escapeHtml(article.journalName || 'Presse')}</span><strong>${escapeHtml(extractArticleTitle(article.content || ''))}</strong></button>`).join('') : '<div class="city-related-empty">Aucun article lié.</div>'}
+        </div>
+        <div class="city-related-card">
+            <div class="city-related-card-head module-cites"><span>Diplomatie</span><strong>${relatedRelations.length}</strong></div>
+            ${relatedRelations.length ? relatedRelations.map(rel => {
+                const otherCity = String(rel.cityA?._id) === String(city._id) ? rel.cityB : rel.cityA;
+                return `<button class="city-related-item" onclick="openDiplomacyForCity('${city._id}')"><span>${escapeHtml(DIPLO_STATUS_META[rel.status]?.label || 'Relation')}</span><strong>${escapeHtml(otherCity?.name || 'Autre cité')}</strong></button>`;
+            }).join('') : '<div class="city-related-empty">Aucune relation active.</div>'}
+        </div>
+        <div class="city-related-card">
+            <div class="city-related-card-head module-map"><span>Monde</span><strong>${relatedTimeline.length}</strong></div>
+            ${relatedTimeline.length ? relatedTimeline.map(item => `<button class="city-related-item" onclick="openTimelineTarget('${item.relatedView || 'cites'}', ${JSON.stringify(item.relatedData || { cityId: city._id }).replace(/"/g, '&quot;')})"><span>${escapeHtml(item.title || 'Signal')}</span><strong>${escapeHtml(item.summary || '')}</strong></button>`).join('') : '<div class="city-related-empty">Aucun signal monde.</div>'}
+        </div>`;
+}
+
 function renderCityDetailContent(city) {
     // Hero
     document.getElementById('cityDetailName').textContent = city.name;
@@ -5579,6 +5653,8 @@ function renderCityDetailContent(city) {
     } else {
         adminPanel.classList.add('hidden');
     }
+
+    renderCityConnections(city);
 }
 
 function closeCityDetail() {
@@ -6900,7 +6976,7 @@ function openStockDetail(stockId) {
             </div>
             <div class="stock-detail-section">
                 <div class="stock-detail-section-title"><i class="fa-solid fa-newspaper"></i> Couverture presse</div>
-                ${relatedArticles.length ? relatedArticles.map(article => `<button class="stock-detail-related-item" onclick="switchView('presse')"><span>${escapeHtml(article.journalName || 'Presse')}</span><strong>${escapeHtml(extractArticleTitle(article.content || ''))}</strong></button>`).join('') : '<div class="stock-detail-empty">Aucun article presse lié.</div>'}
+                ${relatedArticles.length ? relatedArticles.map(article => `<button class="stock-detail-related-item" onclick="openArticleFullscreen('${article._id}')"><span>${escapeHtml(article.journalName || 'Presse')}</span><strong>${escapeHtml(extractArticleTitle(article.content || ''))}</strong></button>`).join('') : '<div class="stock-detail-empty">Aucun article presse lié.</div>'}
             </div>
             <div class="stock-detail-section">
                 <div class="stock-detail-section-title"><i class="fa-solid fa-wave-square"></i> Impact monde</div>

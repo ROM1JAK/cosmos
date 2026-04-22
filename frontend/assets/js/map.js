@@ -244,10 +244,51 @@
     }
   }
 
+  function getOverlayLinkedCities(overlay) {
+    const source = [overlay?.label, overlay?.description].filter(Boolean).join(' ').toLowerCase();
+    return (citiesData || []).filter(city => city?.name && source.includes(String(city.name).toLowerCase())).slice(0, 3);
+  }
+
+  function getOverlayRelatedTimeline(overlay) {
+    const source = [overlay?.label, overlay?.description].filter(Boolean).join(' ').toLowerCase();
+    return (worldTimelineCache || []).filter(item => {
+      const text = [item.title, item.summary].filter(Boolean).join(' ').toLowerCase();
+      return source && text.includes(source);
+    }).slice(0, 3);
+  }
+
+  function openMapOverlayDiplomacy(overlayId) {
+    const overlay = getOverlayById(overlayId);
+    if (!overlay) return;
+    const linkedCities = getOverlayLinkedCities(overlay);
+    if (linkedCities[0] && typeof openDiplomacyForCity === 'function') {
+      openDiplomacyForCity(linkedCities[0]._id);
+      return;
+    }
+    if (typeof switchView === 'function' && typeof switchCitesTab === 'function') {
+      switchView('cites');
+      switchCitesTab('diplo');
+    }
+  }
+
+  function openMapOverlayTimeline(overlayId) {
+    const overlay = getOverlayById(overlayId);
+    if (!overlay) return;
+    const relatedTimeline = getOverlayRelatedTimeline(overlay);
+    if (relatedTimeline[0] && typeof openTimelineTarget === 'function') {
+      openTimelineTarget(relatedTimeline[0].relatedView || 'accueil', relatedTimeline[0].relatedData || {});
+      return;
+    }
+    if (typeof switchView === 'function') switchView('accueil');
+  }
+
   window.openCityFromMapRelation = function openCityFromMapRelation(cityId) {
     const city = getCityById(cityId);
     if (city) openCityDetail(city);
   };
+
+  window.openMapOverlayDiplomacy = openMapOverlayDiplomacy;
+  window.openMapOverlayTimeline = openMapOverlayTimeline;
 
   const originalRenderCityDetailContent = typeof renderCityDetailContent === 'function' ? renderCityDetailContent : null;
   if (originalRenderCityDetailContent) {
@@ -536,6 +577,28 @@
 
     const marker = selectedMapMarkerId ? getMarkerById(selectedMapMarkerId) : null;
     if (!marker) {
+      const overlay = selectedMapOverlayId ? getOverlayById(selectedMapOverlayId) : null;
+      if (overlay) {
+        const linkedCities = getOverlayLinkedCities(overlay);
+        const relatedTimeline = getOverlayRelatedTimeline(overlay);
+        container.classList.remove('hidden');
+        container.innerHTML = `
+          <div class="map-marker-info-title">${escapeHtml(overlay.label || 'Zone active')}</div>
+          <div class="map-marker-info-meta">${escapeHtml(overlay.mode === 'danger' ? 'Zone de danger' : 'Territoire / front')}</div>
+          <div class="map-marker-info-body map-overlay-info-body">
+            <div class="map-marker-info-image map-overlay-info-icon"><i class="fa-solid ${overlay.mode === 'danger' ? 'fa-triangle-exclamation' : 'fa-draw-polygon'}"></i></div>
+            <div>
+              <div class="map-marker-info-text">${overlay.description ? escapeHtml(overlay.description).replace(/\n/g, '<br>') : 'Aucune description.'}</div>
+              <div class="map-overlay-info-actions">
+                <button class="map-marker-info-city map-marker-info-post" type="button" onclick="openMapOverlayTimeline('${escapeHtml(String(overlay._id))}')">Ouvrir l'actualité</button>
+                <button class="map-marker-info-city" type="button" onclick="openMapOverlayDiplomacy('${escapeHtml(String(overlay._id))}')">Ouvrir la diplomatie</button>
+                ${linkedCities[0] ? `<button class="map-marker-info-city" type="button" onclick="openCityDetailById('${escapeHtml(String(linkedCities[0]._id))}')">Voir ${escapeHtml(linkedCities[0].name)}</button>` : ''}
+              </div>
+              ${(relatedTimeline.length || linkedCities.length) ? `<div class="map-overlay-info-meta">${linkedCities.length ? `${linkedCities.length} cité(s) reconnue(s)` : ''}${linkedCities.length && relatedTimeline.length ? ' · ' : ''}${relatedTimeline.length ? `${relatedTimeline.length} signal(s) lié(s)` : ''}</div>` : ''}
+            </div>
+          </div>`;
+        return;
+      }
       container.classList.add('hidden');
       container.innerHTML = '';
       return;

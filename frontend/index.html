@@ -104,7 +104,7 @@
     </div>
     
     <div id="notifications-modal" class="modal-overlay hidden" onclick="closeNotifications()">
-        <div class="modal-box" style="max-width: 400px; padding:0; overflow:hidden; max-height:80vh; display:flex; flex-direction:column;" onclick="event.stopPropagation()">
+        <div class="modal-box modal-compact" style="max-width: 400px; padding:0; overflow:hidden; max-height:80vh; display:flex; flex-direction:column;" onclick="event.stopPropagation()">
             <div style="padding:15px; border-bottom:1px solid #222; display:flex; justify-content:space-between;">
                 <h3 style="color:white; margin:0;">Notifications</h3>
                 <button onclick="closeNotifications()" style="background:none; border:none; color:#aaa; cursor:pointer;">X</button>
@@ -850,7 +850,7 @@
 
         <!-- Modale Nouvelle Conversation -->
         <div id="new-conv-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeNewConvModal()">
-            <div class="modal-box" style="max-width:420px;" onclick="event.stopPropagation()">
+            <div class="modal-box modal-compact" style="max-width:420px;" onclick="event.stopPropagation()">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
                     <h3 style="margin:0;color:white;font-family:var(--font-display);"><i class="fa-solid fa-plus" style="color:var(--accent);margin-right:8px;"></i>Nouvelle conversation</h3>
                     <button onclick="closeNewConvModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
@@ -914,6 +914,16 @@
                 <div id="cityDetailRelations" class="city-relations-list">
                     <div class="city-relations-empty">Aucune relation diplomatique chargée.</div>
                 </div>
+            </div>
+
+            <div class="city-section">
+                <div class="city-section-title"><i class="fa-solid fa-diagram-project"></i> Modules liés</div>
+                <div id="cityDetailModuleLinks" class="city-link-grid"></div>
+            </div>
+
+            <div class="city-section">
+                <div class="city-section-title"><i class="fa-solid fa-link"></i> Réseau de contexte</div>
+                <div id="cityDetailRelated" class="city-related-grid"></div>
             </div>
 
             <div id="cityAdminPanel" class="city-admin-panel hidden">
@@ -1550,7 +1560,7 @@
 
     <!-- [WIKI] Modale Admin — Créer/éditer une page -->
     <div id="wiki-edit-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeWikiModal()">
-        <div class="modal-box" style="max-width:600px;" onclick="event.stopPropagation()">
+        <div class="modal-box modal-form" style="max-width:600px;" onclick="event.stopPropagation()">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                 <h3 id="wiki-modal-title" style="margin:0; color:white;"><i class="fa-solid fa-book-open"></i> Page Wiki</h3>
                 <button onclick="closeWikiModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
@@ -1593,7 +1603,7 @@
     </div>
     <!-- [PRESSE] Modale — Modifier un article -->
     <div id="article-edit-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeArticleEditModal()">
-        <div class="modal-box article-edit-box" style="max-width:760px;" onclick="event.stopPropagation()">
+        <div class="modal-box article-edit-box modal-editorial" style="max-width:760px;" onclick="event.stopPropagation()">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                 <h3 style="margin:0; color:white;"><i class="fa-solid fa-feather-pointed"></i> Modifier l'article</h3>
                 <button onclick="closeArticleEditModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
@@ -1648,7 +1658,7 @@
     </div>
     <!-- [DIPLOMATIE] Modale Admin — Créer/éditer une relation -->
     <div id="diplo-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeDiploModal()">
-        <div class="modal-box" style="max-width:460px;" onclick="event.stopPropagation()">
+        <div class="modal-box modal-form" style="max-width:460px;" onclick="event.stopPropagation()">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
                 <h3 style="margin:0;color:white;"><i class="fa-solid fa-handshake"></i> Relation Diplomatique</h3>
                 <button onclick="closeDiploModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
@@ -1703,7 +1713,7 @@
     </div>
 
     <div id="bourse-stock-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeStockModal()">
-        <div class="modal-box" style="max-width:420px;" onclick="event.stopPropagation()">
+        <div class="modal-box modal-form" style="max-width:420px;" onclick="event.stopPropagation()">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                 <h3 id="bourse-stock-modal-title" style="margin:0; color:white;"><i class="fa-solid fa-building"></i> Action Boursière</h3>
                 <button onclick="closeStockModal()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:1.1rem;">✕</button>
