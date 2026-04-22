@@ -45,6 +45,10 @@
             <button class="nav-btn" id="btn-view-wiki" onclick="switchView('wiki')"><i class="fa-solid fa-book-open"></i><span class="nav-label"> Wiki</span></button>
             <button class="nav-btn" id="btn-view-mes-persos" onclick="switchView('mes-persos')"><i class="fa-solid fa-id-card"></i><span class="nav-label"> Mes Persos</span></button>
             <button class="nav-btn hidden" id="btn-view-admin" onclick="switchView('admin')"><i class="fa-solid fa-shield-halved"></i><span class="nav-label"> Admin</span></button>
+            <button class="nav-btn" id="btn-global-search" onclick="openGlobalSearch()" title="Recherche globale">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <span class="nav-label"> Recherche</span>
+            </button>
             <button class="nav-btn" id="btn-notifs" onclick="openNotifications()" style="position:relative;">
                 <i class="fa-solid fa-bell"></i>
                 <span id="notif-badge" class="hidden"></span>
@@ -105,7 +109,31 @@
                 <h3 style="color:white; margin:0;">Notifications</h3>
                 <button onclick="closeNotifications()" style="background:none; border:none; color:#aaa; cursor:pointer;">X</button>
             </div>
+            <div class="notif-toolbar">
+                <div id="notif-filter-bar" class="notif-filter-bar"></div>
+                <div class="notif-toolbar-actions">
+                    <button class="btn-secondary" type="button" onclick="markAllNotificationsRead()">Tout marquer lu</button>
+                </div>
+            </div>
             <div id="notif-list" style="overflow-y:auto; padding:10px; flex:1;"></div>
+        </div>
+    </div>
+
+    <div id="global-search-modal" class="modal-overlay hidden" onclick="closeGlobalSearch()">
+        <div class="modal-box global-search-box" onclick="event.stopPropagation()">
+            <div class="global-search-head">
+                <div>
+                    <h3 class="global-search-title"><i class="fa-solid fa-magnifying-glass"></i> Recherche globale</h3>
+                    <div class="global-search-subtitle">Personnages, posts, presse, wiki, cités et bourse</div>
+                </div>
+                <button type="button" class="btn-secondary" onclick="closeGlobalSearch()">Fermer</button>
+            </div>
+            <div class="global-search-input-row">
+                <i class="fa-solid fa-search"></i>
+                <input type="text" id="globalSearchInput" placeholder="Rechercher un personnage, une entreprise, une cité..." oninput="handleGlobalSearchInput(this.value)" onkeydown="handleGlobalSearchKeydown(event)">
+            </div>
+            <div id="global-search-chips" class="global-search-chips"></div>
+            <div id="global-search-results" class="global-search-results"></div>
         </div>
     </div>
     
@@ -315,6 +343,7 @@
                     <h1 class="accueil-title"><i class="fa-solid fa-globe"></i> ConvSmos</h1>
                     <p class="accueil-subtitle">Monde roleplay vivant &middot; Politique, Économie &amp; Société</p>
                 </div>
+                <div id="accueil-quick-actions" class="accueil-quick-actions"></div>
                 <div class="accueil-nav-cards">
                     <div class="accueil-nav-card accent-card" onclick="switchView('reseau')"><i class="fa-solid fa-network-wired"></i><span>Réseau</span></div>
                     <div class="accueil-nav-card" onclick="switchView('presse')"><i class="fa-solid fa-newspaper"></i><span>Presse</span></div>
@@ -348,6 +377,16 @@
                         <div class="accueil-widget-title"><i class="fa-solid fa-id-card"></i> Mes Personnages</div>
                         <div id="accueil-chars-preview" class="accueil-widget-body"></div>
                         <div class="accueil-widget-footer"><button class="accueil-more-btn" onclick="switchView('mes-persos')">Gérer mes persos <i class="fa-solid fa-arrow-right"></i></button></div>
+                    </div>
+                    <div class="accueil-widget">
+                        <div class="accueil-widget-title"><i class="fa-solid fa-clock-rotate-left"></i> Reprise rapide</div>
+                        <div id="accueil-recents-preview" class="accueil-widget-body"></div>
+                        <div class="accueil-widget-footer"><button class="accueil-more-btn" onclick="openGlobalSearch()">Tout retrouver <i class="fa-solid fa-arrow-right"></i></button></div>
+                    </div>
+                    <div class="accueil-widget">
+                        <div class="accueil-widget-title"><i class="fa-solid fa-star"></i> Favoris</div>
+                        <div id="accueil-favorites-preview" class="accueil-widget-body"></div>
+                        <div class="accueil-widget-footer"><button class="accueil-more-btn" onclick="openGlobalSearch()">Gérer via la recherche <i class="fa-solid fa-arrow-right"></i></button></div>
                     </div>
                 </div>
                 <div id="accueil-timeline-wrap" class="accueil-timeline-wrap">

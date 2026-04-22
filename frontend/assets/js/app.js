@@ -96,6 +96,332 @@ let actuRequestPending = false;
 const RECENT_VIEW_RESTORE_WINDOW_MS = Math.max(5000, Number((window.APP_CONFIG && window.APP_CONFIG.RECENT_VIEW_RESTORE_WINDOW_MS) || (2 * 60 * 1000)));
 
 const COMMON_EMOJIS = ["😀", "😂", "😉", "😍", "😎", "🥳", "😭", "😡", "🤔", "👍", "👎", "❤️", "💔", "🔥", "✨", "🎉", "💩", "👻", "💀", "👽", "🤖", "👋", "🙌", "🙏", "💪", "👀", "🍕", "🍻", "🚀", "💯"];
+const RECENT_ACTIVITY_STORAGE_KEY = 'recent_activity_v1';
+const FAVORITES_STORAGE_KEY = 'favorites_v1';
+const DRAFTS_STORAGE_KEY = 'drafts_v1';
+const NOTIFICATION_FILTER_STORAGE_KEY = 'notif_filter_v1';
+const GLOBAL_SEARCH_MAX_RESULTS = 24;
+
+let globalSearchFilter = 'all';
+let currentNotificationFilter = localStorage.getItem(NOTIFICATION_FILTER_STORAGE_KEY) || 'all';
+let recentActivity = loadJsonStorage(RECENT_ACTIVITY_STORAGE_KEY, []);
+let favoritesState = normalizeFavoritesState(loadJsonStorage(FAVORITES_STORAGE_KEY, null));
+let draftsState = loadJsonStorage(DRAFTS_STORAGE_KEY, {});
+
+function loadJsonStorage(key, fallback) {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+    } catch (error) {
+        return fallback;
+    }
+}
+
+function saveJsonStorage(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+}
+
+function normalizeFavoritesState(value) {
+    return {
+        character: Array.isArray(value?.character) ? value.character : [],
+        city: Array.isArray(value?.city) ? value.city : [],
+        stock: Array.isArray(value?.stock) ? value.stock : [],
+        wiki: Array.isArray(value?.wiki) ? value.wiki : [],
+        article: Array.isArray(value?.article) ? value.article : [],
+        post: Array.isArray(value?.post) ? value.post : []
+    };
+}
+
+function saveFavoritesState() {
+    saveJsonStorage(FAVORITES_STORAGE_KEY, favoritesState);
+    if(currentView === 'accueil') renderAccueil();
+}
+
+function saveDraftsState() {
+    saveJsonStorage(DRAFTS_STORAGE_KEY, draftsState);
+}
+
+function setDraftValue(key, value) {
+    draftsState[key] = value;
+    saveDraftsState();
+}
+
+function clearDraftValue(key) {
+    delete draftsState[key];
+    saveDraftsState();
+}
+
+function isFavoriteItem(type, id) {
+    return normalizeFavoritesState(favoritesState)[type].some(item => String(item.id) === String(id));
+}
+
+function toggleFavoriteItem(type, id, label, meta = '') {
+    const bucket = normalizeFavoritesState(favoritesState)[type];
+    const existingIndex = bucket.findIndex(item => String(item.id) === String(id));
+    if(existingIndex >= 0) bucket.splice(existingIndex, 1);
+    else bucket.unshift({ id: String(id), label, meta, savedAt: Date.now() });
+    favoritesState[type] = bucket.slice(0, 16);
+    saveFavoritesState();
+}
+
+function addRecentActivity(entry) {
+    if(!entry || !entry.type || entry.id == null) return;
+    recentActivity = recentActivity.filter(item => !(item.type === entry.type && String(item.id) === String(entry.id)));
+    recentActivity.unshift({ ...entry, id: String(entry.id), timestamp: Date.now() });
+    recentActivity = recentActivity.slice(0, 14);
+    saveJsonStorage(RECENT_ACTIVITY_STORAGE_KEY, recentActivity);
+    if(currentView === 'accueil') renderAccueil();
+}
+
+function getRecentActivityItems() {
+    return Array.isArray(recentActivity) ? recentActivity : [];
+}
+
+function openRecentItem(type, id) {
+    if(type === 'character') {
+        const char = myCharacters.find(item => String(item._id) === String(id));
+        openProfile(char ? char.name : id);
+        return;
+    }
+    if(type === 'post') {
+        openTimelineTarget('feed', { postId: id });
+        return;
+    }
+    if(type === 'article') {
+        switchView('presse');
+        setTimeout(() => openArticleFullscreen(id), 90);
+        return;
+    }
+    if(type === 'city') {
+        const city = citiesData.find(item => String(item._id) === String(id));
+        if(city) {
+            switchView('cites');
+            setTimeout(() => openCityDetail(city), 90);
+        }
+        return;
+    }
+    if(type === 'stock') {
+        switchView('bourse');
+        setTimeout(() => openStockDetail(String(id)), 90);
+        return;
+    }
+    if(type === 'wiki') {
+        switchView('wiki');
+        setTimeout(() => openWikiPage(String(id)), 90);
+    }
+}
+
+function getFavoriteEntity(type, id) {
+    if(type === 'character') return myCharacters.find(item => String(item._id) === String(id)) || null;
+    if(type === 'city') return citiesData.find(item => String(item._id) === String(id)) || null;
+    if(type === 'stock') return stocksData.find(item => String(item._id) === String(id)) || null;
+    if(type === 'wiki') return wikiCache.find(item => String(item._id) === String(id)) || null;
+    if(type === 'article') return presseArticlesCache.find(item => String(item._id) === String(id)) || null;
+    if(type === 'post') return feedPostsCache.find(item => String(item._id) === String(id)) || null;
+    return null;
+}
+
+function getSearchCollectionEntries() {
+    const entries = [];
+    myCharacters.forEach(char => entries.push({
+        type: 'character',
+        id: char._id,
+        label: char.name,
+        meta: char.role || 'Personnage',
+        keywords: `${char.name} ${char.role || ''} ${char.partyName || ''} personnage profil`,
+        color: char.color || 'white'
+    }));
+    feedPostsCache.forEach(post => entries.push({
+        type: 'post',
+        id: post._id,
+        label: post.authorName || 'Post',
+        meta: extractTextPreview(post.content || '', 92) || 'Post du réseau',
+        keywords: `${post.authorName || ''} ${post.content || ''} ${post.linkedCompanyName || ''} post reseau`,
+        color: post.authorColor || 'white'
+    }));
+    getVisiblePresseArticles().forEach(article => {
+        const { titleText } = parseArticleContent(article.content || '');
+        entries.push({
+            type: 'article',
+            id: article._id,
+            label: titleText || article.journalName || 'Article',
+            meta: article.journalName || article.authorName || 'Presse',
+            keywords: `${titleText || ''} ${article.journalName || ''} ${article.authorName || ''} ${getArticleExcerpt(article.content || '', 140)} presse article`,
+            color: 'white'
+        });
+    });
+    citiesData.forEach(city => entries.push({
+        type: 'city',
+        id: city._id,
+        label: city.name,
+        meta: city.archipel || 'Cité',
+        keywords: `${city.name} ${city.archipel || ''} ${city.president || ''} cite geopolitique`,
+        color: 'white'
+    }));
+    stocksData.forEach(stock => entries.push({
+        type: 'stock',
+        id: stock._id,
+        label: stock.companyName,
+        meta: stock.charName || 'Entreprise',
+        keywords: `${stock.companyName || ''} ${stock.charName || ''} ${stock.description || ''} bourse entreprise`,
+        color: stock.charColor || 'white'
+    }));
+    wikiCache.forEach(page => entries.push({
+        type: 'wiki',
+        id: page._id,
+        label: page.title,
+        meta: page.category || 'Wiki',
+        keywords: `${page.title || ''} ${page.category || ''} ${page.content || ''} wiki page`,
+        color: 'white'
+    }));
+    return entries;
+}
+
+function getGlobalSearchTypes() {
+    return {
+        all: 'Tout',
+        character: 'Persos',
+        post: 'Posts',
+        article: 'Presse',
+        city: 'Cités',
+        stock: 'Bourse',
+        wiki: 'Wiki'
+    };
+}
+
+function renderGlobalSearchChips() {
+    const container = document.getElementById('global-search-chips');
+    if(!container) return;
+    const labels = getGlobalSearchTypes();
+    container.innerHTML = Object.entries(labels).map(([key, label]) => `
+        <button type="button" class="global-search-chip ${globalSearchFilter === key ? 'active' : ''}" onclick="setGlobalSearchFilter('${key}')">${label}</button>`).join('');
+}
+
+function setGlobalSearchFilter(filter) {
+    globalSearchFilter = filter;
+    renderGlobalSearchChips();
+    handleGlobalSearchInput(document.getElementById('globalSearchInput')?.value || '');
+}
+
+function getFilteredGlobalSearchEntries(query) {
+    const normalized = String(query || '').trim().toLowerCase();
+    let entries = getSearchCollectionEntries();
+    if(globalSearchFilter !== 'all') entries = entries.filter(item => item.type === globalSearchFilter);
+    if(!normalized) return entries.slice(0, GLOBAL_SEARCH_MAX_RESULTS);
+    return entries
+        .map(item => ({
+            ...item,
+            score: item.label.toLowerCase().includes(normalized) ? 3 : item.meta.toLowerCase().includes(normalized) ? 2 : item.keywords.toLowerCase().includes(normalized) ? 1 : 0
+        }))
+        .filter(item => item.score > 0)
+        .sort((left, right) => right.score - left.score || left.label.localeCompare(right.label, 'fr'))
+        .slice(0, GLOBAL_SEARCH_MAX_RESULTS);
+}
+
+function renderGlobalSearchResults(query) {
+    const container = document.getElementById('global-search-results');
+    if(!container) return;
+    const items = getFilteredGlobalSearchEntries(query);
+    if(!items.length) {
+        container.innerHTML = '<div class="global-search-empty">Aucun résultat pour cette recherche.</div>';
+        return;
+    }
+    const labels = {
+        character: 'Perso',
+        post: 'Post',
+        article: 'Presse',
+        city: 'Cité',
+        stock: 'Bourse',
+        wiki: 'Wiki'
+    };
+    container.innerHTML = items.map(item => `
+        <div class="global-search-result">
+            <button type="button" class="global-search-result-main" onclick="openGlobalSearchResult('${item.type}', '${String(item.id).replace(/'/g, "\\'")}')">
+                <div class="global-search-result-type">${labels[item.type] || item.type}</div>
+                <strong style="color:${item.color || 'white'}">${escapeHtml(item.label)}</strong>
+                <span>${escapeHtml(item.meta || '')}</span>
+            </button>
+            <button type="button" class="global-search-fav-btn ${isFavoriteItem(item.type, item.id) ? 'active' : ''}" onclick="toggleFavoriteFromSearch('${item.type}', '${String(item.id).replace(/'/g, "\\'")}')"><i class="fa-solid fa-star"></i></button>
+        </div>`).join('');
+}
+
+function handleGlobalSearchInput(value) {
+    renderGlobalSearchResults(value);
+}
+
+function openGlobalSearch() {
+    closeTopNavMenu();
+    const modal = document.getElementById('global-search-modal');
+    if(!modal) return;
+    modal.classList.remove('hidden');
+    renderGlobalSearchChips();
+    renderGlobalSearchResults(document.getElementById('globalSearchInput')?.value || '');
+    requestAnimationFrame(() => document.getElementById('globalSearchInput')?.focus());
+}
+
+function closeGlobalSearch() {
+    document.getElementById('global-search-modal')?.classList.add('hidden');
+}
+
+function handleGlobalSearchKeydown(event) {
+    if(event.key === 'Escape') closeGlobalSearch();
+}
+
+function openGlobalSearchResult(type, id) {
+    closeGlobalSearch();
+    openRecentItem(type, id);
+}
+
+function toggleFavoriteFromSearch(type, id) {
+    const entity = getFavoriteEntity(type, id);
+    const label = entity?.name || entity?.title || entity?.companyName || entity?.journalName || id;
+    const meta = entity?.role || entity?.archipel || entity?.category || entity?.charName || entity?.authorName || '';
+    toggleFavoriteItem(type, id, label, meta);
+    renderGlobalSearchResults(document.getElementById('globalSearchInput')?.value || '');
+}
+
+function getNotificationBucket(notification) {
+    if(notification.redirectView === 'char-mp' || notification.redirectView === 'dm' || notification.redirectView === 'chat') return 'direct';
+    if(notification.type === 'mention' || notification.type === 'reply' || notification.type === 'like' || notification.type === 'follow') return 'social';
+    return 'monde';
+}
+
+function getFilteredNotifications() {
+    return notifications.filter(notification => {
+        if(currentNotificationFilter === 'all') return true;
+        if(currentNotificationFilter === 'unread') return !notification.isRead;
+        return getNotificationBucket(notification) === currentNotificationFilter;
+    });
+}
+
+function renderNotificationFilters() {
+    const bar = document.getElementById('notif-filter-bar');
+    if(!bar) return;
+    const counts = {
+        all: notifications.length,
+        unread: notifications.filter(item => !item.isRead).length,
+        direct: notifications.filter(item => getNotificationBucket(item) === 'direct').length,
+        social: notifications.filter(item => getNotificationBucket(item) === 'social').length,
+        monde: notifications.filter(item => getNotificationBucket(item) === 'monde').length
+    };
+    const labels = { all: 'Tout', unread: 'Non lues', direct: 'Direct', social: 'Social', monde: 'Monde' };
+    bar.innerHTML = Object.keys(labels).map(key => `
+        <button type="button" class="notif-filter-chip ${currentNotificationFilter === key ? 'active' : ''}" onclick="setNotificationFilter('${key}')">${labels[key]} <span>${counts[key]}</span></button>`).join('');
+}
+
+function setNotificationFilter(filter) {
+    currentNotificationFilter = filter;
+    localStorage.setItem(NOTIFICATION_FILTER_STORAGE_KEY, filter);
+    openNotifications();
+}
+
+function markAllNotificationsRead() {
+    socket.emit('mark_notifications_read', PLAYER_ID);
+    notifications.forEach(item => { item.isRead = true; });
+    updateNotificationBadge();
+    updateDestinationBadges();
+    openNotifications();
+}
 
 function syncTopNavMenuUI() {
     const nav = document.getElementById('top-nav');
@@ -1106,6 +1432,7 @@ function setPresseComposerOpen(forceOpen) {
     updatePresseWriteBox();
     if(isPresseComposerOpen) {
         if(IS_ADMIN && isForbiddenPresseMode()) prepareForbiddenDossierComposer();
+        else restorePresseDraft();
         requestAnimationFrame(() => {
             const titleInput = document.getElementById('presseTitle');
             if(titleInput) titleInput.focus();
@@ -1119,6 +1446,172 @@ function togglePresseComposer() {
 
 function closePresseComposer() {
     setPresseComposerOpen(false);
+}
+
+function syncFeedDraftFromComposer() {
+    const contentNode = document.getElementById('postContent');
+    if(!contentNode) return;
+    setDraftValue('feed', {
+        content: contentNode.value || '',
+        isAnonymous: !!document.getElementById('postAnonymous')?.checked,
+        isBreakingNews: !!document.getElementById('postBreakingNews')?.checked
+    });
+}
+
+function restoreFeedDraft() {
+    const draft = draftsState.feed;
+    const contentNode = document.getElementById('postContent');
+    if(!draft || !contentNode || currentEditingPostId) return;
+    contentNode.value = draft.content || '';
+    if(document.getElementById('postAnonymous')) document.getElementById('postAnonymous').checked = !!draft.isAnonymous;
+    if(document.getElementById('postBreakingNews')) document.getElementById('postBreakingNews').checked = !!draft.isBreakingNews;
+    const countNode = document.getElementById('char-count');
+    if(countNode) countNode.textContent = `${contentNode.value.length}/1000`;
+}
+
+function syncPresseDraftFromComposer() {
+    const editor = getPresseEditor('presseContentEditor');
+    const titleInput = document.getElementById('presseTitle');
+    if(!editor || !titleInput) return;
+    setDraftValue('presse', {
+        title: titleInput.value || '',
+        journalName: document.getElementById('presseJournalName')?.value || '',
+        journalLogo: document.getElementById('presseJournalLogo')?.value || '',
+        urgency: document.getElementById('presseUrgency')?.value || '',
+        contentHtml: editor.innerHTML || ''
+    });
+}
+
+function restorePresseDraft() {
+    const draft = draftsState.presse;
+    if(!draft || isForbiddenPresseMode()) return;
+    const titleInput = document.getElementById('presseTitle');
+    const editor = getPresseEditor('presseContentEditor');
+    if(titleInput && !titleInput.value) titleInput.value = draft.title || '';
+    const journalInput = document.getElementById('presseJournalName');
+    if(journalInput && !journalInput.value) journalInput.value = draft.journalName || '';
+    const journalLogo = document.getElementById('presseJournalLogo');
+    if(journalLogo && !journalLogo.value) journalLogo.value = draft.journalLogo || '';
+    const urgency = document.getElementById('presseUrgency');
+    if(urgency && !urgency.value) urgency.value = draft.urgency || '';
+    if(editor && !editor.innerHTML.trim()) editor.innerHTML = draft.contentHtml || '';
+    updatePresseComposerUX();
+}
+
+function syncWikiDraftFromComposer() {
+    const title = document.getElementById('wikiPageTitle');
+    const content = document.getElementById('wikiPageContent');
+    if(!title || !content) return;
+    setDraftValue('wiki', {
+        pageId: document.getElementById('wikiPageId')?.value || '',
+        title: title.value || '',
+        category: document.getElementById('wikiPageCategory')?.value || 'histoire',
+        content: content.value || '',
+        coverImage: document.getElementById('wikiPageCoverUrl')?.value || ''
+    });
+}
+
+function restoreWikiDraft() {
+    const draft = draftsState.wiki;
+    if(!draft || draft.pageId) return;
+    if(document.getElementById('wikiPageTitle')) document.getElementById('wikiPageTitle').value = draft.title || '';
+    if(document.getElementById('wikiPageCategory')) document.getElementById('wikiPageCategory').value = draft.category || 'histoire';
+    if(document.getElementById('wikiPageContent')) document.getElementById('wikiPageContent').value = draft.content || '';
+    if(document.getElementById('wikiPageCoverUrl')) document.getElementById('wikiPageCoverUrl').value = draft.coverImage || '';
+    updateWikiWordCount();
+}
+
+function renderAccueilQuickActions() {
+    const container = document.getElementById('accueil-quick-actions');
+    if(!container) return;
+    const latestRecent = getRecentActivityItems()[0];
+    const unreadCount = notifications.filter(item => !item.isRead).length;
+    const actions = [
+        `<button type="button" class="accueil-quick-action accent" onclick="switchView('feed')"><i class="fa-solid fa-feather-pointed"></i><span>Publier</span></button>`,
+        `<button type="button" class="accueil-quick-action" onclick="openGlobalSearch()"><i class="fa-solid fa-magnifying-glass"></i><span>Recherche</span></button>`,
+        `<button type="button" class="accueil-quick-action" onclick="openNotifications()"><i class="fa-solid fa-bell"></i><span>Notifications${unreadCount ? ` (${unreadCount})` : ''}</span></button>`
+    ];
+    if(latestRecent) {
+        actions.push(`<button type="button" class="accueil-quick-action" onclick="openRecentItem('${latestRecent.type}', '${String(latestRecent.id).replace(/'/g, "\\'")}')"><i class="fa-solid fa-clock-rotate-left"></i><span>Reprendre</span></button>`);
+    }
+    if(draftsState.feed?.content) {
+        actions.push(`<button type="button" class="accueil-quick-action" onclick="switchView('feed')"><i class="fa-solid fa-bookmark"></i><span>Brouillon feed</span></button>`);
+    }
+    container.innerHTML = actions.join('');
+}
+
+function renderAccueilRecents() {
+    const container = document.getElementById('accueil-recents-preview');
+    if(!container) return;
+    const items = getRecentActivityItems().slice(0, 6);
+    if(!items.length) {
+        container.innerHTML = '<div class="accueil-widget-empty">Tes derniers écrans, profils et lectures apparaîtront ici.</div>';
+        return;
+    }
+    container.innerHTML = items.map(item => `
+        <div class="accueil-post-item" onclick="openRecentItem('${item.type}', '${String(item.id).replace(/'/g, "\\'")}')">
+            <span class="accueil-stock-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
+            <div class="accueil-post-meta">
+                <span class="accueil-post-author">${escapeHtml(item.label || 'Élément')}</span>
+                <span class="accueil-post-content">${escapeHtml(item.meta || 'Reprise rapide')}</span>
+            </div>
+            <span class="accueil-post-date">${new Date(item.timestamp).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span>
+        </div>`).join('');
+}
+
+function renderAccueilFavorites() {
+    const container = document.getElementById('accueil-favorites-preview');
+    if(!container) return;
+    const items = Object.entries(normalizeFavoritesState(favoritesState))
+        .flatMap(([type, entries]) => entries.map(entry => ({ ...entry, type })))
+        .sort((left, right) => (right.savedAt || 0) - (left.savedAt || 0))
+        .slice(0, 6);
+    if(!items.length) {
+        container.innerHTML = '<div class="accueil-widget-empty">Ajoute des favoris depuis la recherche globale pour y revenir vite.</div>';
+        return;
+    }
+    container.innerHTML = items.map(item => `
+        <div class="accueil-post-item" onclick="openRecentItem('${item.type}', '${String(item.id).replace(/'/g, "\\'")}')">
+            <span class="accueil-stock-icon"><i class="fa-solid fa-star"></i></span>
+            <div class="accueil-post-meta">
+                <span class="accueil-post-author">${escapeHtml(item.label || 'Favori')}</span>
+                <span class="accueil-post-content">${escapeHtml(item.meta || 'Favori enregistré')}</span>
+            </div>
+            <span class="accueil-post-date">${escapeHtml(getGlobalSearchTypes()[item.type] || item.type)}</span>
+        </div>`).join('');
+}
+
+function bindProductEnhancementInputs() {
+    const feedInput = document.getElementById('postContent');
+    if(feedInput && feedInput.dataset.draftBound !== '1') {
+        feedInput.dataset.draftBound = '1';
+        feedInput.addEventListener('input', syncFeedDraftFromComposer);
+    }
+    const presseTitle = document.getElementById('presseTitle');
+    if(presseTitle && presseTitle.dataset.draftBound !== '1') {
+        presseTitle.dataset.draftBound = '1';
+        presseTitle.addEventListener('input', syncPresseDraftFromComposer);
+    }
+    const presseJournal = document.getElementById('presseJournalName');
+    if(presseJournal && presseJournal.dataset.draftBound !== '1') {
+        presseJournal.dataset.draftBound = '1';
+        presseJournal.addEventListener('input', syncPresseDraftFromComposer);
+    }
+    const presseEditor = document.getElementById('presseContentEditor');
+    if(presseEditor && presseEditor.dataset.draftBound !== '1') {
+        presseEditor.dataset.draftBound = '1';
+        presseEditor.addEventListener('input', syncPresseDraftFromComposer);
+    }
+    const wikiTitle = document.getElementById('wikiPageTitle');
+    if(wikiTitle && wikiTitle.dataset.draftBound !== '1') {
+        wikiTitle.dataset.draftBound = '1';
+        wikiTitle.addEventListener('input', syncWikiDraftFromComposer);
+    }
+    const wikiContent = document.getElementById('wikiPageContent');
+    if(wikiContent && wikiContent.dataset.draftBound !== '1') {
+        wikiContent.dataset.draftBound = '1';
+        wikiContent.addEventListener('input', syncWikiDraftFromComposer);
+    }
 }
 
 function updatePresseWriteBox() {
@@ -1229,6 +1722,7 @@ function changeProfileActivityPage(delta) {
 }
 
 function openProfile(name) {
+    addRecentActivity({ type: 'character', id: name, label: name, meta: 'Profil personnage' });
     currentProfileChar = null;
     currentProfileActivityPage = 1;
     ['profileName','profileRole','profileDesc','profileOwner'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = ''; });
@@ -2479,6 +2973,7 @@ function loadFeed() { socket.emit('request_feed'); }
 
 document.getElementById('postContent').addEventListener('input', (e) => { 
     document.getElementById('char-count').textContent = `${e.target.value.length}/1000`; 
+    syncFeedDraftFromComposer();
     if(!currentFeedCharId) return;
     const char = myCharacters.find(c => c._id === currentFeedCharId);
     const typingName = char ? char.name : USERNAME;
@@ -2711,6 +3206,7 @@ function resetPostComposer() {
     currentEditingPostId = null;
     clearRepostComposer();
     updatePostComposerUi();
+    clearDraftValue('feed');
 }
 
 function cancelPostEdit() {
@@ -2865,6 +3361,7 @@ function openPostDetail(id, fallbackPost = null) {
         || (Array.isArray(currentProfileChar?.lastPosts) ? currentProfileChar.lastPosts.find(post => String(post._id) === String(id)) : null)
         || null;
     if(!postEl && !sourcePost) return;
+    addRecentActivity({ type: 'post', id, label: sourcePost?.authorName || 'Post du réseau', meta: extractTextPreview(sourcePost?.content || '', 90) || 'Discussion' });
     currentDetailPostId = id;
     const clone = postEl ? postEl.cloneNode(true) : createPostElement(sourcePost);
     clone.onclick = null;
@@ -3070,12 +3567,13 @@ function createPostElement(post) {
 }
 
 let notifications = [];
-socket.on('notifications_data', (d) => { notifications = d; updateNotificationBadge(); updateDestinationBadges(); });
+socket.on('notifications_data', (d) => { notifications = d; updateNotificationBadge(); updateDestinationBadges(); if(currentView === 'accueil') renderAccueil(); });
 socket.on('notification_dispatch', (n) => {
     if(n.targetOwnerId === PLAYER_ID) {
         notifications.unshift(n);
         updateNotificationBadge();
         updateDestinationBadges();
+        if(currentView === 'accueil') renderAccueil();
         const btn = document.getElementById('btn-notifs');
         if(btn) {
             btn.classList.remove('notif-pop');
@@ -3107,9 +3605,11 @@ function updateNotificationBadge() {
 }
 function openNotifications() {
     document.getElementById('notifications-modal').classList.remove('hidden');
+    renderNotificationFilters();
     const list = document.getElementById('notif-list'); list.innerHTML = "";
-    if(notifications.length === 0) list.innerHTML = "<div style='text-align:center; padding:20px; color:#777'>Rien.</div>";
-    notifications.forEach((n, idx) => {
+    const filteredNotifications = getFilteredNotifications();
+    if(filteredNotifications.length === 0) list.innerHTML = "<div style='text-align:center; padding:20px; color:#777'>Rien dans cette catégorie.</div>";
+    filteredNotifications.forEach((n, idx) => {
         const meta = getNotificationMeta(n);
         const title = n.redirectView === 'char-mp' ? 'Ouvrir la conversation' : 'Ouvrir';
         const time = n.timestamp ? new Date(n.timestamp).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
@@ -3117,12 +3617,14 @@ function openNotifications() {
     });
     bindPersistentScroll('notif-list', 'notif-list-scroll');
     restorePersistentScroll('notif-list-scroll', 'notif-list');
-    socket.emit('mark_notifications_read', PLAYER_ID); notifications.forEach(n=>n.isRead=true); updateNotificationBadge(); updateDestinationBadges();
 }
 function closeNotifications() { document.getElementById('notifications-modal').classList.add('hidden'); }
 function openNotificationTarget(notificationId) {
     const notification = notifications.find(n => String(n._id) === String(notificationId));
     if(!notification) return;
+    notification.isRead = true;
+    updateNotificationBadge();
+    updateDestinationBadges();
     closeNotifications();
     if(notification.redirectView === 'char-mp' && notification.redirectData) {
         const data = notification.redirectData;
@@ -3172,6 +3674,7 @@ function openNotificationTarget(notificationId) {
     }
     if(notification.redirectView === 'presse') {
         switchView('presse');
+        if(notification.redirectData?.postId) setTimeout(() => openArticleFullscreen(notification.redirectData.postId), 150);
         return;
     }
     if(notification.redirectView === 'profile' && notification.redirectData?.charName) {
@@ -4004,6 +4507,7 @@ function submitArticle() {
     const presseP = document.getElementById('presseIsPub'); if(presseP) { presseP.checked = false; togglePressePubSelect(); }
     hydrateArticleThemeChoices(journalLogo, 'presseContentEditor', currentPresseTheme || DEFAULT_ARTICLE_THEME);
     updatePresseComposerUX();
+    clearDraftValue('presse');
     setPresseComposerOpen(false);
 }
 
@@ -4152,11 +4656,12 @@ function getVisiblePresseArticles() {
 function openArticleFullscreen(postId) {
     const post = getVisiblePresseArticles().find(item => String(item._id) === String(postId));
     if(!post) return;
+    const { titleText } = parseArticleContent(post.content || '');
+    addRecentActivity({ type: 'article', id: postId, label: titleText || post.journalName || 'Article', meta: post.journalName || post.authorName || 'Presse' });
     currentArticleFullscreenId = String(postId);
     const content = document.getElementById('article-fullscreen-content');
     const label = document.getElementById('articleFullscreenLabel');
     if(!content || !label) return;
-    const { titleText } = parseArticleContent(post.content || '');
     label.textContent = titleText || 'Article';
     content.innerHTML = '';
     content.appendChild(createArticleElement(post, { interactive: false, id: `article-fullscreen-${post._id}` }));
@@ -4211,6 +4716,9 @@ socket.on('new_article', (post) => {
         document.getElementById('btn-view-presse').classList.add('nav-notify');
     }
 });
+
+bindProductEnhancementInputs();
+restoreFeedDraft();
 
 // ==================== ACTUALITÉS ====================
 function updateActuAdminForm() {
@@ -4599,6 +5107,9 @@ function adminSetCompanyRevenue(charId, companyName, currentRevenue) {
 // ==================== [ACCUEIL] ====================
 function renderAccueil() {
     syncAccueilTimelineUI();
+    renderAccueilQuickActions();
+    renderAccueilRecents();
+    renderAccueilFavorites();
     // Article a la une
     const headlinePrev = document.getElementById('accueil-headline-preview');
     if(headlinePrev) {
@@ -4607,7 +5118,7 @@ function renderAccueil() {
             const { titleText } = parseArticleContent(headline.content || '');
             const excerpt = getArticleExcerpt(headline.content || '', 180);
             headlinePrev.innerHTML = `
-                <div onclick="switchView('presse')">
+                <div onclick="openArticleFullscreen('${headline._id}')">
                     <span class="accueil-headline-tag"><i class="fa-solid fa-star"></i> La Une</span>
                     <h3 class="accueil-headline-item-title">${escapeHtml(titleText)}</h3>
                     <p class="accueil-headline-item-excerpt">${escapeHtml(excerpt)}</p>
@@ -4632,7 +5143,7 @@ function renderAccueil() {
                 const rawText = (p.content||'').replace(/\[TITRE\](.*?)\[\/TITRE\]\n?/, '$1 — ');
                 const text = rawText.slice(0, 90);
                 const avatarSrc = p.isAnonymous ? '' : p.authorAvatar;
-                return `<div class="accueil-post-item" onclick="switchView('feed')">
+                return `<div class="accueil-post-item" onclick="openTimelineTarget('feed', { postId: '${p._id}' })">
                     ${avatarSrc ? `<img src="${avatarSrc}" class="accueil-post-avatar" onerror="this.style.opacity=0">` : `<span class="accueil-post-avatar" style="background:var(--bg-tertiary);display:inline-flex;align-items:center;justify-content:center;font-size:0.8rem;color:var(--text-dim);flex-shrink:0;border-radius:50%;">?</span>`}
                     <div class="accueil-post-meta">
                         <span class="accueil-post-author" style="color:${p.isAnonymous?'#888':p.authorColor||'white'}">${name}</span>
@@ -4671,7 +5182,7 @@ function renderAccueil() {
                 const prev = hist.length >= 2 ? hist[hist.length-2].value : s.currentValue;
                 const pct = prev ? ((s.currentValue - prev)/prev*100) : 0;
                 const col = pct > 0 ? '#23a559' : pct < 0 ? '#da373c' : '#888';
-                return `<div class="accueil-stock-item" onclick="switchView('bourse')">
+                return `<div class="accueil-stock-item" onclick="switchView('bourse'); setTimeout(() => openStockDetail('${s._id}'), 90);">
                     ${s.companyLogo ? `<img src="${s.companyLogo}" class="accueil-stock-logo">` : `<span class="accueil-stock-icon"><i class="fa-solid fa-building"></i></span>`}
                     <div class="accueil-stock-info">
                         <span class="accueil-stock-name">${escapeHtml(s.companyName)}</span>
@@ -4862,6 +5373,7 @@ function renderCitiesGrid(cities) {
 
 // --- Panneau détail ---
 function openCityDetail(city) {
+    addRecentActivity({ type: 'city', id: city._id, label: city.name, meta: city.archipel || 'Cité' });
     currentCityId = city._id;
     document.getElementById('city-detail-overlay').classList.remove('hidden');
     document.getElementById('city-detail-overlay').onclick = closeCityDetail;
@@ -6209,6 +6721,7 @@ function getCompanyRelatedEntries(stock) {
 function openStockDetail(stockId) {
     const stock = stocksData.find(s => String(s._id) === stockId);
     if(!stock) return;
+    addRecentActivity({ type: 'stock', id: stockId, label: stock.companyName, meta: stock.charName || 'Entreprise' });
     const hist = stock.history || [];
     const prev = hist.length >= 2 ? hist[hist.length - 2].value : (hist.length === 1 ? hist[0].value : stock.currentValue);
     const pct = prev ? ((stock.currentValue - prev) / prev * 100) : 0;
@@ -6362,6 +6875,7 @@ function renderWikiList(pages) {
 function openWikiPage(id) {
     const page = wikiCache.find(p => String(p._id) === String(id));
     if(!page) return;
+    addRecentActivity({ type: 'wiki', id, label: page.title, meta: page.category || 'Wiki' });
     currentWikiPageId = id;
 
     document.getElementById('wiki-list-view').classList.add('hidden');
@@ -6416,6 +6930,8 @@ function openWikiCreateModal() {
     document.getElementById('wikiPageContent').value = '';
     document.getElementById('wiki-modal-title').innerHTML = '<i class="fa-solid fa-plus"></i> Nouvelle page Wiki';
     document.getElementById('wiki-edit-modal').classList.remove('hidden');
+    restoreWikiDraft();
+    updateWikiWordCount();
     snapForm('wiki-edit-modal');
 }
 
@@ -6456,6 +6972,7 @@ function submitWikiPage() {
         socket.emit('create_wiki_page', { title, category, content, coverImage, authorName: USERNAME });
     }
     _unsavedBypass = true;
+    clearDraftValue('wiki');
     closeWikiModal();
 }
 
