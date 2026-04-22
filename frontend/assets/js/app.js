@@ -394,6 +394,148 @@ function getFilteredNotifications() {
     });
 }
 
+function getNotificationTimestampValue(notification) {
+    const value = new Date(notification?.timestamp || 0).getTime();
+    return Number.isFinite(value) ? value : 0;
+}
+
+function getNotificationPriority(notification) {
+    let score = 20;
+    let label = 'Info';
+
+    if(notification.redirectView === 'char-mp' || notification.redirectView === 'dm' || notification.redirectView === 'chat') {
+        score = 95;
+        label = 'Direct';
+    } else if(notification.type === 'mention' || notification.type === 'reply') {
+        score = 82;
+        label = 'Action';
+    } else if(notification.type === 'follow') {
+        score = 56;
+        label = 'Social';
+    } else if(notification.type === 'like') {
+        score = 44;
+        label = 'React';
+    } else if(notification.redirectView === 'presse' || notification.redirectView === 'feed' || notification.redirectView === 'profile') {
+        score = 34;
+        label = 'Monde';
+    }
+
+    if(!notification.isRead) score += 18;
+    return { score, label, tone: score >= 90 ? 'high' : (score >= 65 ? 'medium' : 'low') };
+}
+
+function getNotificationSectionKey(notification) {
+    const timestamp = getNotificationTimestampValue(notification);
+    const priority = getNotificationPriority(notification).score;
+    const age = Date.now() - timestamp;
+    if(!notification.isRead && priority >= 80) return 'priority';
+    if(age <= 24 * 60 * 60 * 1000 || !notification.isRead) return 'recent';
+    return 'earlier';
+}
+
+function getNotificationSectionMeta(sectionKey) {
+    const meta = {
+        priority: { title: 'A traiter maintenant', icon: 'fa-bolt', hint: 'Mentions, reponses et messages directs' },
+        recent: { title: 'Recentes', icon: 'fa-clock', hint: 'Dernieres 24 heures et non lues' },
+        earlier: { title: 'Plus ancien', icon: 'fa-box-archive', hint: 'Historique restant' }
+    };
+    return meta[sectionKey] || meta.earlier;
+}
+
+function formatNotificationTime(notification) {
+    const timestamp = getNotificationTimestampValue(notification);
+    if(!timestamp) return '';
+    const age = Date.now() - timestamp;
+    if(age < 60 * 1000) return 'A l\'instant';
+    if(age < 60 * 60 * 1000) return `Il y a ${Math.max(1, Math.floor(age / (60 * 1000)))} min`;
+    if(age < 24 * 60 * 60 * 1000) return `Il y a ${Math.max(1, Math.floor(age / (60 * 60 * 1000)))} h`;
+    if(age < 7 * 24 * 60 * 60 * 1000) return new Date(timestamp).toLocaleDateString('fr-FR', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    return new Date(timestamp).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+function getNotificationCtaLabel(notification) {
+    if(notification.redirectView === 'char-mp') return 'Ouvrir MP';
+    if(notification.redirectView === 'dm') return 'Ouvrir DM';
+    if(notification.redirectView === 'chat') return 'Ouvrir chat';
+    if(notification.redirectView === 'presse') return 'Voir article';
+    if(notification.redirectView === 'feed') return 'Voir fil';
+    if(notification.redirectView === 'profile') return 'Voir profil';
+    return 'Ouvrir';
+}
+
+function buildNotificationCardMarkup(notification, indexInSection) {
+    const meta = getNotificationMeta(notification);
+    const priority = getNotificationPriority(notification);
+    const title = getNotificationCtaLabel(notification);
+    return `<button type="button" class="notif-item ${meta.cls} ${!notification.isRead ? 'unread' : ''} notif-enter" style="animation-delay:${Math.min(indexInSection * 0.035, 0.24)}s" onclick="openNotificationTarget('${notification._id}')" title="${title}">
+        <div class="notif-icon"><i class="fa-solid ${meta.icon}"></i></div>
+        <div class="notif-content">
+            <div class="notif-topline">
+                <span class="notif-label">${meta.label}</span>
+                <span class="notif-time">${formatNotificationTime(notification)}</span>
+            </div>
+            <div class="notif-destination-row">
+                <span class="notif-destination-chip">${meta.label}</span>
+                <span class="notif-priority-chip notif-priority-${priority.tone}">${priority.label}</span>
+                ${!notification.isRead ? '<span class="notif-unread-dot">Nouveau</span>' : ''}
+            </div>
+            <div class="notif-message"><strong>${escapeHtml(notification.fromName || 'Systeme')}</strong> ${escapeHtml(notification.content || '')}</div>
+            <div class="notif-cta-row"><span class="notif-cta-label">${title}</span></div>
+        </div>
+    </button>`;
+}
+
+function getNotificationSections(items) {
+    const groups = { priority: [], recent: [], earlier: [] };
+    items
+        .slice()
+        .sort((left, right) => {
+            const priorityDelta = getNotificationPriority(right).score - getNotificationPriority(left).score;
+            if(priorityDelta !== 0) return priorityDelta;
+            return getNotificationTimestampValue(right) - getNotificationTimestampValue(left);
+        })
+        .forEach(item => {
+            groups[getNotificationSectionKey(item)].push(item);
+        });
+    return Object.entries(groups)
+        .filter(([, sectionItems]) => sectionItems.length > 0)
+        .map(([key, sectionItems]) => ({ key, meta: getNotificationSectionMeta(key), items: sectionItems }));
+}
+
+function renderNotificationsList() {
+    const list = document.getElementById('notif-list');
+    if(!list) return;
+    const filteredNotifications = getFilteredNotifications();
+    if(filteredNotifications.length === 0) {
+        list.innerHTML = '<div class="notif-empty-state">Rien dans cette categorie.</div>';
+        return;
+    }
+    const unreadCount = filteredNotifications.filter(item => !item.isRead).length;
+    const directCount = filteredNotifications.filter(item => getNotificationBucket(item) === 'direct').length;
+    const sections = getNotificationSections(filteredNotifications);
+    list.innerHTML = `
+        <div class="notif-summary-card">
+            <div class="notif-summary-main">
+                <strong>${filteredNotifications.length}</strong>
+                <span>notifications dans cette vue</span>
+            </div>
+            <div class="notif-summary-stats">
+                <span><i class="fa-solid fa-circle"></i> ${unreadCount} non lues</span>
+                <span><i class="fa-solid fa-bolt"></i> ${directCount} directes</span>
+            </div>
+        </div>
+        ${sections.map(section => `
+            <section class="notif-section">
+                <div class="notif-section-head">
+                    <div class="notif-section-title"><i class="fa-solid ${section.meta.icon}"></i> ${section.meta.title}</div>
+                    <div class="notif-section-hint">${section.meta.hint} · ${section.items.length}</div>
+                </div>
+                <div class="notif-section-list">
+                    ${section.items.map((item, index) => buildNotificationCardMarkup(item, index)).join('')}
+                </div>
+            </section>`).join('')}`;
+}
+
 function renderNotificationFilters() {
     const bar = document.getElementById('notif-filter-bar');
     if(!bar) return;
@@ -3567,13 +3709,20 @@ function createPostElement(post) {
 }
 
 let notifications = [];
-socket.on('notifications_data', (d) => { notifications = d; updateNotificationBadge(); updateDestinationBadges(); if(currentView === 'accueil') renderAccueil(); });
+socket.on('notifications_data', (d) => {
+    notifications = d;
+    updateNotificationBadge();
+    updateDestinationBadges();
+    if(currentView === 'accueil') renderAccueil();
+    if(!document.getElementById('notifications-modal')?.classList.contains('hidden')) openNotifications();
+});
 socket.on('notification_dispatch', (n) => {
     if(n.targetOwnerId === PLAYER_ID) {
         notifications.unshift(n);
         updateNotificationBadge();
         updateDestinationBadges();
         if(currentView === 'accueil') renderAccueil();
+        if(!document.getElementById('notifications-modal')?.classList.contains('hidden')) openNotifications();
         const btn = document.getElementById('btn-notifs');
         if(btn) {
             btn.classList.remove('notif-pop');
@@ -3606,15 +3755,7 @@ function updateNotificationBadge() {
 function openNotifications() {
     document.getElementById('notifications-modal').classList.remove('hidden');
     renderNotificationFilters();
-    const list = document.getElementById('notif-list'); list.innerHTML = "";
-    const filteredNotifications = getFilteredNotifications();
-    if(filteredNotifications.length === 0) list.innerHTML = "<div style='text-align:center; padding:20px; color:#777'>Rien dans cette catégorie.</div>";
-    filteredNotifications.forEach((n, idx) => {
-        const meta = getNotificationMeta(n);
-        const title = n.redirectView === 'char-mp' ? 'Ouvrir la conversation' : 'Ouvrir';
-        const time = n.timestamp ? new Date(n.timestamp).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
-        list.innerHTML += `<div class="notif-item ${meta.cls} ${!n.isRead?'unread':''} notif-enter" style="animation-delay:${Math.min(idx * 0.035, 0.24)}s" onclick="openNotificationTarget('${n._id}')" title="${title}"><div class="notif-icon"><i class="fa-solid ${meta.icon}"></i></div><div class="notif-content"><div class="notif-topline"><span class="notif-label">${meta.label}</span><span class="notif-time">${time}</span></div><div class="notif-destination-row"><span class="notif-destination-chip">${meta.label}</span></div><div><strong>${n.fromName}</strong> ${n.content}</div></div></div>`;
-    });
+    renderNotificationsList();
     bindPersistentScroll('notif-list', 'notif-list-scroll');
     restorePersistentScroll('notif-list-scroll', 'notif-list');
 }
