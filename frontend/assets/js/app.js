@@ -127,7 +127,8 @@ function openStandaloneLiveNewsModal(postId) {
     const title = document.getElementById('live-news-standalone-title');
     const meta = document.getElementById('live-news-standalone-meta');
     const body = document.getElementById('live-news-standalone-body');
-    if(!item || !modal || !title || !meta || !body) return;
+    const actions = document.getElementById('live-news-standalone-actions');
+    if(!item || !modal || !title || !meta || !body || !actions) return;
     liveNewsUnreadIds.delete(String(postId));
     title.textContent = String(item.liveNewsText || item.content || 'News en direct').trim() || 'News en direct';
     meta.innerHTML = [
@@ -136,12 +137,24 @@ function openStandaloneLiveNewsModal(postId) {
         item.date ? `<span><i class="fa-regular fa-clock"></i> ${escapeHtml(item.date)}</span>` : ''
     ].filter(Boolean).join('');
     body.innerHTML = `<p>${escapeHtml(String(item.liveNewsText || item.content || '').trim())}</p>`;
+    const canDelete = !item.isArticle && (IS_ADMIN || String(item.ownerId || '') === String(PLAYER_ID || ''));
+    actions.classList.toggle('hidden', !canDelete);
+    actions.innerHTML = canDelete
+        ? `<button type="button" class="btn-secondary" onclick="deleteOwnLiveNews('${String(item._id).replace(/'/g, "\\'")}')"><i class="fa-solid fa-trash"></i> Supprimer cette info</button>`
+        : '';
     modal.classList.remove('hidden');
 }
 
 function closeStandaloneLiveNewsModal() {
     document.getElementById('live-news-standalone-modal')?.classList.add('hidden');
     renderLiveNewsTicker();
+}
+
+function deleteOwnLiveNews(postId) {
+    if(!postId) return;
+    if(!confirm('Supprimer cette info du direct ?')) return;
+    closeStandaloneLiveNewsModal();
+    socket.emit('delete_post', { postId, ownerId: PLAYER_ID });
 }
 
 function renderLiveNewsTicker() {
@@ -167,21 +180,26 @@ function renderLiveNewsTicker() {
         const title = escapeHtml(liveLabel || article.journalName || 'News en direct');
         const meta = escapeHtml(article.journalName || article.authorName || 'Presse');
         const isUnread = liveNewsUnreadIds.has(String(article._id));
+        const dateLabel = escapeHtml(article.date || '');
+        const canDelete = !article.isArticle && (IS_ADMIN || String(article.ownerId || '') === String(PLAYER_ID || ''));
         return `
-            <button type="button" class="live-news-item" onclick="openLiveNewsArticle('${String(article._id).replace(/'/g, "\\'")}')">
-                <span class="live-news-item-label">Live</span>
-                <i class="fa-solid fa-arrow-right live-news-item-icon"></i>
-                <span class="live-news-item-title">${title}</span>
-                <span class="live-news-item-meta">${meta}</span>
-                ${isUnread ? '<span class="live-news-item-badge">Nouveau</span>' : ''}
-            </button>`;
+            <div class="live-news-row">
+                <button type="button" class="live-news-item" onclick="openLiveNewsArticle('${String(article._id).replace(/'/g, "\\'")}')">
+                    <span class="live-news-item-label">Live</span>
+                    <i class="fa-solid fa-arrow-right live-news-item-icon"></i>
+                    <span class="live-news-item-content">
+                        <span class="live-news-item-title">${title}</span>
+                        <span class="live-news-item-meta-row">
+                            <span class="live-news-item-meta">${meta}</span>
+                            ${dateLabel ? `<span class="live-news-item-time">${dateLabel}</span>` : ''}
+                            ${isUnread ? '<span class="live-news-item-badge">Nouveau</span>' : ''}
+                        </span>
+                    </span>
+                </button>
+                ${canDelete ? `<button type="button" class="live-news-delete-btn" onclick="event.stopPropagation(); deleteOwnLiveNews('${String(article._id).replace(/'/g, "\\'")}')" title="Supprimer cette info"><i class="fa-solid fa-trash"></i></button>` : ''}
+            </div>`;
     }).join('');
     list.innerHTML = itemsMarkup || '<div class="live-news-list-empty">Aucun direct en cours.</div>';
-}
-
-function syncLiveNewsFromArticles() {
-    renderLiveNewsTicker();
-    updatePresseLiveToggleUI();
 }
 
 function updatePresseLiveToggleUI() {
@@ -234,7 +252,7 @@ const FAVORITES_STORAGE_KEY = 'favorites_v1';
 const DRAFTS_STORAGE_KEY = 'drafts_v1';
 const NOTIFICATION_FILTER_STORAGE_KEY = 'notif_filter_v1';
 const GLOBAL_SEARCH_MAX_RESULTS = 24;
-const LIVE_NEWS_MAX_ITEMS = 3;
+const LIVE_NEWS_MAX_ITEMS = 5;
 
 let globalSearchFilter = 'all';
 let currentNotificationFilter = localStorage.getItem(NOTIFICATION_FILTER_STORAGE_KEY) || 'all';

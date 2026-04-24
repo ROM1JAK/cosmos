@@ -50,7 +50,7 @@ module.exports = function initSocketHandlers(deps) {
             return Post.find({ authorCharId: charId, isArticle: { $ne: true }, isLiveNews: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 });
         }
 
-    const LIVE_NEWS_LIMIT = 3;
+    const LIVE_NEWS_LIMIT = 5;
 
     function isJournalistCharacter(char) {
         const role = String(char?.role || '').toLowerCase();
@@ -63,6 +63,15 @@ module.exports = function initSocketHandlers(deps) {
 
     async function broadcastLiveNews() {
         io.emit('live_news_data', await getLiveNewsArticles());
+    }
+
+    async function trimLiveNewsOverflow() {
+        const overflowItems = await Post.find({ isLiveNews: true })
+            .sort({ timestamp: -1, _id: -1 })
+            .skip(LIVE_NEWS_LIMIT)
+            .select('_id');
+        if(!overflowItems.length) return;
+        await Post.deleteMany({ _id: { $in: overflowItems.map(item => item._id) } });
     }
 
     async function emitCharacterProfileData(char) {
@@ -713,10 +722,6 @@ module.exports = function initSocketHandlers(deps) {
           if(!postData.liveNewsText) {
               return socket.emit('post_error', 'Ajoute un texte court pour le bandeau du direct.');
           }
-          const activeLiveNewsCount = await Post.countDocuments({ isLiveNews: true });
-          if(activeLiveNewsCount >= LIVE_NEWS_LIMIT) {
-              return socket.emit('post_error', 'Le direct contient deja 3 news. Supprime-en une avant d en publier une nouvelle.');
-          }
           if(!postData.isArticle) {
               postData.content = postData.liveNewsText;
               postData.mediaUrl = '';
@@ -757,6 +762,7 @@ module.exports = function initSocketHandlers(deps) {
           postData.likeCountDisplay = buildAutoLikeCountDisplay(authorChar, postData);
       }
       const savedPost = await new Post(postData).save();
+      if(postData.isLiveNews) await trimLiveNewsOverflow();
       let displayPost = buildDisplayPost(savedPost, authorChar);
       if(displayPost.isLiveNews && !displayPost.isArticle) {
           await broadcastLiveNews();
