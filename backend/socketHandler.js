@@ -47,7 +47,7 @@ module.exports = function initSocketHandlers(deps) {
 
         async function getCharacterProfilePosts(charId) {
             if(!charId) return [];
-            return Post.find({ authorCharId: charId, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 });
+            return Post.find({ authorCharId: charId, isArticle: { $ne: true }, isLiveNews: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 });
         }
 
     const LIVE_NEWS_LIMIT = 3;
@@ -58,7 +58,7 @@ module.exports = function initSocketHandlers(deps) {
     }
 
     async function getLiveNewsArticles() {
-        return Post.find({ isArticle: true, isLiveNews: true }).sort({ timestamp: -1 }).limit(LIVE_NEWS_LIMIT);
+        return Post.find({ isLiveNews: true }).sort({ timestamp: -1 }).limit(LIVE_NEWS_LIMIT);
     }
 
     async function broadcastLiveNews() {
@@ -67,7 +67,7 @@ module.exports = function initSocketHandlers(deps) {
 
     async function emitCharacterProfileData(char) {
             if(!char?._id) return;
-            const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
+            const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true }, isLiveNews: { $ne: true } });
             const lastPosts = await getCharacterProfilePosts(char._id);
             const charData = char.toObject();
             charData.postCount = postCount;
@@ -148,7 +148,7 @@ module.exports = function initSocketHandlers(deps) {
   socket.on('get_char_profile', async (charName) => {
       const char = await Character.findOne({ name: charName }).sort({_id: -1});
       if(char) {
-          const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
+          const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true }, isLiveNews: { $ne: true } });
           const lastPosts = await getCharacterProfilePosts(char._id);
           const charData = char.toObject(); 
           charData.postCount = postCount;
@@ -308,7 +308,7 @@ module.exports = function initSocketHandlers(deps) {
       if(!storedLabel) return;
       char.followerCountDisplay = storedLabel;
       await char.save();
-	  socket.emit('char_profile_data', { ...char.toObject(), postCount: await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } }), lastPosts: await getCharacterProfilePosts(char._id) });
+      socket.emit('char_profile_data', { ...char.toObject(), postCount: await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true }, isLiveNews: { $ne: true } }), lastPosts: await getCharacterProfilePosts(char._id) });
       await logAdminAction({
           actorUser: user,
           actionType: 'followers_edited',
@@ -348,8 +348,8 @@ module.exports = function initSocketHandlers(deps) {
       await Character.findByIdAndUpdate(charId, { capital: Number(capital) || 0 });
       const char = await Character.findById(charId);
       if(char) {
-          const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
-          const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
+          const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true }, isLiveNews: { $ne: true } });
+          const lastPosts = await Post.find({ authorCharId: char._id, isArticle: { $ne: true }, isLiveNews: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 }).limit(5);
           const charData = char.toObject(); charData.postCount = postCount; charData.lastPosts = lastPosts;
           socket.emit('char_profile_data', charData);
           await logAdminAction({
@@ -706,16 +706,23 @@ module.exports = function initSocketHandlers(deps) {
       let authorChar = postData.authorCharId ? await Character.findById(postData.authorCharId) : null;
       postData.isLiveNews = !!postData.isLiveNews;
       postData.liveNewsText = String(postData.liveNewsText || '').trim().slice(0, 80);
-      if(postData.isArticle && postData.isLiveNews) {
+      if(postData.isLiveNews) {
           if(!authorChar || !isJournalistCharacter(authorChar)) {
               return socket.emit('post_error', 'Seuls les journalistes peuvent mettre une news en direct.');
           }
           if(!postData.liveNewsText) {
               return socket.emit('post_error', 'Ajoute un texte court pour le bandeau du direct.');
           }
-          const activeLiveNewsCount = await Post.countDocuments({ isArticle: true, isLiveNews: true });
+          const activeLiveNewsCount = await Post.countDocuments({ isLiveNews: true });
           if(activeLiveNewsCount >= LIVE_NEWS_LIMIT) {
               return socket.emit('post_error', 'Le direct contient deja 3 news. Supprime-en une avant d en publier une nouvelle.');
+          }
+          if(!postData.isArticle) {
+              postData.content = postData.liveNewsText;
+              postData.mediaUrl = '';
+              postData.mediaType = '';
+              postData.isBreakingNews = false;
+              postData.isSponsored = false;
           }
       }
       if(postData.repostPostId) {
@@ -751,7 +758,9 @@ module.exports = function initSocketHandlers(deps) {
       }
       const savedPost = await new Post(postData).save();
       let displayPost = buildDisplayPost(savedPost, authorChar);
-      if(displayPost.isArticle) {
+      if(displayPost.isLiveNews && !displayPost.isArticle) {
+          await broadcastLiveNews();
+      } else if(displayPost.isArticle) {
           io.emit('new_article', displayPost);
           await broadcastLiveNews();
       } else {
@@ -760,7 +769,7 @@ module.exports = function initSocketHandlers(deps) {
       }
       
       const validFollowerIds = await cleanupCharacterFollowers(authorChar);
-      if(authorChar && validFollowerIds.length > 0) {
+      if(!postData.isLiveNews && authorChar && validFollowerIds.length > 0) {
           const followersChars = await Character.find({ _id: { $in: validFollowerIds } });
           const notifiedOwners = new Set();
           for(const f of followersChars) {
@@ -771,7 +780,7 @@ module.exports = function initSocketHandlers(deps) {
           }
       }
       // DÃ©tection des mentions @ dans les posts
-      if (postData.content && postData.content.includes('@') && !postData.isAnonymous) {
+    if (!postData.isLiveNews && postData.content && postData.content.includes('@') && !postData.isAnonymous) {
           const words = postData.content.split(/\s+/);
           const notifiedOwners = new Set();
           let i = 0;
@@ -806,7 +815,7 @@ module.exports = function initSocketHandlers(deps) {
       if(post.ownerId !== ownerId && !isAdmin) return;
       await Post.findByIdAndDelete(postId);
       io.emit('post_deleted', postId);
-    if(post.isArticle) await broadcastLiveNews();
+            if(post.isArticle || post.isLiveNews) await broadcastLiveNews();
       await broadcastWorldTimeline();
       if(isAdmin && requester) {
           await logAdminAction({
@@ -836,7 +845,7 @@ module.exports = function initSocketHandlers(deps) {
       post.edited = true;
       await post.save();
     io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers followerCountDisplay companies') : null));
-            if(post.isArticle) await broadcastLiveNews();
+        if(post.isArticle || post.isLiveNews) await broadcastLiveNews();
       await broadcastWorldTimeline();
   });
 

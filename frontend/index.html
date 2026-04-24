@@ -690,7 +690,22 @@
                         <datalist id="presse-journal-list"></datalist>
                     </div>
                     <button class="btn-secondary" style="padding:7px 11px;" onclick="clearPresseJournalSearch()"><i class="fa-solid fa-eraser"></i> Reset</button>
+                    <button class="btn-secondary hidden" id="presse-live-compose-toggle" style="padding:7px 11px;" onclick="toggleLiveNewsComposer()"><i class="fa-solid fa-tower-broadcast"></i> Mettre en direct</button>
                     <button class="btn-primary hidden" id="presse-compose-toggle" style="padding:7px 11px;" onclick="togglePresseComposer()"><i class="fa-solid fa-feather-pointed"></i> Créer un article</button>
+                </div>
+                <div id="presse-live-compose-box" class="presse-live-compose-box hidden">
+                    <div class="presse-live-compose-head">
+                        <div>
+                            <strong>Direct</strong>
+                            <span>Une phrase courte, envoyée immédiatement dans le bouton rouge global.</span>
+                        </div>
+                        <div id="presse-live-news-count" class="presse-live-news-count">0/3</div>
+                    </div>
+                    <div class="presse-live-compose-row">
+                        <input type="text" id="presseLiveQuickText" class="presse-live-news-input" maxlength="80" placeholder="Ex: Sommet suspendu, Alerte météo, Coupure générale...">
+                        <button type="button" id="presse-live-submit" class="btn-secondary presse-live-toggle" onclick="submitLiveNews()"><i class="fa-solid fa-bolt"></i> Mettre en direct</button>
+                    </div>
+                    <div class="presse-live-news-copy">Le direct est séparé des articles. Seule la phrase courte part dans le bouton du bas.</div>
                 </div>
                 <div id="presse-no-journalist" class="presse-notice hidden">
                     <i class="fa-solid fa-id-card" style="font-size:2rem; color:var(--text-dim); margin-bottom:12px;"></i>
@@ -788,22 +803,8 @@
                                         <option value="economie">📉 ÉCONOMIE</option>
                                     </select>
                                     <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.85rem;"><input type="checkbox" id="presseIsPub" onchange="togglePressePubSelect()"> 📢 Pub</label>
-                                    <input type="checkbox" id="presseLiveNews" class="hidden">
-                                    <button type="button" id="presseLiveNewsToggle" class="btn-secondary presse-live-toggle hidden" onclick="togglePresseLiveNews()" aria-pressed="false">
-                                        <i class="fa-solid fa-tower-broadcast"></i>
-                                        <span>Mettre en direct</span>
-                                    </button>
                                     <button class="btn-primary" onclick="submitArticle()">Publier</button>
                                 </div>
-                            </div>
-                            <div class="presse-live-news-row hidden" id="presse-live-news-row">
-                                <div id="presse-live-news-hint" class="presse-live-news-hint">Le bandeau rouge global diffuse 3 news live au maximum en même temps.</div>
-                                <div id="presse-live-news-count" class="presse-live-news-count">0/3</div>
-                            </div>
-                            <div id="presse-live-news-field" class="presse-live-news-field hidden">
-                                <label for="presseLiveNewsText" class="presse-live-news-label">Texte du direct</label>
-                                <input type="text" id="presseLiveNewsText" class="presse-live-news-input" maxlength="80" placeholder="Ex: Alerte, Sommet, Krach, Coupure, Vote...">
-                                <div class="presse-live-news-copy">Ce texte court est celui qui défile dans le bandeau, indépendamment de l’article.</div>
                             </div>
                             <div id="presse-pub-stock-wrap" class="hidden" style="margin-top:8px;">
                                 <select id="pressePubStockId" class="char-input" style="width:100%;margin-bottom:3px;"><option value="">— Entreprise concernée —</option></select>
@@ -2014,10 +2015,19 @@
         </div>
     </div>
 
-    <div id="live-news-ticker" class="live-news-ticker hidden" aria-live="polite">
-        <div class="live-news-badge"><i class="fa-solid fa-circle"></i> Direct</div>
-        <div class="live-news-viewport">
-            <div id="live-news-track" class="live-news-track"></div>
+    <div id="live-news-widget" class="live-news-widget hidden" aria-live="polite">
+        <button type="button" id="live-news-fab" class="live-news-fab" onclick="toggleLiveNewsPanel()" aria-expanded="false">
+            <span class="live-news-fab-ping"></span>
+            <i class="fa-solid fa-bolt"></i>
+            <span class="live-news-fab-label">Direct</span>
+            <span id="live-news-fab-count" class="live-news-fab-count">0</span>
+        </button>
+        <div id="live-news-panel" class="live-news-panel hidden">
+            <div class="live-news-panel-head">
+                <strong>Direct</strong>
+                <button type="button" class="btn-secondary" onclick="toggleLiveNewsPanel(false)">Fermer</button>
+            </div>
+            <div id="live-news-list" class="live-news-list"></div>
         </div>
     </div>
 

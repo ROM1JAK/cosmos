@@ -643,6 +643,7 @@ async function getFeedPosts(limit = 50) {
 	const cutoffDate = new Date(Date.now() - (FEED_POST_MAX_AGE_DAYS * 24 * 60 * 60 * 1000));
 	const posts = await Post.find({
 		isArticle: { $ne: true },
+		isLiveNews: { $ne: true },
 		timestamp: { $gte: cutoffDate }
 	}).sort({ timestamp: -1 }).limit(safeLimit);
 	return enrichPostsForDisplay(posts);
@@ -658,7 +659,7 @@ async function broadcastAdminLogs() {
 
 async function buildWorldTimeline(limit = 28) {
 	const [posts, articles, events, logs] = await Promise.all([
-		Post.find({ isArticle: { $ne: true } }).sort({ timestamp: -1 }).limit(12),
+		Post.find({ isArticle: { $ne: true }, isLiveNews: { $ne: true } }).sort({ timestamp: -1 }).limit(12),
 		Post.find({ isArticle: true }).sort({ isHeadline: -1, timestamp: -1 }).limit(10),
 		Event.find().sort({ timestamp: -1, _id: -1 }).limit(10),
 		AdminLog.find({ includeInTimeline: true, timelineType: { $ne: 'market' } }).sort({ createdAt: -1 }).limit(12)

@@ -90,6 +90,10 @@ let currentPresseTheme = null;
 let currentEditArticleTheme = null;
 let currentArticleFullscreenId = null;
 let isPresseComposerOpen = false;
+let isLiveNewsComposerOpen = false;
+let isLiveNewsPanelOpen = false;
+let liveNewsHasUnread = false;
+let liveNewsBootstrapped = false;
 
 function isJournalistCharacter(char) {
     const role = String(char?.role || '').toLowerCase();
@@ -98,30 +102,45 @@ function isJournalistCharacter(char) {
 
 function normalizeLiveNewsArticles(articles) {
     return (Array.isArray(articles) ? articles : [])
-        .filter(article => article?.isArticle && article?.isLiveNews)
+        .filter(article => article?.isLiveNews)
         .sort((left, right) => new Date(right.timestamp || 0) - new Date(left.timestamp || 0))
         .slice(0, LIVE_NEWS_MAX_ITEMS);
 }
 
 function openLiveNewsArticle(postId) {
+    liveNewsHasUnread = false;
+    isLiveNewsPanelOpen = false;
+    renderLiveNewsTicker();
+    const item = liveNewsCache.find(article => String(article._id) === String(postId));
+    if(item && !item.isArticle) {
+        switchView('presse');
+        return;
+    }
     switchView('presse');
     setTimeout(() => openArticleFullscreen(postId), 90);
 }
 
 function renderLiveNewsTicker() {
-    const root = document.getElementById('live-news-ticker');
-    const track = document.getElementById('live-news-track');
-    if(!root || !track) return;
+    const root = document.getElementById('live-news-widget');
+    const fab = document.getElementById('live-news-fab');
+    const panel = document.getElementById('live-news-panel');
+    const list = document.getElementById('live-news-list');
+    const count = document.getElementById('live-news-fab-count');
+    if(!root || !fab || !panel || !list || !count) return;
     if(!liveNewsCache.length) {
         root.classList.add('hidden');
-        track.innerHTML = '';
+        panel.classList.add('hidden');
+        list.innerHTML = '';
         return;
     }
     root.classList.remove('hidden');
+    fab.classList.toggle('is-lit', liveNewsHasUnread);
+    fab.setAttribute('aria-expanded', isLiveNewsPanelOpen ? 'true' : 'false');
+    panel.classList.toggle('hidden', !isLiveNewsPanelOpen);
+    count.textContent = String(liveNewsCache.length);
     const itemsMarkup = liveNewsCache.map(article => {
-        const { titleText } = parseArticleContent(article.content || '');
         const liveLabel = String(article.liveNewsText || '').trim();
-        const title = escapeHtml(liveLabel || titleText || article.journalName || 'News en direct');
+        const title = escapeHtml(liveLabel || article.journalName || 'News en direct');
         const meta = escapeHtml(article.journalName || article.authorName || 'Presse');
         return `
             <button type="button" class="live-news-item" onclick="openLiveNewsArticle('${String(article._id).replace(/'/g, "\\'")}')">
@@ -131,45 +150,45 @@ function renderLiveNewsTicker() {
                 <span class="live-news-item-meta">${meta}</span>
             </button>`;
     }).join('');
-    track.innerHTML = `${itemsMarkup}${itemsMarkup}`;
+    list.innerHTML = itemsMarkup || '<div class="live-news-list-empty">Aucun direct en cours.</div>';
 }
 
 function syncLiveNewsFromArticles() {
-    liveNewsCache = normalizeLiveNewsArticles(presseArticlesCache);
     renderLiveNewsTicker();
     updatePresseLiveToggleUI();
 }
 
 function updatePresseLiveToggleUI() {
-    const toggle = document.getElementById('presseLiveNewsToggle');
-    const row = document.getElementById('presse-live-news-row');
+    const toggle = document.getElementById('presse-live-compose-toggle');
+    const box = document.getElementById('presse-live-compose-box');
     const count = document.getElementById('presse-live-news-count');
-    const input = document.getElementById('presseLiveNews');
-    const textField = document.getElementById('presse-live-news-field');
+    const submitButton = document.getElementById('presse-live-submit');
     const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
-    const canUseLive = !!char && isJournalistCharacter(char) && !isForbiddenPresseMode();
-    if(!toggle || !row || !count || !input || !textField) return;
+    const canUseLive = !!char && isJournalistCharacter(char);
+    if(!toggle || !box || !count || !submitButton) return;
     toggle.classList.toggle('hidden', !canUseLive);
-    row.classList.toggle('hidden', !canUseLive);
-    textField.classList.toggle('hidden', !canUseLive || !input.checked);
-    if(!canUseLive) input.checked = false;
-    toggle.classList.toggle('active', !!input.checked && canUseLive);
-    toggle.setAttribute('aria-pressed', input.checked && canUseLive ? 'true' : 'false');
+    box.classList.toggle('hidden', !canUseLive || !isLiveNewsComposerOpen);
     const liveCount = liveNewsCache.length;
-    const projectedCount = canUseLive && input.checked ? Math.min(LIVE_NEWS_MAX_ITEMS, liveCount + 1) : liveCount;
-    count.textContent = `${projectedCount}/${LIVE_NEWS_MAX_ITEMS}`;
-    count.classList.toggle('is-full', projectedCount >= LIVE_NEWS_MAX_ITEMS);
-    toggle.disabled = !input.checked && liveCount >= LIVE_NEWS_MAX_ITEMS;
+    count.textContent = `${liveCount}/${LIVE_NEWS_MAX_ITEMS}`;
+    count.classList.toggle('is-full', liveCount >= LIVE_NEWS_MAX_ITEMS);
+    submitButton.disabled = liveCount >= LIVE_NEWS_MAX_ITEMS;
+    toggle.innerHTML = isLiveNewsComposerOpen
+        ? '<i class="fa-solid fa-xmark"></i> Fermer le direct'
+        : '<i class="fa-solid fa-tower-broadcast"></i> Mettre en direct';
 }
 
-function togglePresseLiveNews() {
-    const input = document.getElementById('presseLiveNews');
+function toggleLiveNewsComposer() {
     const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
-    if(!input || !char || !isJournalistCharacter(char) || isForbiddenPresseMode()) return;
-    input.checked = !input.checked;
+    if(!char || !isJournalistCharacter(char)) return;
+    isLiveNewsComposerOpen = !isLiveNewsComposerOpen;
     updatePresseLiveToggleUI();
-    syncPresseDraftFromComposer();
-    updatePresseComposerUX();
+}
+
+function toggleLiveNewsPanel(forceOpen) {
+    if(typeof forceOpen === 'boolean') isLiveNewsPanelOpen = forceOpen;
+    else isLiveNewsPanelOpen = !isLiveNewsPanelOpen;
+    if(isLiveNewsPanelOpen) liveNewsHasUnread = false;
+    renderLiveNewsTicker();
 }
 
 function toggleArticleLiveNews(postId, value) {
@@ -1639,14 +1658,10 @@ async function prepareForbiddenDossierComposer() {
     const titleInput = document.getElementById('presseTitle');
     const journalNameInput = document.getElementById('presseJournalName');
     const journalLogoInput = document.getElementById('presseJournalLogo');
-    const liveNewsToggle = document.getElementById('presseLiveNews');
-    const liveNewsText = document.getElementById('presseLiveNewsText');
     const logoPreview = document.getElementById('presseJournalLogoPreview');
     const urgencyInput = document.getElementById('presseUrgency');
     if(journalNameInput) journalNameInput.value = 'Dossier Kael';
     if(journalLogoInput) journalLogoInput.value = '';
-    if(liveNewsToggle) liveNewsToggle.checked = false;
-    if(liveNewsText) liveNewsText.value = '';
     const logoFileInput = document.getElementById('presseJournalLogoFile');
     if(logoFileInput) logoFileInput.value = '';
     if(logoPreview) logoPreview.innerHTML = '<i class="fa-solid fa-file-shield"></i>';
@@ -1715,8 +1730,6 @@ function syncPresseDraftFromComposer() {
         journalName: document.getElementById('presseJournalName')?.value || '',
         journalLogo: document.getElementById('presseJournalLogo')?.value || '',
         urgency: document.getElementById('presseUrgency')?.value || '',
-        isLiveNews: !!document.getElementById('presseLiveNews')?.checked,
-        liveNewsText: document.getElementById('presseLiveNewsText')?.value || '',
         contentHtml: editor.innerHTML || ''
     });
 }
@@ -1733,10 +1746,6 @@ function restorePresseDraft() {
     if(journalLogo && !journalLogo.value) journalLogo.value = draft.journalLogo || '';
     const urgency = document.getElementById('presseUrgency');
     if(urgency && !urgency.value) urgency.value = draft.urgency || '';
-    const liveNewsToggle = document.getElementById('presseLiveNews');
-    if(liveNewsToggle) liveNewsToggle.checked = !!draft.isLiveNews;
-    const liveNewsText = document.getElementById('presseLiveNewsText');
-    if(liveNewsText && !liveNewsText.value) liveNewsText.value = draft.liveNewsText || '';
     if(editor && !editor.innerHTML.trim()) editor.innerHTML = draft.contentHtml || '';
     updatePresseComposerUX();
     updatePresseLiveToggleUI();
@@ -1846,11 +1855,15 @@ function bindProductEnhancementInputs() {
         presseEditor.dataset.draftBound = '1';
         presseEditor.addEventListener('input', syncPresseDraftFromComposer);
     }
-    const presseLiveText = document.getElementById('presseLiveNewsText');
-    if(presseLiveText && presseLiveText.dataset.draftBound !== '1') {
-        presseLiveText.dataset.draftBound = '1';
-        presseLiveText.addEventListener('input', syncPresseDraftFromComposer);
-        presseLiveText.addEventListener('input', updatePresseComposerUX);
+    const presseLiveText = document.getElementById('presseLiveQuickText');
+    if(presseLiveText && presseLiveText.dataset.liveBound !== '1') {
+        presseLiveText.dataset.liveBound = '1';
+        presseLiveText.addEventListener('keydown', event => {
+            if(event.key === 'Enter') {
+                event.preventDefault();
+                submitLiveNews();
+            }
+        });
     }
     const wikiTitle = document.getElementById('wikiPageTitle');
     if(wikiTitle && wikiTitle.dataset.draftBound !== '1') {
@@ -1868,21 +1881,28 @@ function updatePresseWriteBox() {
     const composerModal = document.getElementById('presse-compose-modal');
     const notice = document.getElementById('presse-no-journalist');
     const toggleButton = document.getElementById('presse-compose-toggle');
-    if(!composerModal || !notice || !toggleButton) return;
+    const liveToggleButton = document.getElementById('presse-live-compose-toggle');
+    const liveComposeBox = document.getElementById('presse-live-compose-box');
+    if(!composerModal || !notice || !toggleButton || !liveToggleButton || !liveComposeBox) return;
     const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
     const isJournalist = char && (char.role && (char.role.toLowerCase().includes('journaliste') || char.isOfficial));
     const canWriteForbidden = IS_ADMIN && isForbiddenPresseMode();
     if(isJournalist || canWriteForbidden) {
         toggleButton.classList.remove('hidden');
+        liveToggleButton.classList.toggle('hidden', !isJournalist);
         toggleButton.innerHTML = isPresseComposerOpen
             ? '<i class="fa-solid fa-xmark"></i> Fermer l\'éditeur'
             : (canWriteForbidden ? '<i class="fa-solid fa-file-shield"></i> Ouvrir Dossier Kael' : '<i class="fa-solid fa-feather-pointed"></i> Créer un article');
         composerModal.classList.toggle('hidden', !isPresseComposerOpen);
+        liveComposeBox.classList.toggle('hidden', !isJournalist || !isLiveNewsComposerOpen);
         notice.classList.add('hidden');
     } else {
         isPresseComposerOpen = false;
+        isLiveNewsComposerOpen = false;
         toggleButton.classList.add('hidden');
+        liveToggleButton.classList.add('hidden');
         composerModal.classList.add('hidden');
+        liveComposeBox.classList.add('hidden');
         notice.classList.remove('hidden');
     }
     syncPresseComposerMode();
@@ -1899,6 +1919,9 @@ function handlePresseJournalSearchKeydown(event) {
 document.addEventListener('keydown', (event) => {
     if(event.key === 'Escape' && isPresseComposerOpen) {
         closePresseComposer();
+    }
+    if(event.key === 'Escape' && isLiveNewsPanelOpen) {
+        toggleLiveNewsPanel(false);
     }
 });
 
@@ -3678,7 +3701,14 @@ socket.on('new_post', (post) => {
     updateDestinationBadges();
 });
 socket.on('post_updated', (post) => {
-    if(post.isArticle) {
+    if(post.isLiveNews && !post.isArticle) {
+        const existingLive = liveNewsCache.some(item => String(item._id) === String(post._id));
+        liveNewsCache = normalizeLiveNewsArticles(existingLive
+            ? liveNewsCache.map(item => String(item._id) === String(post._id) ? post : item)
+            : [post, ...liveNewsCache]);
+        renderLiveNewsTicker();
+        updatePresseLiveToggleUI();
+    } else if(post.isArticle) {
         const existingArticle = presseArticlesCache.some(item => String(item._id) === String(post._id));
         presseArticlesCache = existingArticle
             ? presseArticlesCache.map(item => String(item._id) === String(post._id) ? post : item)
@@ -3703,6 +3733,7 @@ socket.on('post_updated', (post) => {
 socket.on('post_deleted', (id) => {
     feedPostsCache = feedPostsCache.filter(post => String(post._id) !== String(id));
     presseArticlesCache = presseArticlesCache.filter(post => String(post._id) !== String(id));
+    liveNewsCache = liveNewsCache.filter(post => String(post._id) !== String(id));
     syncLiveNewsFromArticles();
     refreshFeedProfileDatalist();
     renderFeedStream();
@@ -4597,8 +4628,6 @@ function updatePresseComposerUX() {
     const title = document.getElementById('presseTitle')?.value?.trim() || '';
     const bodyHtml = syncArticleEditor('presseContentEditor');
     const body = getPlainTextFromHtml(bodyHtml);
-    const liveNewsText = document.getElementById('presseLiveNewsText')?.value?.trim() || '';
-    const isLiveNews = !!document.getElementById('presseLiveNews')?.checked;
     const journal = document.getElementById('presseJournalName')?.value?.trim() || 'Journal non défini';
     const urgency = document.getElementById('presseUrgency')?.value || '';
     const mediaUrl = document.getElementById('presseMediaUrl')?.value || '';
@@ -4627,7 +4656,6 @@ function updatePresseComposerUX() {
     preview.innerHTML = `
         <div class="presse-live-label">Aperçu live</div>
         <div class="presse-live-card" style="${buildArticleThemeStyle(theme)}">
-            ${isLiveNews ? `<div class="presse-live-meta"><span><i class="fa-solid fa-tower-broadcast"></i> Bandeau direct: ${escapeHtml(liveNewsText || 'Texte court du direct')}</span></div>` : ''}
             <h4 class="presse-live-title">${escapeHtml(title || 'Titre de l\'article')}</h4>
             <div class="presse-live-meta">
                 <span><i class="fa-solid fa-newspaper"></i> ${escapeHtml(journal)}</span>
@@ -4696,8 +4724,6 @@ function submitArticle() {
     const journalName = document.getElementById('presseJournalName').value.trim();
     const journalLogo = document.getElementById('presseJournalLogo').value.trim();
     const urgencyLevel = document.getElementById('presseUrgency').value || null;
-    const isLiveNews = !!document.getElementById('presseLiveNews')?.checked;
-    const liveNewsText = document.getElementById('presseLiveNewsText')?.value?.trim() || '';
     const isPresseP = document.getElementById('presseIsPub')?.checked;
     const pressePubId = isPresseP ? document.getElementById('pressePubStockId')?.value : null;
     const linkedStock = pressePubId ? stocksData.find(stock => String(stock._id) === String(pressePubId)) : null;
@@ -4705,8 +4731,6 @@ function submitArticle() {
     const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
     if(!isForbiddenMode && !currentPresseCharId) return alert("Aucun journaliste sélectionné.");
     if(!isForbiddenMode && !char) return alert("Personnage introuvable.");
-    if(isLiveNews && !isJournalistCharacter(char)) return alert("Seuls les journalistes peuvent mettre une news en direct.");
-    if(isLiveNews && !liveNewsText) return alert("Ajoute un texte court pour le direct.");
 
     let mediaType = null;
     if(mediaUrl) {
@@ -4747,8 +4771,6 @@ function submitArticle() {
         journalName: isForbiddenMode ? 'Dossier Kael' : journalName,
         journalLogo: isForbiddenMode ? '' : journalLogo,
         isAnonymous: false, isBreakingNews: urgencyLevel === 'urgent',
-        isLiveNews: isForbiddenMode ? false : isLiveNews,
-        liveNewsText: isForbiddenMode ? '' : liveNewsText,
         urgencyLevel: isForbiddenMode ? 'enquete' : urgencyLevel,
         articleTheme,
         isArticle: true, poll: null,
@@ -4768,14 +4790,44 @@ function submitArticle() {
     document.getElementById('presseMediaUrl').value = '';
     document.getElementById('presseMediaFile').value = '';
     document.getElementById('presseUrgency').value = '';
-    const liveNewsInput = document.getElementById('presseLiveNews'); if(liveNewsInput) liveNewsInput.checked = false;
-    const liveNewsTextInput = document.getElementById('presseLiveNewsText'); if(liveNewsTextInput) liveNewsTextInput.value = '';
     const presseP = document.getElementById('presseIsPub'); if(presseP) { presseP.checked = false; togglePressePubSelect(); }
     hydrateArticleThemeChoices(journalLogo, 'presseContentEditor', currentPresseTheme || DEFAULT_ARTICLE_THEME);
     updatePresseComposerUX();
     updatePresseLiveToggleUI();
     clearDraftValue('presse');
     setPresseComposerOpen(false);
+}
+
+function submitLiveNews() {
+    const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
+    const textInput = document.getElementById('presseLiveQuickText');
+    const liveNewsText = textInput?.value?.trim() || '';
+    if(!char || !isJournalistCharacter(char)) return alert('Aucun journaliste sélectionné.');
+    if(!liveNewsText) return alert('Ajoute une phrase pour le direct.');
+    socket.emit('create_post', {
+        authorCharId: char._id,
+        authorName: char.name,
+        authorAvatar: char.avatar,
+        authorRole: char.role,
+        authorColor: char.color,
+        partyName: char.partyName,
+        partyLogo: char.partyLogo,
+        content: liveNewsText,
+        liveNewsText,
+        date: new Date().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        ownerId: PLAYER_ID,
+        journalName: '',
+        journalLogo: '',
+        isAnonymous: false,
+        isBreakingNews: false,
+        isLiveNews: true,
+        isArticle: false,
+        poll: null,
+        isSponsored: false,
+        linkedStockId: '',
+        linkedCompanyName: ''
+    });
+    if(textInput) textInput.value = '';
 }
 
 function renderArticleBodyMarkup(post) {
@@ -4997,8 +5049,14 @@ socket.on('new_article', (post) => {
 });
 
 socket.on('live_news_data', (articles) => {
-    liveNewsCache = normalizeLiveNewsArticles(articles);
+    const previousIds = new Set(liveNewsCache.map(article => String(article._id)));
+    const normalizedArticles = normalizeLiveNewsArticles(articles);
+    const hasNewItem = liveNewsBootstrapped && normalizedArticles.some(article => !previousIds.has(String(article._id)));
+    if(hasNewItem) liveNewsHasUnread = true;
+    liveNewsBootstrapped = true;
+    liveNewsCache = normalizedArticles;
     renderLiveNewsTicker();
+    updatePresseLiveToggleUI();
 });
 
 bindProductEnhancementInputs();
