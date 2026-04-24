@@ -125,6 +125,7 @@ function renderLiveNewsTicker() {
         return `
             <button type="button" class="live-news-item" onclick="openLiveNewsArticle('${String(article._id).replace(/'/g, "\\'")}')">
                 <span class="live-news-item-label">Live</span>
+                <i class="fa-solid fa-arrow-right live-news-item-icon"></i>
                 <span class="live-news-item-title">${title}</span>
                 <span class="live-news-item-meta">${meta}</span>
             </button>`;
@@ -135,20 +136,27 @@ function renderLiveNewsTicker() {
 function syncLiveNewsFromArticles() {
     liveNewsCache = normalizeLiveNewsArticles(presseArticlesCache);
     renderLiveNewsTicker();
+    updatePresseLiveToggleUI();
 }
 
 function updatePresseLiveToggleUI() {
     const toggle = document.getElementById('presseLiveNewsToggle');
-    const hint = document.getElementById('presse-live-news-hint');
+    const row = document.getElementById('presse-live-news-row');
+    const count = document.getElementById('presse-live-news-count');
     const input = document.getElementById('presseLiveNews');
     const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
     const canUseLive = !!char && isJournalistCharacter(char) && !isForbiddenPresseMode();
-    if(!toggle || !hint || !input) return;
+    if(!toggle || !row || !count || !input) return;
     toggle.classList.toggle('hidden', !canUseLive);
-    hint.classList.toggle('hidden', !canUseLive);
+    row.classList.toggle('hidden', !canUseLive);
     if(!canUseLive) input.checked = false;
     toggle.classList.toggle('active', !!input.checked && canUseLive);
     toggle.setAttribute('aria-pressed', input.checked && canUseLive ? 'true' : 'false');
+    const liveCount = liveNewsCache.length;
+    const projectedCount = canUseLive && input.checked ? Math.min(LIVE_NEWS_MAX_ITEMS, liveCount + 1) : liveCount;
+    count.textContent = `${projectedCount}/${LIVE_NEWS_MAX_ITEMS}`;
+    count.classList.toggle('is-full', projectedCount >= LIVE_NEWS_MAX_ITEMS);
+    toggle.disabled = !input.checked && liveCount >= LIVE_NEWS_MAX_ITEMS;
 }
 
 function togglePresseLiveNews() {
@@ -157,6 +165,11 @@ function togglePresseLiveNews() {
     if(!input || !char || !isJournalistCharacter(char) || isForbiddenPresseMode()) return;
     input.checked = !input.checked;
     updatePresseLiveToggleUI();
+}
+
+function toggleArticleLiveNews(postId, value) {
+    if(!IS_ADMIN) return;
+    socket.emit('set_live_news', { postId, value });
 }
 
 // ACTUALITÉS
@@ -4762,6 +4775,7 @@ function buildArticleCardMarkup(post) {
     const delBtn = !isForbiddenDossier && (IS_ADMIN || post.ownerId === PLAYER_ID) ? `<button class="article-del-btn" onclick="event.stopPropagation(); deletePost('${post._id}')"><i class="fa-solid fa-trash"></i></button>` : '';
     const editBtn = !isForbiddenDossier && (post.ownerId === PLAYER_ID || IS_ADMIN) ? `<button class="article-edit-btn" onclick="event.stopPropagation(); openArticleEditModal('${post._id}')"><i class="fa-solid fa-pen"></i></button>` : '';
     const headlineBtn = !isForbiddenDossier && IS_ADMIN ? `<button class="article-headline-btn" onclick="event.stopPropagation(); toggleHeadline('${post._id}', ${!post.isHeadline})" title="${post.isHeadline ? 'Retirer de la Une' : 'Mettre à la Une'}"><i class="fa-solid fa-star"></i> ${post.isHeadline ? 'Retirer la Une' : 'La Une'}</button>` : '';
+    const liveBtn = !isForbiddenDossier && IS_ADMIN && post.isLiveNews ? `<button class="article-headline-btn article-live-toggle-btn" onclick="event.stopPropagation(); toggleArticleLiveNews('${post._id}', false)" title="Retirer du direct"><i class="fa-solid fa-tower-broadcast"></i> Retirer du direct</button>` : '';
 
     let bannerHTML = '';
     if(post.mediaUrl && post.mediaType === 'image') bannerHTML = `<img src="${post.mediaUrl}" class="article-banner">`;
@@ -4785,6 +4799,7 @@ function buildArticleCardMarkup(post) {
             ${delBtn}
             ${editBtn}
             ${headlineBtn}
+            ${liveBtn}
             ${urgencyHTML}
             ${journalBlock}
             <h2 class="article-title">${escapeHtml(titleText)}</h2>

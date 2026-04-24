@@ -948,6 +948,18 @@ module.exports = function initSocketHandlers(deps) {
       });
   });
 
+  socket.on('set_live_news', async ({ postId, value }) => {
+      const user = await getSocketUser(socket);
+      if(!user || !user.isAdmin) return;
+      const post = await Post.findById(postId);
+      if(!post || !post.isArticle) return;
+      post.isLiveNews = !!value;
+      await post.save();
+      const displayPost = await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers followerCountDisplay companies') : null);
+      io.emit('post_updated', displayPost);
+      await broadcastLiveNews();
+  });
+
   // ACTUALITÃ‰S
   socket.on('request_events', async () => {
       const events = await Event.find().sort({ date: 1, heure: 1 });
