@@ -3071,6 +3071,7 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
     overflow: hidden;
     position: relative;
     --reseau-rail-width: 224px;
+    --reseau-mobile-bottom-clearance: 0px;
     padding-left: 0;
 }
 .reseau-rail-handle {
@@ -3256,6 +3257,36 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
     flex-direction: column;
     gap: 10px;
 }
+.feed-toolbar-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.feed-toolbar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.feed-toolbar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-normal);
+    cursor: pointer;
+    font-family: var(--font-main);
+    font-size: 0.78rem;
+    font-weight: 700;
+    transition: all 0.18s ease;
+}
+.feed-toolbar-btn:hover { color: white; border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.07); }
+.feed-toolbar-btn.is-open { background: rgba(108,99,255,0.18); border-color: rgba(108,99,255,0.32); color: white; }
+.feed-toolbar-panel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-top: 4px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+}
+.feed-toolbar-panel.hidden { display: none !important; }
 .feed-filter-bar { display: flex; flex-wrap: wrap; gap: 8px; }
 .feed-filter-btn {
     background: rgba(255,255,255,0.04);
@@ -3271,9 +3302,8 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 }
 .feed-filter-btn:hover { color: white; border-color: rgba(255,255,255,0.16); }
 .feed-filter-btn.active { background: rgba(108,99,255,0.18); border-color: rgba(108,99,255,0.32); color: white; }
-.feed-filter-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .feed-filter-meta { color: var(--text-muted); font-size: 0.76rem; }
-.feed-filter-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.feed-toolbar-panel-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
 .feed-profile-search-wrap { min-width: 240px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; padding: 7px 12px; }
 .feed-profile-search-wrap i { color: var(--text-dim); }
 .feed-profile-search-wrap input { flex: 1; background: transparent; border: none; color: var(--text-normal); font-family: var(--font-main); font-size: 0.8rem; min-width: 0; }
@@ -3315,6 +3345,34 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 @media (max-width: 768px) {
     #view-reseau {
         --reseau-rail-width: 188px;
+        --reseau-mobile-bottom-clearance: calc(env(safe-area-inset-bottom, 0px) + 92px);
+    }
+    #view-reseau .reseau-panel,
+    #view-reseau #app-container,
+    #view-reseau #chat-area,
+    #view-reseau .char-mp-layout,
+    #view-reseau .char-mp-main,
+    #view-reseau #char-mp-convo {
+        min-height: 0;
+    }
+    #view-reseau #reseau-panel-chat,
+    #view-reseau #reseau-panel-mp {
+        padding-bottom: var(--reseau-mobile-bottom-clearance);
+        box-sizing: border-box;
+    }
+    #view-reseau #app-container,
+    #view-reseau .char-mp-layout {
+        height: 100%;
+    }
+    #view-reseau #messages,
+    #view-reseau .char-mp-messages,
+    #view-reseau .char-mp-convo-list {
+        min-height: 0;
+        padding-bottom: 18px;
+    }
+    #view-reseau #input-wrapper,
+    #view-reseau .char-mp-input-bar {
+        padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
     }
     .reseau-rail-handle {
         top: auto;
@@ -3367,10 +3425,14 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
         margin-top: 14px;
         padding: 12px 14px;
     }
-    .feed-filter-actions,
+    .feed-toolbar-row,
+    .feed-toolbar-panel,
+    .feed-toolbar-panel-actions,
     .feed-profile-search-wrap {
         width: 100%;
     }
+    .feed-toolbar-actions { width: 100%; justify-content: flex-end; }
+    .feed-toolbar-btn { flex: 1; justify-content: center; }
     #reseau-panel-flux .feed-view-header {
         padding: 8px 14px;
         height: auto;

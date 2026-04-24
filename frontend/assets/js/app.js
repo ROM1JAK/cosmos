@@ -44,6 +44,8 @@ let currentAdminTab = localStorage.getItem('admin_current_tab') || 'overview';
 let bourseFilter = localStorage.getItem('bourse_filter') || 'all';
 let boursePulseTimeout = null;
 let isAccueilTimelineCollapsed = localStorage.getItem('accueil_timeline_collapsed') === '1';
+let isFeedFiltersPopoverOpen = false;
+let isFeedProfileSearchPopoverOpen = false;
 let feedFilters = (() => {
     try {
         return {
@@ -1008,6 +1010,20 @@ function syncFeedFiltersUI() {
     document.querySelectorAll('.feed-filter-btn').forEach(button => {
         button.classList.toggle('active', !!feedFilters[button.dataset.filter]);
     });
+    const filterToggle = document.getElementById('feed-filter-toggle');
+    const searchToggle = document.getElementById('feed-search-toggle');
+    const filterPopover = document.getElementById('feed-filter-popover');
+    const searchPopover = document.getElementById('feed-search-popover');
+    if(filterToggle) {
+        filterToggle.classList.toggle('is-open', isFeedFiltersPopoverOpen);
+        filterToggle.setAttribute('aria-expanded', isFeedFiltersPopoverOpen ? 'true' : 'false');
+    }
+    if(searchToggle) {
+        searchToggle.classList.toggle('is-open', isFeedProfileSearchPopoverOpen);
+        searchToggle.setAttribute('aria-expanded', isFeedProfileSearchPopoverOpen ? 'true' : 'false');
+    }
+    if(filterPopover) filterPopover.classList.toggle('hidden', !isFeedFiltersPopoverOpen);
+    if(searchPopover) searchPopover.classList.toggle('hidden', !isFeedProfileSearchPopoverOpen);
     const filteredCount = getFilteredFeedPosts().length;
     const meta = document.getElementById('feed-filter-meta');
     if(meta) {
@@ -1023,6 +1039,21 @@ function syncFeedFiltersUI() {
         meta.textContent = active.length
             ? `${filteredCount} post(s) • filtres: ${active.map(name => labels[name]).join(', ')}`
             : '10 derniers posts des 7 derniers jours';
+    }
+}
+
+function toggleFeedFiltersPopover(forceOpen) {
+    isFeedFiltersPopoverOpen = typeof forceOpen === 'boolean' ? forceOpen : !isFeedFiltersPopoverOpen;
+    if(isFeedFiltersPopoverOpen) isFeedProfileSearchPopoverOpen = false;
+    syncFeedFiltersUI();
+}
+
+function toggleFeedProfileSearchPopover(forceOpen) {
+    isFeedProfileSearchPopoverOpen = typeof forceOpen === 'boolean' ? forceOpen : !isFeedProfileSearchPopoverOpen;
+    if(isFeedProfileSearchPopoverOpen) isFeedFiltersPopoverOpen = false;
+    syncFeedFiltersUI();
+    if(isFeedProfileSearchPopoverOpen) {
+        requestAnimationFrame(() => document.getElementById('feedProfileSearch')?.focus());
     }
 }
 

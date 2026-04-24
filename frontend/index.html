@@ -500,22 +500,39 @@
                             </div>
 
                             <div class="feed-smart-toolbar">
-                                <div id="feed-filter-bar" class="feed-filter-bar">
-                                    <button class="feed-filter-btn" data-filter="official" onclick="toggleFeedFilter('official')">Officiel</button>
-                                    <button class="feed-filter-btn" data-filter="following" onclick="toggleFeedFilter('following')">Persos suivis</button>
-                                    <button class="feed-filter-btn" data-filter="anonymous" onclick="toggleFeedFilter('anonymous')">Anonyme</button>
-                                    <button class="feed-filter-btn" data-filter="breaking" onclick="toggleFeedFilter('breaking')">Breaking</button>
-                                    <button class="feed-filter-btn" data-filter="sponsored" onclick="toggleFeedFilter('sponsored')">Pub</button>
-                                    <button class="feed-filter-btn" data-filter="companies" onclick="toggleFeedFilter('companies')">Entreprises</button>
-                                </div>
-                                <div class="feed-filter-meta-row">
+                                <div class="feed-toolbar-row">
                                     <div id="feed-filter-meta" class="feed-filter-meta">Tous les posts du réseau</div>
-                                    <div class="feed-filter-actions">
-                                        <div class="feed-profile-search-wrap">
-                                            <i class="fa-solid fa-user-magnifying-glass"></i>
-                                            <input type="text" id="feedProfileSearch" list="feed-profile-list" placeholder="Rechercher un profil..." onkeydown="if(event.key==='Enter'){ event.preventDefault(); openFeedProfileSearch(); }">
-                                            <datalist id="feed-profile-list"></datalist>
-                                        </div>
+                                    <div class="feed-toolbar-actions">
+                                        <button type="button" id="feed-filter-toggle" class="feed-toolbar-btn" onclick="toggleFeedFiltersPopover()" aria-expanded="false" title="Filtres du flux">
+                                            <i class="fa-solid fa-sliders"></i>
+                                            <span>Filtres</span>
+                                        </button>
+                                        <button type="button" id="feed-search-toggle" class="feed-toolbar-btn" onclick="toggleFeedProfileSearchPopover()" aria-expanded="false" title="Rechercher un profil">
+                                            <i class="fa-solid fa-magnifying-glass"></i>
+                                            <span>Profil</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="feed-filter-popover" class="feed-toolbar-panel hidden">
+                                    <div id="feed-filter-bar" class="feed-filter-bar">
+                                        <button class="feed-filter-btn" data-filter="official" onclick="toggleFeedFilter('official')">Officiel</button>
+                                        <button class="feed-filter-btn" data-filter="following" onclick="toggleFeedFilter('following')">Persos suivis</button>
+                                        <button class="feed-filter-btn" data-filter="anonymous" onclick="toggleFeedFilter('anonymous')">Anonyme</button>
+                                        <button class="feed-filter-btn" data-filter="breaking" onclick="toggleFeedFilter('breaking')">Breaking</button>
+                                        <button class="feed-filter-btn" data-filter="sponsored" onclick="toggleFeedFilter('sponsored')">Pub</button>
+                                        <button class="feed-filter-btn" data-filter="companies" onclick="toggleFeedFilter('companies')">Entreprises</button>
+                                    </div>
+                                    <div class="feed-toolbar-panel-actions">
+                                        <button class="btn-secondary" onclick="resetFeedFilters()" style="padding:6px 10px;font-size:0.74rem;"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+                                    </div>
+                                </div>
+                                <div id="feed-search-popover" class="feed-toolbar-panel hidden">
+                                    <div class="feed-profile-search-wrap">
+                                        <i class="fa-solid fa-user-magnifying-glass"></i>
+                                        <input type="text" id="feedProfileSearch" list="feed-profile-list" placeholder="Rechercher un profil..." onkeydown="if(event.key==='Enter'){ event.preventDefault(); openFeedProfileSearch(); }">
+                                        <datalist id="feed-profile-list"></datalist>
+                                    </div>
+                                    <div class="feed-toolbar-panel-actions">
                                         <button class="btn-secondary" onclick="openFeedProfileSearch()" style="padding:6px 10px;font-size:0.74rem;"><i class="fa-solid fa-clock-rotate-left"></i> Voir anciens posts</button>
                                         <button class="btn-secondary" onclick="clearFeedProfileSearch()" style="padding:6px 10px;font-size:0.74rem;"><i class="fa-solid fa-rotate-left"></i> Reset</button>
                                     </div>
