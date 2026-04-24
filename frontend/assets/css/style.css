@@ -675,7 +675,7 @@ body[data-theme="cyber"] { --accent: #f9ca24; --accent-glow: rgba(249, 202, 36, 
   #sidebar { position: fixed; left: -100%; top: 0; bottom: 0; width: 270px; z-index: 100; transition: left 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); margin-top: var(--nav-height); height: calc(100% - var(--nav-height)); }
   #sidebar.open { left: 0; }
   #mobile-overlay.open { display: block; }
-  #menu-toggle-btn { display: block; position: fixed; top: calc(12px + var(--nav-height)); left: 14px; z-index: 80; background: var(--bg-secondary); border: 1px solid var(--border); color: white; border-radius: var(--radius-sm); padding: 7px 9px; font-size: 1rem; }
+    #menu-toggle-btn { display: none; }
   #top-nav { overflow-x: auto; overflow-y: hidden; justify-content: flex-start; scrollbar-width: none; -ms-overflow-style: none; gap: 2px; padding: 0 4px; }
   #top-nav::-webkit-scrollbar { display: none; }
   .nav-btn { white-space: nowrap; flex-shrink: 0; padding: 7px 10px; font-size: 0.75rem; letter-spacing: 0.03em; }
