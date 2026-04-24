@@ -33,6 +33,7 @@ const PROFILE_ACTIVITY_PAGE_SIZE = 6;
 const RESEAU_RAIL_STORAGE_KEY = 'reseau_rail_state';
 let eventsCache = [];
 let presseArticlesCache = [];
+let liveNewsCache = [];
 let worldTimelineCache = [];
 let adminLogsCache = [];
 let presseJournalFilter = '';
@@ -90,6 +91,74 @@ let currentEditArticleTheme = null;
 let currentArticleFullscreenId = null;
 let isPresseComposerOpen = false;
 
+function isJournalistCharacter(char) {
+    const role = String(char?.role || '').toLowerCase();
+    return role.includes('journaliste') || role.includes('presse');
+}
+
+function normalizeLiveNewsArticles(articles) {
+    return (Array.isArray(articles) ? articles : [])
+        .filter(article => article?.isArticle && article?.isLiveNews)
+        .sort((left, right) => new Date(right.timestamp || 0) - new Date(left.timestamp || 0))
+        .slice(0, LIVE_NEWS_MAX_ITEMS);
+}
+
+function openLiveNewsArticle(postId) {
+    switchView('presse');
+    setTimeout(() => openArticleFullscreen(postId), 90);
+}
+
+function renderLiveNewsTicker() {
+    const root = document.getElementById('live-news-ticker');
+    const track = document.getElementById('live-news-track');
+    if(!root || !track) return;
+    if(!liveNewsCache.length) {
+        root.classList.add('hidden');
+        track.innerHTML = '';
+        return;
+    }
+    root.classList.remove('hidden');
+    const itemsMarkup = liveNewsCache.map(article => {
+        const { titleText } = parseArticleContent(article.content || '');
+        const title = escapeHtml(titleText || article.journalName || 'News en direct');
+        const meta = escapeHtml(article.journalName || article.authorName || 'Presse');
+        return `
+            <button type="button" class="live-news-item" onclick="openLiveNewsArticle('${String(article._id).replace(/'/g, "\\'")}')">
+                <span class="live-news-item-label">Live</span>
+                <span class="live-news-item-title">${title}</span>
+                <span class="live-news-item-meta">${meta}</span>
+            </button>`;
+    }).join('');
+    track.innerHTML = `${itemsMarkup}${itemsMarkup}`;
+}
+
+function syncLiveNewsFromArticles() {
+    liveNewsCache = normalizeLiveNewsArticles(presseArticlesCache);
+    renderLiveNewsTicker();
+}
+
+function updatePresseLiveToggleUI() {
+    const toggle = document.getElementById('presseLiveNewsToggle');
+    const hint = document.getElementById('presse-live-news-hint');
+    const input = document.getElementById('presseLiveNews');
+    const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
+    const canUseLive = !!char && isJournalistCharacter(char) && !isForbiddenPresseMode();
+    if(!toggle || !hint || !input) return;
+    toggle.classList.toggle('hidden', !canUseLive);
+    hint.classList.toggle('hidden', !canUseLive);
+    if(!canUseLive) input.checked = false;
+    toggle.classList.toggle('active', !!input.checked && canUseLive);
+    toggle.setAttribute('aria-pressed', input.checked && canUseLive ? 'true' : 'false');
+}
+
+function togglePresseLiveNews() {
+    const input = document.getElementById('presseLiveNews');
+    const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
+    if(!input || !char || !isJournalistCharacter(char) || isForbiddenPresseMode()) return;
+    input.checked = !input.checked;
+    updatePresseLiveToggleUI();
+}
+
 // ACTUALITÉS
 let actuRequestPending = false;
 
@@ -101,6 +170,7 @@ const FAVORITES_STORAGE_KEY = 'favorites_v1';
 const DRAFTS_STORAGE_KEY = 'drafts_v1';
 const NOTIFICATION_FILTER_STORAGE_KEY = 'notif_filter_v1';
 const GLOBAL_SEARCH_MAX_RESULTS = 24;
+const LIVE_NEWS_MAX_ITEMS = 3;
 
 let globalSearchFilter = 'all';
 let currentNotificationFilter = localStorage.getItem(NOTIFICATION_FILTER_STORAGE_KEY) || 'all';
@@ -1077,10 +1147,11 @@ socket.on('login_success', (data) => {
     switchView(getRecentReturnView());
 });
 socket.on('login_error', (msg) => { const el = document.getElementById('login-error-msg'); el.textContent = msg; el.style.display = 'block'; });
+socket.on('post_error', (msg) => { if(msg) alert(msg); });
 socket.on('username_change_success', (newName) => { USERNAME = newName; localStorage.setItem('rp_username', newName); document.getElementById('player-id-display').textContent = `Compte : ${USERNAME}`; document.getElementById('settings-msg').textContent = "OK !"; });
 socket.on('username_change_error', (msg) => { document.getElementById('settings-msg').textContent = msg; });
 
-socket.on('connect', () => { checkAutoLogin(); setupEmojiPicker(); });
+socket.on('connect', () => { checkAutoLogin(); setupEmojiPicker(); socket.emit('request_live_news'); });
 socket.on('update_user_list', (users) => {
     allOnlineUsers = users;
     document.getElementById('online-count').textContent = users.length;
@@ -1522,6 +1593,7 @@ function updatePresseCharUI() {
         </div>`;
     // Afficher ou masquer la zone de rédaction
     updatePresseWriteBox();
+    updatePresseLiveToggleUI();
 }
 function togglePresseCharDropdown() { const dd = document.getElementById('presse-char-dropdown'); if(dd) dd.classList.toggle('hidden'); }
 function selectPresseChar(charId) {
@@ -1542,6 +1614,7 @@ function syncPresseComposerMode() {
     if(writeBox) writeBox.classList.toggle('presse-write-box-forbidden', isForbiddenMode);
     if(title) title.textContent = isForbiddenMode ? 'Rédiger un dossier Kael' : 'Rédiger un article';
     if(hint) hint.classList.toggle('hidden', !isForbiddenMode);
+    updatePresseLiveToggleUI();
 }
 
 async function prepareForbiddenDossierComposer() {
@@ -1638,6 +1711,7 @@ function restorePresseDraft() {
     if(urgency && !urgency.value) urgency.value = draft.urgency || '';
     if(editor && !editor.innerHTML.trim()) editor.innerHTML = draft.contentHtml || '';
     updatePresseComposerUX();
+    updatePresseLiveToggleUI();
 }
 
 function syncWikiDraftFromComposer() {
@@ -1778,6 +1852,7 @@ function updatePresseWriteBox() {
         notice.classList.remove('hidden');
     }
     syncPresseComposerMode();
+    updatePresseLiveToggleUI();
 }
 
 function handlePresseJournalSearchKeydown(event) {
@@ -3570,10 +3645,14 @@ socket.on('new_post', (post) => {
 });
 socket.on('post_updated', (post) => {
     if(post.isArticle) {
-        presseArticlesCache = presseArticlesCache.map(item => String(item._id) === String(post._id) ? post : item);
+        const existingArticle = presseArticlesCache.some(item => String(item._id) === String(post._id));
+        presseArticlesCache = existingArticle
+            ? presseArticlesCache.map(item => String(item._id) === String(post._id) ? post : item)
+            : [post, ...presseArticlesCache];
         refreshPresseJournalDatalist();
         refreshFeedProfileDatalist();
         renderPresseStream();
+        syncLiveNewsFromArticles();
         if(currentArticleFullscreenId === String(post._id)) openArticleFullscreen(String(post._id));
     } else {
         feedPostsCache = feedPostsCache.map(item => String(item._id) === String(post._id) ? post : item);
@@ -3590,6 +3669,7 @@ socket.on('post_updated', (post) => {
 socket.on('post_deleted', (id) => {
     feedPostsCache = feedPostsCache.filter(post => String(post._id) !== String(id));
     presseArticlesCache = presseArticlesCache.filter(post => String(post._id) !== String(id));
+    syncLiveNewsFromArticles();
     refreshFeedProfileDatalist();
     renderFeedStream();
     renderPresseStream();
@@ -4579,6 +4659,7 @@ function submitArticle() {
     const journalName = document.getElementById('presseJournalName').value.trim();
     const journalLogo = document.getElementById('presseJournalLogo').value.trim();
     const urgencyLevel = document.getElementById('presseUrgency').value || null;
+    const isLiveNews = !!document.getElementById('presseLiveNews')?.checked;
     const isPresseP = document.getElementById('presseIsPub')?.checked;
     const pressePubId = isPresseP ? document.getElementById('pressePubStockId')?.value : null;
     const linkedStock = pressePubId ? stocksData.find(stock => String(stock._id) === String(pressePubId)) : null;
@@ -4586,6 +4667,7 @@ function submitArticle() {
     const char = currentPresseCharId ? myCharacters.find(c => c._id === currentPresseCharId) : null;
     if(!isForbiddenMode && !currentPresseCharId) return alert("Aucun journaliste sélectionné.");
     if(!isForbiddenMode && !char) return alert("Personnage introuvable.");
+    if(isLiveNews && !isJournalistCharacter(char)) return alert("Seuls les journalistes peuvent mettre une news en direct.");
 
     let mediaType = null;
     if(mediaUrl) {
@@ -4626,6 +4708,7 @@ function submitArticle() {
         journalName: isForbiddenMode ? 'Dossier Kael' : journalName,
         journalLogo: isForbiddenMode ? '' : journalLogo,
         isAnonymous: false, isBreakingNews: urgencyLevel === 'urgent',
+        isLiveNews: isForbiddenMode ? false : isLiveNews,
         urgencyLevel: isForbiddenMode ? 'enquete' : urgencyLevel,
         articleTheme,
         isArticle: true, poll: null,
@@ -4645,9 +4728,11 @@ function submitArticle() {
     document.getElementById('presseMediaUrl').value = '';
     document.getElementById('presseMediaFile').value = '';
     document.getElementById('presseUrgency').value = '';
+    const liveNewsInput = document.getElementById('presseLiveNews'); if(liveNewsInput) liveNewsInput.checked = false;
     const presseP = document.getElementById('presseIsPub'); if(presseP) { presseP.checked = false; togglePressePubSelect(); }
     hydrateArticleThemeChoices(journalLogo, 'presseContentEditor', currentPresseTheme || DEFAULT_ARTICLE_THEME);
     updatePresseComposerUX();
+    updatePresseLiveToggleUI();
     clearDraftValue('presse');
     setPresseComposerOpen(false);
 }
@@ -4844,6 +4929,7 @@ function renderPresseStream() {
 
 socket.on('presse_data', (articles) => {
     presseArticlesCache = articles;
+    syncLiveNewsFromArticles();
     if(currentView === 'accueil') renderAccueil();
     refreshPresseJournalDatalist();
     refreshFeedProfileDatalist();
@@ -4858,11 +4944,18 @@ socket.on('world_timeline_data', (items) => {
 });
 
 socket.on('new_article', (post) => {
+    presseArticlesCache = [post, ...presseArticlesCache.filter(item => String(item._id) !== String(post._id))];
+    syncLiveNewsFromArticles();
     if(currentView === 'presse') {
         loadPresse();
     } else {
         document.getElementById('btn-view-presse').classList.add('nav-notify');
     }
+});
+
+socket.on('live_news_data', (articles) => {
+    liveNewsCache = normalizeLiveNewsArticles(articles);
+    renderLiveNewsTicker();
 });
 
 bindProductEnhancementInputs();

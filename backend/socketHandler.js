@@ -50,6 +50,21 @@ module.exports = function initSocketHandlers(deps) {
             return Post.find({ authorCharId: charId, isArticle: { $ne: true }, isAnonymous: { $ne: true } }).sort({ timestamp: -1 });
         }
 
+    const LIVE_NEWS_LIMIT = 3;
+
+    function isJournalistCharacter(char) {
+        const role = String(char?.role || '').toLowerCase();
+        return role.includes('journaliste') || role.includes('presse');
+    }
+
+    async function getLiveNewsArticles() {
+        return Post.find({ isArticle: true, isLiveNews: true }).sort({ timestamp: -1 }).limit(LIVE_NEWS_LIMIT);
+    }
+
+    async function broadcastLiveNews() {
+        io.emit('live_news_data', await getLiveNewsArticles());
+    }
+
     async function emitCharacterProfileData(char) {
             if(!char?._id) return;
             const postCount = await Post.countDocuments({ authorCharId: char._id, isArticle: { $ne: true } });
@@ -105,6 +120,7 @@ module.exports = function initSocketHandlers(deps) {
       socket.emit('rooms_data', await Room.find());
       socket.emit('feed_data', await getFeedPosts());
       socket.emit('world_timeline_data', await buildWorldTimeline());
+      socket.emit('live_news_data', await getLiveNewsArticles());
       // [NOUVEAU] Envoyer alerte active si existante
       const activeAlert = await Alert.findOne({ active: true }).sort({ timestamp: -1 });
       if(activeAlert) socket.emit('alert_data', activeAlert);
@@ -123,6 +139,10 @@ module.exports = function initSocketHandlers(deps) {
 
   socket.on('request_world_timeline', async () => {
       socket.emit('world_timeline_data', await buildWorldTimeline());
+  });
+
+  socket.on('request_live_news', async () => {
+      socket.emit('live_news_data', await getLiveNewsArticles());
   });
 
   socket.on('get_char_profile', async (charName) => {
@@ -684,6 +704,16 @@ module.exports = function initSocketHandlers(deps) {
 
   socket.on('create_post', async (postData) => {
       let authorChar = postData.authorCharId ? await Character.findById(postData.authorCharId) : null;
+      postData.isLiveNews = !!postData.isLiveNews;
+      if(postData.isArticle && postData.isLiveNews) {
+          if(!authorChar || !isJournalistCharacter(authorChar)) {
+              return socket.emit('post_error', 'Seuls les journalistes peuvent mettre une news en direct.');
+          }
+          const activeLiveNewsCount = await Post.countDocuments({ isArticle: true, isLiveNews: true });
+          if(activeLiveNewsCount >= LIVE_NEWS_LIMIT) {
+              return socket.emit('post_error', 'Le direct contient deja 3 news. Supprime-en une avant d en publier une nouvelle.');
+          }
+      }
       if(postData.repostPostId) {
           const sourcePost = await Post.findById(postData.repostPostId).lean();
           if(sourcePost && !sourcePost.isArticle) {
@@ -719,6 +749,7 @@ module.exports = function initSocketHandlers(deps) {
       let displayPost = buildDisplayPost(savedPost, authorChar);
       if(displayPost.isArticle) {
           io.emit('new_article', displayPost);
+          await broadcastLiveNews();
       } else {
           io.emit('new_post', displayPost);
           await broadcastWorldTimeline();
@@ -771,6 +802,7 @@ module.exports = function initSocketHandlers(deps) {
       if(post.ownerId !== ownerId && !isAdmin) return;
       await Post.findByIdAndDelete(postId);
       io.emit('post_deleted', postId);
+    if(post.isArticle) await broadcastLiveNews();
       await broadcastWorldTimeline();
       if(isAdmin && requester) {
           await logAdminAction({
@@ -800,6 +832,7 @@ module.exports = function initSocketHandlers(deps) {
       post.edited = true;
       await post.save();
     io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers followerCountDisplay companies') : null));
+            if(post.isArticle) await broadcastLiveNews();
       await broadcastWorldTimeline();
   });
 

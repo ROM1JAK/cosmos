@@ -31,6 +31,7 @@ const PostSchema = new mongoose.Schema({
     isAnonymous: { type: Boolean, default: false },
     isBreakingNews: { type: Boolean, default: false },
     isArticle: { type: Boolean, default: false },
+    isLiveNews: { type: Boolean, default: false },
     isHeadline: { type: Boolean, default: false },
     isSponsored: { type: Boolean, default: false },
     linkedStockId: { type: String, default: '' },
