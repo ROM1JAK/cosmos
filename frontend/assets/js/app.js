@@ -94,6 +94,7 @@ let isLiveNewsComposerOpen = false;
 let isLiveNewsPanelOpen = false;
 let liveNewsHasUnread = false;
 let liveNewsBootstrapped = false;
+let liveNewsUnreadIds = new Set();
 
 function isJournalistCharacter(char) {
     const role = String(char?.role || '').toLowerCase();
@@ -113,11 +114,34 @@ function openLiveNewsArticle(postId) {
     renderLiveNewsTicker();
     const item = liveNewsCache.find(article => String(article._id) === String(postId));
     if(item && !item.isArticle) {
-        switchView('presse');
+        openStandaloneLiveNewsModal(postId);
         return;
     }
     switchView('presse');
     setTimeout(() => openArticleFullscreen(postId), 90);
+}
+
+function openStandaloneLiveNewsModal(postId) {
+    const item = liveNewsCache.find(article => String(article._id) === String(postId) && !article.isArticle);
+    const modal = document.getElementById('live-news-standalone-modal');
+    const title = document.getElementById('live-news-standalone-title');
+    const meta = document.getElementById('live-news-standalone-meta');
+    const body = document.getElementById('live-news-standalone-body');
+    if(!item || !modal || !title || !meta || !body) return;
+    liveNewsUnreadIds.delete(String(postId));
+    title.textContent = String(item.liveNewsText || item.content || 'News en direct').trim() || 'News en direct';
+    meta.innerHTML = [
+        item.authorName ? `<span><i class="fa-solid fa-user-pen"></i> ${escapeHtml(item.authorName)}</span>` : '',
+        item.journalName ? `<span><i class="fa-solid fa-newspaper"></i> ${escapeHtml(item.journalName)}</span>` : '',
+        item.date ? `<span><i class="fa-regular fa-clock"></i> ${escapeHtml(item.date)}</span>` : ''
+    ].filter(Boolean).join('');
+    body.innerHTML = `<p>${escapeHtml(String(item.liveNewsText || item.content || '').trim())}</p>`;
+    modal.classList.remove('hidden');
+}
+
+function closeStandaloneLiveNewsModal() {
+    document.getElementById('live-news-standalone-modal')?.classList.add('hidden');
+    renderLiveNewsTicker();
 }
 
 function renderLiveNewsTicker() {
@@ -142,12 +166,14 @@ function renderLiveNewsTicker() {
         const liveLabel = String(article.liveNewsText || '').trim();
         const title = escapeHtml(liveLabel || article.journalName || 'News en direct');
         const meta = escapeHtml(article.journalName || article.authorName || 'Presse');
+        const isUnread = liveNewsUnreadIds.has(String(article._id));
         return `
             <button type="button" class="live-news-item" onclick="openLiveNewsArticle('${String(article._id).replace(/'/g, "\\'")}')">
                 <span class="live-news-item-label">Live</span>
                 <i class="fa-solid fa-arrow-right live-news-item-icon"></i>
                 <span class="live-news-item-title">${title}</span>
                 <span class="live-news-item-meta">${meta}</span>
+                ${isUnread ? '<span class="live-news-item-badge">Nouveau</span>' : ''}
             </button>`;
     }).join('');
     list.innerHTML = itemsMarkup || '<div class="live-news-list-empty">Aucun direct en cours.</div>';
@@ -189,6 +215,7 @@ function toggleLiveNewsPanel(forceOpen) {
     else isLiveNewsPanelOpen = !isLiveNewsPanelOpen;
     if(isLiveNewsPanelOpen) liveNewsHasUnread = false;
     renderLiveNewsTicker();
+    if(isLiveNewsPanelOpen && liveNewsUnreadIds.size) liveNewsUnreadIds.clear();
 }
 
 function toggleArticleLiveNews(postId, value) {
@@ -1922,6 +1949,9 @@ document.addEventListener('keydown', (event) => {
     }
     if(event.key === 'Escape' && isLiveNewsPanelOpen) {
         toggleLiveNewsPanel(false);
+    }
+    if(event.key === 'Escape') {
+        closeStandaloneLiveNewsModal();
     }
 });
 
@@ -3734,6 +3764,7 @@ socket.on('post_deleted', (id) => {
     feedPostsCache = feedPostsCache.filter(post => String(post._id) !== String(id));
     presseArticlesCache = presseArticlesCache.filter(post => String(post._id) !== String(id));
     liveNewsCache = liveNewsCache.filter(post => String(post._id) !== String(id));
+    liveNewsUnreadIds.delete(String(id));
     syncLiveNewsFromArticles();
     refreshFeedProfileDatalist();
     renderFeedStream();
@@ -5052,6 +5083,11 @@ socket.on('live_news_data', (articles) => {
     const previousIds = new Set(liveNewsCache.map(article => String(article._id)));
     const normalizedArticles = normalizeLiveNewsArticles(articles);
     const hasNewItem = liveNewsBootstrapped && normalizedArticles.some(article => !previousIds.has(String(article._id)));
+    normalizedArticles.forEach(article => {
+        const articleId = String(article._id);
+        if(liveNewsBootstrapped && !previousIds.has(articleId)) liveNewsUnreadIds.add(articleId);
+    });
+    liveNewsUnreadIds = new Set([...liveNewsUnreadIds].filter(articleId => normalizedArticles.some(article => String(article._id) === articleId)));
     if(hasNewItem) liveNewsHasUnread = true;
     liveNewsBootstrapped = true;
     liveNewsCache = normalizedArticles;

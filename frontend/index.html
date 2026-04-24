@@ -1671,6 +1671,19 @@
             <div id="article-fullscreen-content" class="article-fullscreen-content"></div>
         </div>
     </div>
+    <div id="live-news-standalone-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeStandaloneLiveNewsModal()">
+        <div class="modal-box live-news-standalone-box" onclick="event.stopPropagation()">
+            <div class="live-news-standalone-head">
+                <div>
+                    <div class="live-news-standalone-kicker">Direct</div>
+                    <h3 id="live-news-standalone-title">News en direct</h3>
+                </div>
+                <button type="button" class="post-detail-close" onclick="closeStandaloneLiveNewsModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="live-news-standalone-meta" class="live-news-standalone-meta"></div>
+            <div id="live-news-standalone-body" class="live-news-standalone-body"></div>
+        </div>
+    </div>
     <!-- [DIPLOMATIE] Modale Admin — Créer/éditer une relation -->
     <div id="diplo-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeDiploModal()">
         <div class="modal-box modal-form" style="max-width:460px;" onclick="event.stopPropagation()">
