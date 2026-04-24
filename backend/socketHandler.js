@@ -705,9 +705,13 @@ module.exports = function initSocketHandlers(deps) {
   socket.on('create_post', async (postData) => {
       let authorChar = postData.authorCharId ? await Character.findById(postData.authorCharId) : null;
       postData.isLiveNews = !!postData.isLiveNews;
+      postData.liveNewsText = String(postData.liveNewsText || '').trim().slice(0, 80);
       if(postData.isArticle && postData.isLiveNews) {
           if(!authorChar || !isJournalistCharacter(authorChar)) {
               return socket.emit('post_error', 'Seuls les journalistes peuvent mettre une news en direct.');
+          }
+          if(!postData.liveNewsText) {
+              return socket.emit('post_error', 'Ajoute un texte court pour le bandeau du direct.');
           }
           const activeLiveNewsCount = await Post.countDocuments({ isArticle: true, isLiveNews: true });
           if(activeLiveNewsCount >= LIVE_NEWS_LIMIT) {

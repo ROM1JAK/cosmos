@@ -32,6 +32,7 @@ const PostSchema = new mongoose.Schema({
     isBreakingNews: { type: Boolean, default: false },
     isArticle: { type: Boolean, default: false },
     isLiveNews: { type: Boolean, default: false },
+    liveNewsText: { type: String, default: '' },
     isHeadline: { type: Boolean, default: false },
     isSponsored: { type: Boolean, default: false },
     linkedStockId: { type: String, default: '' },

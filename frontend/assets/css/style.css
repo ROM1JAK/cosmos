@@ -824,6 +824,12 @@ body[data-theme="ombra"] { --accent: #7c3aed; --accent-glow: rgba(124,58,237,0.3
 .presse-live-news-hint { font-size: 0.74rem; color: #ffb4b4; }
 .presse-live-news-count { flex-shrink: 0; min-width: 48px; text-align: center; padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.08); color: #fff3f3; font-size: 0.76rem; font-weight: 800; }
 .presse-live-news-count.is-full { border-color: rgba(255, 138, 138, 0.55); background: rgba(155, 28, 28, 0.28); color: #ffd6d6; }
+.presse-live-news-field { margin-top: 10px; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; background: rgba(255,255,255,0.03); }
+.presse-live-news-label { display: block; margin-bottom: 8px; font-size: 0.68rem; color: #ffd6d6; text-transform: uppercase; letter-spacing: 0.09em; font-weight: 800; }
+.presse-live-news-input { width: 100%; background: rgba(62, 10, 10, 0.4); border: 1px solid rgba(255, 120, 120, 0.22); color: #fff4f4; padding: 11px 13px; border-radius: 12px; font-family: var(--font-display); font-size: 0.95rem; font-weight: 700; }
+.presse-live-news-input:focus { outline: none; border-color: rgba(255, 160, 160, 0.62); box-shadow: 0 0 0 3px rgba(127, 29, 29, 0.18); }
+.presse-live-news-input::placeholder { color: rgba(255, 220, 220, 0.46); font-weight: 500; }
+.presse-live-news-copy { margin-top: 8px; font-size: 0.72rem; color: rgba(255, 210, 210, 0.82); }
 
 .live-news-ticker { position: fixed; left: 0; right: 0; bottom: 0; height: 54px; display: flex; align-items: stretch; background: linear-gradient(90deg, rgba(108, 9, 9, 0.98), rgba(155, 28, 28, 0.98) 32%, rgba(122, 10, 10, 0.98)); border-top: 1px solid rgba(255,255,255,0.08); box-shadow: 0 -10px 30px rgba(0,0,0,0.35); z-index: 430; overflow: hidden; }
 .live-news-badge { display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; font-family: var(--font-display); font-size: 0.8rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #fff1f1; background: rgba(58, 4, 4, 0.38); border-right: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; }
