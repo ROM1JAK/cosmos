@@ -37,8 +37,10 @@ module.exports = function initSocketHandlers(deps) {
     createNotification,
     extractArticleTitle,
     broadcastWorldTimeline,
+    broadcastCosmosTension,
     broadcastAdminLogs,
     getRecentAdminLogs,
+    buildCosmosTension,
     applyStockValueChange,
         syncCharacterStocksWithCompanies,
         syncCharacterCompanyFromStock,
@@ -130,6 +132,7 @@ module.exports = function initSocketHandlers(deps) {
       socket.emit('feed_data', await getFeedPosts());
       socket.emit('world_timeline_data', await buildWorldTimeline());
       socket.emit('live_news_data', await getLiveNewsArticles());
+      socket.emit('cosmos_tension_data', await buildCosmosTension());
       // [NOUVEAU] Envoyer alerte active si existante
       const activeAlert = await Alert.findOne({ active: true }).sort({ timestamp: -1 });
       if(activeAlert) socket.emit('alert_data', activeAlert);
@@ -152,6 +155,10 @@ module.exports = function initSocketHandlers(deps) {
 
   socket.on('request_live_news', async () => {
       socket.emit('live_news_data', await getLiveNewsArticles());
+  });
+
+  socket.on('request_cosmos_tension', async () => {
+      socket.emit('cosmos_tension_data', await buildCosmosTension());
   });
 
   socket.on('get_char_profile', async (charName) => {
@@ -397,6 +404,7 @@ module.exports = function initSocketHandlers(deps) {
               timelineType: 'alert',
               timelineTone: 'alert'
           });
+          await broadcastCosmosTension();
       } else {
           io.emit('alert_cleared');
           await logAdminAction({
@@ -409,6 +417,7 @@ module.exports = function initSocketHandlers(deps) {
               timelineType: 'alert',
               timelineTone: 'alert'
           });
+          await broadcastCosmosTension();
       }
   });
 
@@ -766,12 +775,15 @@ module.exports = function initSocketHandlers(deps) {
       let displayPost = buildDisplayPost(savedPost, authorChar);
       if(displayPost.isLiveNews && !displayPost.isArticle) {
           await broadcastLiveNews();
+          await broadcastCosmosTension();
       } else if(displayPost.isArticle) {
           io.emit('new_article', displayPost);
           await broadcastLiveNews();
+          await broadcastCosmosTension();
       } else {
           io.emit('new_post', displayPost);
           await broadcastWorldTimeline();
+          await broadcastCosmosTension();
       }
       
       const validFollowerIds = await cleanupCharacterFollowers(authorChar);
@@ -823,6 +835,7 @@ module.exports = function initSocketHandlers(deps) {
       io.emit('post_deleted', postId);
             if(post.isArticle || post.isLiveNews) await broadcastLiveNews();
       await broadcastWorldTimeline();
+    await broadcastCosmosTension();
       if(isAdmin && requester) {
           await logAdminAction({
               actorUser: requester,
@@ -853,6 +866,7 @@ module.exports = function initSocketHandlers(deps) {
     io.emit('post_updated', await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers followerCountDisplay companies') : null));
         if(post.isArticle || post.isLiveNews) await broadcastLiveNews();
       await broadcastWorldTimeline();
+            await broadcastCosmosTension();
   });
 
   socket.on('like_post', async ({ postId, charId }) => { 
@@ -977,6 +991,7 @@ module.exports = function initSocketHandlers(deps) {
       const displayPost = await buildDisplayPost(post, post.authorCharId ? await Character.findById(post.authorCharId).select('isOfficial followers followerCountDisplay companies') : null);
       io.emit('post_updated', displayPost);
       await broadcastLiveNews();
+      await broadcastCosmosTension();
   });
 
   // ACTUALITÃ‰S
@@ -1002,6 +1017,7 @@ module.exports = function initSocketHandlers(deps) {
           timelineType: 'event',
           timelineTone: 'event'
       });
+      await broadcastCosmosTension();
   });
   socket.on('delete_event', async (id) => {
       const user = await getSocketUser(socket);
@@ -1010,6 +1026,7 @@ module.exports = function initSocketHandlers(deps) {
       await Event.findByIdAndDelete(id);
       io.emit('events_data', await Event.find().sort({ date: 1, heure: 1 }));
       await broadcastWorldTimeline();
+    await broadcastCosmosTension();
       if(event) {
           await logAdminAction({
               actorUser: user,
@@ -1293,6 +1310,7 @@ module.exports = function initSocketHandlers(deps) {
           }
 
           await emitDiplomacyRelations(io);
+              await broadcastCosmosTension();
           return;
       }
 
@@ -1321,6 +1339,7 @@ module.exports = function initSocketHandlers(deps) {
       }
 
       await emitDiplomacyRelations(io);
+      await broadcastCosmosTension();
   });
 
   socket.on('admin_delete_city_relation', async ({ relationId, relationScope, allianceGroupKey }) => {
@@ -1335,6 +1354,7 @@ module.exports = function initSocketHandlers(deps) {
       else if(relationId) await Model.findByIdAndDelete(relationId);
 
       await emitDiplomacyRelations(io);
+      await broadcastCosmosTension();
   });
   // ========== [FIN DIPLOMATIE SOCKET] ==========
 

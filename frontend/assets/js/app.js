@@ -94,9 +94,11 @@ let currentArticleFullscreenId = null;
 let isPresseComposerOpen = false;
 let isLiveNewsComposerOpen = false;
 let isLiveNewsPanelOpen = false;
+let isCosmosTensionPanelOpen = false;
 let liveNewsHasUnread = false;
 let liveNewsBootstrapped = false;
 let liveNewsUnreadIds = new Set();
+let cosmosTensionCache = null;
 
 function isJournalistCharacter(char) {
     const role = String(char?.role || '').toLowerCase();
@@ -157,6 +159,66 @@ function deleteOwnLiveNews(postId) {
     if(!confirm('Supprimer cette info du direct ?')) return;
     closeStandaloneLiveNewsModal();
     socket.emit('delete_post', { postId, ownerId: PLAYER_ID });
+}
+
+function renderCosmosTensionWidget() {
+    const root = document.getElementById('cosmos-tension-widget');
+    const fab = document.getElementById('cosmos-tension-fab');
+    const panel = document.getElementById('cosmos-tension-panel');
+    const value = document.getElementById('cosmos-tension-value');
+    const level = document.getElementById('cosmos-tension-level');
+    const risk = document.getElementById('cosmos-tension-risk');
+    const summary = document.getElementById('cosmos-tension-summary');
+    const factors = document.getElementById('cosmos-tension-factors');
+    const updated = document.getElementById('cosmos-tension-updated');
+    if(!root || !fab || !panel || !value || !level || !risk || !summary || !factors || !updated) return;
+    if(!cosmosTensionCache || typeof cosmosTensionCache.value !== 'number') {
+        root.classList.add('hidden');
+        panel.classList.add('hidden');
+        return;
+    }
+
+    root.classList.remove('hidden');
+    panel.classList.toggle('hidden', !isCosmosTensionPanelOpen);
+    fab.setAttribute('aria-expanded', isCosmosTensionPanelOpen ? 'true' : 'false');
+    fab.classList.remove('is-low', 'is-guarded', 'is-elevated', 'is-high', 'is-critical');
+    fab.classList.add(`is-${cosmosTensionCache.level || 'low'}`);
+    fab.style.setProperty('--tension-progress', `${Math.max(0, Math.min(100, Number(cosmosTensionCache.value) || 0))}%`);
+
+    value.textContent = cosmosTensionCache.label || `${Math.round(cosmosTensionCache.value)}%`;
+    level.textContent = cosmosTensionCache.levelLabel || 'Tension du Cosmos';
+    risk.textContent = cosmosTensionCache.riskLabel || '';
+    summary.textContent = cosmosTensionCache.summary || '';
+
+    const factorMarkup = (Array.isArray(cosmosTensionCache.factors) ? cosmosTensionCache.factors : []).map(factor => {
+        const rawValue = Number(factor?.value || 0);
+        const fillWidth = Math.max(0, Math.min(100, Math.abs(rawValue) * 4));
+        const valueClass = rawValue < 0 ? 'is-negative' : 'is-positive';
+        const sign = rawValue > 0 ? '+' : '';
+        return `
+            <div class="cosmos-tension-factor">
+                <div class="cosmos-tension-factor-head">
+                    <span class="cosmos-tension-factor-name">${escapeHtml(String(factor?.label || 'Facteur'))}</span>
+                    <span class="cosmos-tension-factor-value ${valueClass}">${sign}${Math.round(rawValue)}</span>
+                </div>
+                <div class="cosmos-tension-factor-bar">
+                    <div class="cosmos-tension-factor-fill" style="width:${fillWidth}%;"></div>
+                </div>
+                <div class="cosmos-tension-factor-detail">${escapeHtml(String(factor?.detail || ''))}</div>
+            </div>`;
+    }).join('');
+    factors.innerHTML = factorMarkup || '<div class="cosmos-tension-factor"><div class="cosmos-tension-factor-detail">Aucun facteur disponible.</div></div>';
+
+    const updatedAt = cosmosTensionCache.updatedAt ? new Date(cosmosTensionCache.updatedAt) : null;
+    updated.textContent = updatedAt && !Number.isNaN(updatedAt.getTime())
+        ? `Mise a jour ${updatedAt.toLocaleDateString('fr-FR')} a ${updatedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+        : '';
+}
+
+function toggleCosmosTensionPanel(forceOpen) {
+    if(typeof forceOpen === 'boolean') isCosmosTensionPanelOpen = forceOpen;
+    else isCosmosTensionPanelOpen = !isCosmosTensionPanelOpen;
+    renderCosmosTensionWidget();
 }
 
 function renderLiveNewsTicker() {
@@ -5116,6 +5178,11 @@ socket.on('presse_data', (articles) => {
 socket.on('world_timeline_data', (items) => {
     worldTimelineCache = Array.isArray(items) ? items : [];
     if(currentView === 'accueil') renderAccueil();
+});
+
+socket.on('cosmos_tension_data', (payload) => {
+    cosmosTensionCache = payload && typeof payload.value === 'number' ? payload : null;
+    renderCosmosTensionWidget();
 });
 
 socket.on('new_article', (post) => {

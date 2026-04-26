@@ -836,6 +836,109 @@ body[data-theme="ombra"] { --accent: #7c3aed; --accent-glow: rgba(124,58,237,0.3
 .presse-live-news-input::placeholder { color: rgba(255, 220, 220, 0.46); font-weight: 500; }
 .presse-live-news-copy { margin-top: 8px; font-size: 0.72rem; color: rgba(255, 210, 210, 0.82); }
 
+.cosmos-tension-widget { position: fixed; left: 16px; bottom: 16px; z-index: 430; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.cosmos-tension-fab {
+    --tension-glow: rgba(87, 203, 255, 0.25);
+    --tension-ink: #eaf7ff;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 58px;
+    padding: 8px 14px 8px 10px;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(8,18,34,0.96), rgba(7,12,25,0.96));
+    color: var(--tension-ink);
+    cursor: pointer;
+    box-shadow: 0 18px 36px rgba(0,0,0,0.28);
+    overflow: hidden;
+}
+.cosmos-tension-fab::before {
+    content: '';
+    position: absolute;
+    inset: 1px;
+    border-radius: inherit;
+    background: radial-gradient(circle at top left, rgba(255,255,255,0.12), transparent 30%), linear-gradient(120deg, rgba(255,255,255,0.08), transparent 46%);
+    pointer-events: none;
+}
+.cosmos-tension-fab.is-low { --tension-glow: rgba(87, 203, 255, 0.22); }
+.cosmos-tension-fab.is-guarded { --tension-glow: rgba(250, 204, 21, 0.26); }
+.cosmos-tension-fab.is-elevated { --tension-glow: rgba(251, 146, 60, 0.28); }
+.cosmos-tension-fab.is-high { --tension-glow: rgba(248, 113, 113, 0.32); }
+.cosmos-tension-fab.is-critical { --tension-glow: rgba(239, 68, 68, 0.38); animation: cosmosThreatPulse 1.8s ease-in-out infinite; }
+.cosmos-tension-ring {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    transform: translateY(-50%);
+    background: conic-gradient(from -90deg, rgba(255,255,255,0.92) 0 var(--tension-progress, 0%), rgba(255,255,255,0.08) var(--tension-progress, 0%) 100%);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 0 24px var(--tension-glow);
+}
+.cosmos-tension-ring::after {
+    content: '';
+    position: absolute;
+    inset: 5px;
+    border-radius: 50%;
+    background: rgba(5,10,22,0.92);
+}
+.cosmos-tension-planet {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 30% 28%, #65dcff 0%, #2d8dd6 28%, #173f8c 58%, #0c1538 100%);
+    box-shadow: inset -8px -10px 18px rgba(4, 10, 36, 0.58), inset 6px 6px 10px rgba(255,255,255,0.16), 0 0 24px var(--tension-glow);
+    overflow: hidden;
+    z-index: 1;
+}
+.cosmos-tension-planet::before,
+.cosmos-tension-planet::after {
+    content: '';
+    position: absolute;
+    border-radius: 999px;
+    background: rgba(114, 255, 191, 0.38);
+    filter: blur(0.4px);
+}
+.cosmos-tension-planet::before { width: 18px; height: 10px; top: 11px; left: 8px; transform: rotate(-18deg); }
+.cosmos-tension-planet::after { width: 14px; height: 9px; bottom: 10px; right: 8px; transform: rotate(24deg); }
+.cosmos-tension-core {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(circle at 72% 26%, rgba(255,255,255,0.26), transparent 22%), radial-gradient(circle at 30% 70%, rgba(255,255,255,0.14), transparent 34%);
+}
+.cosmos-tension-reading { display: flex; flex-direction: column; gap: 2px; min-width: 0; position: relative; z-index: 1; }
+.cosmos-tension-label { font-family: var(--font-display); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(226,241,255,0.72); }
+.cosmos-tension-value { font-size: 1.05rem; line-height: 1; color: white; }
+.cosmos-tension-panel { width: min(360px, calc(100vw - 32px)); border-radius: 20px; border: 1px solid rgba(255,255,255,0.08); background: linear-gradient(180deg, rgba(8,18,34,0.98), rgba(7,12,25,0.98)); box-shadow: 0 24px 44px rgba(0,0,0,0.38); padding: 14px; color: white; }
+.cosmos-tension-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.cosmos-tension-risk { margin-top: 4px; font-size: 0.74rem; color: rgba(214,232,255,0.74); }
+.cosmos-tension-summary { margin: 12px 0 14px; color: rgba(230,240,255,0.82); font-size: 0.82rem; line-height: 1.55; }
+.cosmos-tension-factors { display: flex; flex-direction: column; gap: 10px; }
+.cosmos-tension-factor { padding: 11px 12px; border-radius: 16px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); }
+.cosmos-tension-factor-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+.cosmos-tension-factor-name { font-size: 0.76rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(229,239,255,0.86); }
+.cosmos-tension-factor-value { font-size: 0.8rem; font-weight: 800; }
+.cosmos-tension-factor-value.is-positive { color: #ffd0d0; }
+.cosmos-tension-factor-value.is-negative { color: #b4ffdb; }
+.cosmos-tension-factor-bar { height: 7px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.cosmos-tension-factor-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, rgba(112,201,255,0.95), rgba(255,120,120,0.95)); }
+.cosmos-tension-factor-detail { margin-top: 7px; font-size: 0.73rem; color: rgba(212,227,245,0.72); line-height: 1.45; }
+.cosmos-tension-updated { margin-top: 12px; font-size: 0.7rem; color: rgba(212,227,245,0.58); }
+
+@keyframes cosmosThreatPulse {
+    0%, 100% { box-shadow: 0 18px 36px rgba(0,0,0,0.28), 0 0 0 0 rgba(239,68,68,0.12); }
+    50% { box-shadow: 0 18px 36px rgba(0,0,0,0.32), 0 0 0 10px rgba(239,68,68,0); }
+}
+
 .live-news-widget { position: fixed; right: 16px; bottom: 16px; z-index: 430; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
 .live-news-fab { position: relative; display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px; border: 1px solid rgba(255,255,255,0.12); border-radius: 999px; background: linear-gradient(180deg, rgba(186,28,28,0.98), rgba(127,29,29,0.98)); color: #fff4f4; cursor: pointer; box-shadow: 0 16px 32px rgba(67,9,9,0.35); }
 .live-news-fab.is-lit { box-shadow: 0 0 0 1px rgba(255,255,255,0.14), 0 0 28px rgba(255, 76, 76, 0.48), 0 16px 32px rgba(67,9,9,0.42); }
@@ -882,6 +985,11 @@ body[data-theme="ombra"] { --accent: #7c3aed; --accent-glow: rgba(124,58,237,0.3
 @media (max-width: 768px) {
     #main-view-wrapper { padding-bottom: 0; }
     .presse-live-compose-row { flex-direction: column; align-items: stretch; }
+    .cosmos-tension-widget { left: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 86px); }
+    .cosmos-tension-fab { min-height: 52px; padding-right: 12px; }
+    .cosmos-tension-label { font-size: 0.62rem; }
+    .cosmos-tension-value { font-size: 0.96rem; }
+    .cosmos-tension-panel { width: min(320px, calc(100vw - 24px)); }
     .live-news-widget { right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 86px); }
     .live-news-fab { min-height: 44px; padding: 0 12px; }
     .live-news-item-title { max-width: 58vw; }
@@ -1099,6 +1207,9 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 
 /* ── Zone principale ── */
 .char-mp-main { flex: 1; display: flex; flex-direction: column; background: var(--bg-chat); overflow: hidden; min-width: 0; }
+#char-mp-convo,
+.char-mp-main,
+.char-mp-messages { min-height: 0; }
 .char-mp-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; text-align: center; gap: 10px; }
 .char-mp-empty i { font-size: 2.5rem; color: var(--text-dim); }
 .char-mp-empty p { color: white; font-weight: 700; font-family: var(--font-display); margin: 0; }
@@ -3132,6 +3243,12 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
     transform: translateY(-50%) translateX(0) scale(1);
     opacity: 1;
     pointer-events: auto;
+}
+.reseau-panel {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
 }
 .reseau-tab {
     display: flex; align-items: center; justify-content: flex-start;

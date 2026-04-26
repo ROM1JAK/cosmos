@@ -657,6 +657,207 @@ async function broadcastAdminLogs() {
 	await emitToAdmins('admin_logs_data', await getRecentAdminLogs());
 }
 
+const COSMOS_TENSION_BASELINE = 12;
+const COSMOS_TENSION_POST_WINDOW_DAYS = 7;
+const COSMOS_TENSION_EVENT_WINDOW_DAYS = 10;
+const COSMOS_TENSION_LOG_WINDOW_DAYS = 5;
+const JOURNALIST_ROLE_PATTERN = /journaliste|presse/i;
+const CONFLICT_EVENT_PATTERN = /guerre|conflit|attaque|offensive|insurrection|blocus|sanction|crise|tension|embargo|mobilisation|rupture|emeute|émeute|coup d'?etat|attentat|bombard/i;
+
+const COSMOS_DIPLOMACY_STATUS_WEIGHTS = {
+	allie: -6,
+	pacte_defensif: -5,
+	axe_economique: -4,
+	coalition_gouvernementale: -4,
+	coalition_electorale: -3,
+	soutien_strategique: -2,
+	pacte_non_agression: -4,
+	partenariat: -2,
+	neutre: 0,
+	observateur: 1,
+	tension: 8,
+	opposition_parlementaire: 4,
+	rivalite_electorale: 5,
+	rivalite_ideologique: 6,
+	sanction: 10,
+	guerre_commerciale: 11,
+	blocus: 14,
+	hostile: 16,
+	contentieux_territorial: 15,
+	conflit_froid: 18,
+	insurrection_proxy: 19,
+	guerre: 24
+};
+
+const COSMOS_DIPLOMACY_CONTEXT_WEIGHTS = {
+	general: 0,
+	pacte_defensif: -1,
+	axe_economique: -1,
+	coalition_gouvernementale: -1,
+	coalition_electorale: 0,
+	soutien_strategique: 1,
+	mediation: -2,
+	opposition_parlementaire: 2,
+	rivalite_electorale: 2,
+	rivalite_ideologique: 3,
+	guerre_commerciale: 4,
+	contentieux_territorial: 5,
+	insurrection_proxy: 6
+};
+
+function clampNumber(value, min, max) {
+	return Math.max(min, Math.min(max, value));
+}
+
+function normalizeToPercent(value, min, max) {
+	if (max <= min) return 0;
+	return clampNumber(((value - min) / (max - min)) * 100, 0, 100);
+}
+
+function getCosmosTensionLevel(value) {
+	if (value >= 85) return { key: 'critical', label: 'Pre-conflit', riskLabel: 'Risque de conflit extreme' };
+	if (value >= 65) return { key: 'high', label: 'Tres tendu', riskLabel: 'Risque de conflit eleve' };
+	if (value >= 45) return { key: 'elevated', label: 'Sous pression', riskLabel: 'Risque de conflit accru' };
+	if (value >= 25) return { key: 'guarded', label: 'Vigilance', riskLabel: 'Situation a surveiller' };
+	return { key: 'low', label: 'Relativement calme', riskLabel: 'Risque de conflit faible' };
+}
+
+async function buildCosmosTension() {
+	const now = Date.now();
+	const recentPostCutoff = new Date(now - (COSMOS_TENSION_POST_WINDOW_DAYS * 24 * 60 * 60 * 1000));
+	const recentEventCutoff = new Date(now - (COSMOS_TENSION_EVENT_WINDOW_DAYS * 24 * 60 * 60 * 1000));
+	const recentLogCutoff = new Date(now - (COSMOS_TENSION_LOG_WINDOW_DAYS * 24 * 60 * 60 * 1000));
+
+	const [recentPosts, cityRelations, partyRelations, activeAlert, recentLogs, recentEvents] = await Promise.all([
+		Post.find({ timestamp: { $gte: recentPostCutoff } })
+			.select('authorRole isArticle isLiveNews isBreakingNews urgencyLevel isAnonymous journalName timestamp')
+			.lean(),
+		CityRelation.find().select('status contextCategory allianceGroupKey').lean(),
+		PartyRelation.find().select('status contextCategory allianceGroupKey').lean(),
+		Alert.findOne({ active: true }).sort({ timestamp: -1 }).lean(),
+		AdminLog.find({ createdAt: { $gte: recentLogCutoff }, timelineType: { $in: ['alert', 'event', 'article'] } })
+			.select('timelineType timelineTone message createdAt')
+			.lean(),
+		Event.find({ timestamp: { $gte: recentEventCutoff } }).select('evenement timestamp').lean()
+	]);
+
+	const allRelations = [...cityRelations, ...partyRelations];
+	const relationWeights = allRelations.map(relation => {
+		const statusWeight = COSMOS_DIPLOMACY_STATUS_WEIGHTS[relation.status] || 0;
+		const contextWeight = COSMOS_DIPLOMACY_CONTEXT_WEIGHTS[relation.contextCategory] || 0;
+		return statusWeight + contextWeight;
+	});
+	const relationAverage = relationWeights.length
+		? relationWeights.reduce((sum, value) => sum + value, 0) / relationWeights.length
+		: 0;
+	const diplomacyScore = relationWeights.length
+		? Math.round((normalizeToPercent(relationAverage, -8, 30) / 100) * 42)
+		: 8;
+
+	const hostileRelations = allRelations.filter(relation => (COSMOS_DIPLOMACY_STATUS_WEIGHTS[relation.status] || 0) >= 8).length;
+	const allianceRelations = allRelations.filter(relation => (COSMOS_DIPLOMACY_STATUS_WEIGHTS[relation.status] || 0) <= -2).length;
+	const allianceRelief = clampNumber(Math.round(allianceRelations * 1.4), 0, 10);
+
+	const journalistPosts = recentPosts.filter(post => JOURNALIST_ROLE_PATTERN.test(String(post.authorRole || '')) || post.isArticle || post.isLiveNews || post.journalName).length;
+	const breakingPosts = recentPosts.filter(post => post.isBreakingNews).length;
+	const liveNewsCount = recentPosts.filter(post => post.isLiveNews).length;
+	const urgentArticles = recentPosts.filter(post => post.isArticle && ['urgent', 'critique', 'alerte'].includes(String(post.urgencyLevel || '').toLowerCase())).length;
+	const anonymousLeaks = recentPosts.filter(post => post.isAnonymous).length;
+	const mediaScore = clampNumber(
+		Math.round(
+			Math.min(12, journalistPosts * 1.2)
+			+ Math.min(22, breakingPosts * 6)
+			+ Math.min(14, liveNewsCount * 3)
+			+ Math.min(10, urgentArticles * 4)
+			+ Math.min(6, anonymousLeaks * 1.5)
+		),
+		0,
+		34
+	);
+
+	const recentAlertLogs = recentLogs.filter(log => log.timelineType === 'alert' || log.timelineTone === 'alert').length;
+	const alertsScore = clampNumber((activeAlert ? 18 : 0) + Math.min(10, recentAlertLogs * 2), 0, 28);
+
+	const conflictEvents = recentEvents.filter(event => CONFLICT_EVENT_PATTERN.test(String(event.evenement || ''))).length;
+	const recentEventLogs = recentLogs.filter(log => log.timelineType === 'event').length;
+	const eventScore = clampNumber(Math.min(10, conflictEvents * 4) + Math.min(4, recentEventLogs), 0, 14);
+
+	const value = clampNumber(
+		COSMOS_TENSION_BASELINE + diplomacyScore + mediaScore + alertsScore + eventScore - allianceRelief,
+		0,
+		100
+	);
+	const level = getCosmosTensionLevel(value);
+	const factors = [
+		{
+			key: 'diplomacy',
+			label: 'Diplomatie',
+			value: diplomacyScore,
+			detail: `${hostileRelations} relations hostiles, ${allianceRelations} alliances/pactes stabilisateurs`
+		},
+		{
+			key: 'media',
+			label: 'Pression mediatique',
+			value: mediaScore,
+			detail: `${journalistPosts} contenus journalistiques recents, ${breakingPosts} breaking news, ${liveNewsCount} directs`
+		},
+		{
+			key: 'alerts',
+			label: 'Alertes',
+			value: alertsScore,
+			detail: activeAlert ? 'Une alerte globale est active' : `${recentAlertLogs} alertes recentes dans la timeline admin`
+		},
+		{
+			key: 'events',
+			label: 'Evenements sensibles',
+			value: eventScore,
+			detail: `${conflictEvents} evenement(s) recent(s) a vocabulaire conflictuel`
+		},
+		{
+			key: 'stability',
+			label: 'Stabilite des alliances',
+			value: -allianceRelief,
+			detail: allianceRelief ? `${allianceRelief} points retires grace aux pactes et alliances` : 'Aucun effet stabilisateur notable'
+		}
+	];
+
+	return {
+		value,
+		label: `${value}%`,
+		level: level.key,
+		levelLabel: level.label,
+		riskLabel: level.riskLabel,
+		summary: `${level.riskLabel}. Diplomatie ${hostileRelations > allianceRelations ? 'en degradation' : 'encore contenue'} et pression mediatique ${mediaScore >= 20 ? 'forte' : 'mesuree'}.`,
+		updatedAt: new Date().toISOString(),
+		breakdown: {
+			base: COSMOS_TENSION_BASELINE,
+			diplomacy: diplomacyScore,
+			media: mediaScore,
+			alerts: alertsScore,
+			events: eventScore,
+			stability: -allianceRelief
+		},
+		stats: {
+			cityRelations: cityRelations.length,
+			partyRelations: partyRelations.length,
+			hostileRelations,
+			allianceRelations,
+			journalistPosts,
+			breakingPosts,
+			liveNewsCount,
+			urgentArticles,
+			anonymousLeaks,
+			activeAlert: !!activeAlert,
+			conflictEvents
+		},
+		factors
+	};
+}
+
+async function broadcastCosmosTension() {
+	io.emit('cosmos_tension_data', await buildCosmosTension());
+}
+
 async function buildWorldTimeline(limit = 28) {
 	const [posts, articles, events, logs] = await Promise.all([
 		Post.find({ isArticle: { $ne: true }, isLiveNews: { $ne: true } }).sort({ timestamp: -1 }).limit(12),
@@ -779,8 +980,10 @@ initSocketHandlers({
 	createNotification,
 	extractArticleTitle,
 	broadcastWorldTimeline,
+	broadcastCosmosTension,
 	broadcastAdminLogs,
 	getRecentAdminLogs,
+	buildCosmosTension,
 	applyStockValueChange,
 	syncCharacterStocksWithCompanies,
 	syncCharacterCompanyFromStock,

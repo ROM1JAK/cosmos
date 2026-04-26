@@ -2046,6 +2046,31 @@
         </div>
     </div>
 
+    <div id="cosmos-tension-widget" class="cosmos-tension-widget hidden" aria-live="polite">
+        <button type="button" id="cosmos-tension-fab" class="cosmos-tension-fab" onclick="toggleCosmosTensionPanel()" aria-expanded="false">
+            <span class="cosmos-tension-ring"></span>
+            <span class="cosmos-tension-planet" aria-hidden="true">
+                <span class="cosmos-tension-core"></span>
+            </span>
+            <span class="cosmos-tension-reading">
+                <span class="cosmos-tension-label">Tension du Cosmos</span>
+                <strong id="cosmos-tension-value" class="cosmos-tension-value">0%</strong>
+            </span>
+        </button>
+        <div id="cosmos-tension-panel" class="cosmos-tension-panel hidden">
+            <div class="cosmos-tension-panel-head">
+                <div>
+                    <strong id="cosmos-tension-level">Relativement calme</strong>
+                    <div id="cosmos-tension-risk" class="cosmos-tension-risk">Risque de conflit faible</div>
+                </div>
+                <button type="button" class="btn-secondary" onclick="toggleCosmosTensionPanel(false)">Fermer</button>
+            </div>
+            <p id="cosmos-tension-summary" class="cosmos-tension-summary"></p>
+            <div id="cosmos-tension-factors" class="cosmos-tension-factors"></div>
+            <div id="cosmos-tension-updated" class="cosmos-tension-updated"></div>
+        </div>
+    </div>
+
     <div id="live-news-widget" class="live-news-widget hidden" aria-live="polite">
         <button type="button" id="live-news-fab" class="live-news-fab" onclick="toggleLiveNewsPanel()" aria-expanded="false">
             <span class="live-news-fab-ping"></span>
