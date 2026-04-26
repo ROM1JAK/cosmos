@@ -1151,6 +1151,7 @@ module.exports = function initSocketHandlers(deps) {
   // ========== [DIPLOMATIE] SOCKET EVENTS ==========
     const DIPLO_STATUS_VALUES = new Set(['allie', 'pacte_defensif', 'axe_economique', 'coalition_gouvernementale', 'coalition_electorale', 'soutien_strategique', 'pacte_non_agression', 'partenariat', 'neutre', 'observateur', 'tension', 'opposition_parlementaire', 'rivalite_electorale', 'rivalite_ideologique', 'sanction', 'guerre_commerciale', 'blocus', 'hostile', 'contentieux_territorial', 'conflit_froid', 'insurrection_proxy', 'guerre']);
     const DIPLO_GROUPABLE_STATUSES = new Set(['allie', 'pacte_defensif', 'axe_economique', 'coalition_gouvernementale', 'coalition_electorale', 'soutien_strategique']);
+    const DIPLO_COLLECTIVE_CONFLICT_STATUSES = new Set(['tension', 'sanction', 'guerre_commerciale', 'blocus', 'hostile', 'contentieux_territorial', 'conflit_froid', 'insurrection_proxy', 'guerre']);
   const DIPLO_CONTEXT_VALUES = new Set(['general', 'pacte_defensif', 'axe_economique', 'coalition_gouvernementale', 'coalition_electorale', 'soutien_strategique', 'mediation', 'opposition_parlementaire', 'rivalite_electorale', 'rivalite_ideologique', 'guerre_commerciale', 'contentieux_territorial', 'insurrection_proxy']);
 
   function normalizePartyKey(name = '') {
@@ -1259,6 +1260,22 @@ module.exports = function initSocketHandlers(deps) {
       await relation.save();
   }
 
+  async function resolveAllianceMemberCityIds(allianceGroupKey, fallbackCityIds = []) {
+      if(allianceGroupKey) {
+          const allianceRelations = await CityRelation.find({ allianceGroupKey }).select('cityA cityB').lean();
+          const memberIds = new Set();
+          allianceRelations.forEach(relation => {
+              if(relation.cityA) memberIds.add(String(relation.cityA));
+              if(relation.cityB) memberIds.add(String(relation.cityB));
+          });
+          if(memberIds.size >= 2) return [...memberIds].sort();
+      }
+
+      return [...new Set((Array.isArray(fallbackCityIds) ? fallbackCityIds : [])
+          .map(id => String(id || '').trim())
+          .filter(Boolean))].sort();
+  }
+
   socket.on('request_city_relations', async () => {
       await emitDiplomacyRelations(socket);
   });
@@ -1352,6 +1369,42 @@ module.exports = function initSocketHandlers(deps) {
 
       if(allianceGroupKey) await Model.deleteMany({ allianceGroupKey });
       else if(relationId) await Model.findByIdAndDelete(relationId);
+
+      await emitDiplomacyRelations(io);
+      await broadcastCosmosTension();
+  });
+
+  socket.on('admin_upsert_collective_conflict', async ({ allianceGroupKey, sourceCityIds, targetCityIds, status, contextCategory, description, initiatedBy, since }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+
+      const safeStatus = DIPLO_COLLECTIVE_CONFLICT_STATUSES.has(status) ? status : '';
+      if(!safeStatus) return;
+
+      const allianceMemberIds = await resolveAllianceMemberCityIds(allianceGroupKey, sourceCityIds);
+      if(allianceMemberIds.length < 2) return;
+
+      const allianceMemberSet = new Set(allianceMemberIds);
+      const normalizedTargetIds = [...new Set((Array.isArray(targetCityIds) ? targetCityIds : [])
+          .map(id => String(id || '').trim())
+          .filter(id => id && !allianceMemberSet.has(id)))].sort();
+      if(!normalizedTargetIds.length) return;
+
+      const payload = {
+          status: safeStatus,
+          contextCategory: DIPLO_CONTEXT_VALUES.has(contextCategory) ? contextCategory : 'general',
+          description: description || '',
+          initiatedBy: initiatedBy || '',
+          sinceDate: since ? new Date(since) : null,
+          allianceGroupKey: ''
+      };
+
+      for(const memberId of allianceMemberIds) {
+          for(const targetId of normalizedTargetIds) {
+              await saveCityRelationPair(memberId, targetId, payload);
+          }
+      }
 
       await emitDiplomacyRelations(io);
       await broadcastCosmosTension();

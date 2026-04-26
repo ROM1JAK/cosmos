@@ -6165,6 +6165,7 @@ let renderedDiplomacyRelationsCache = [];
 let currentDiploTab = 'geo';
 const expandedDiploAllianceIds = new Set();
 const DIPLO_GROUPABLE_STATUSES = new Set(['allie', 'pacte_defensif', 'axe_economique', 'coalition_gouvernementale', 'coalition_electorale', 'soutien_strategique']);
+const DIPLO_COLLECTIVE_CONFLICT_STATUSES = new Set(['tension', 'sanction', 'guerre_commerciale', 'blocus', 'hostile', 'contentieux_territorial', 'conflit_froid', 'insurrection_proxy', 'guerre']);
 
 const DIPLO_STATUS_META = {
     allie:                     { label: 'Allié', icon: '🤝', tier: 0 },
@@ -6317,6 +6318,119 @@ function populateDiploModalSelects() {
     if(help) {
         help.textContent = `Sélectionne 2 ${scope === 'party' ? 'partis' : 'cités'} pour une relation classique. Avec un statut d'alliance, tu peux en sélectionner 3 ou plus pour créer ou modifier une alliance collective.`;
     }
+
+    updateDiploCollectiveConflictUI();
+}
+
+function getDiploCollectiveAllianceMemberKeys() {
+    return Array.from(document.getElementById('diploEntityIds')?.selectedOptions || []).map(opt => String(opt.value));
+}
+
+function getCollectiveConflictTargetsForAlliance(memberKeys, statusFilter = '') {
+    if(!Array.isArray(memberKeys) || memberKeys.length < 3) return [];
+
+    const memberSet = new Set(memberKeys.map(key => String(key)));
+    const matchCountByTarget = new Map();
+    const statusByTarget = new Map();
+    const entityByTarget = new Map();
+
+    cityRelationsData.forEach(relation => {
+        if((relation.relationScope || 'city') !== 'city' || relation.allianceGroupKey) return;
+        const entities = getDiploRelationEntities(relation);
+        if(entities.length !== 2) return;
+
+        const inside = entities.find(entity => memberSet.has(String(entity.key)));
+        const outside = entities.find(entity => !memberSet.has(String(entity.key)));
+        if(!inside || !outside) return;
+
+        const targetKey = String(outside.key);
+        if(statusFilter && relation.status !== statusFilter) return;
+        if(statusByTarget.has(targetKey) && statusByTarget.get(targetKey) !== relation.status) return;
+
+        statusByTarget.set(targetKey, relation.status);
+        entityByTarget.set(targetKey, outside);
+        matchCountByTarget.set(targetKey, (matchCountByTarget.get(targetKey) || 0) + 1);
+    });
+
+    return [...matchCountByTarget.entries()]
+        .filter(([, count]) => count === memberSet.size)
+        .map(([targetKey]) => ({
+            key: targetKey,
+            entity: entityByTarget.get(targetKey),
+            status: statusByTarget.get(targetKey)
+        }))
+        .filter(entry => entry.entity)
+        .sort((left, right) => {
+            const leftTier = DIPLO_STATUS_META[left.status]?.tier ?? 99;
+            const rightTier = DIPLO_STATUS_META[right.status]?.tier ?? 99;
+            return rightTier - leftTier || left.entity.name.localeCompare(right.entity.name, 'fr');
+        });
+}
+
+function updateDiploCollectiveConflictUI(prefill = null) {
+    const section = document.getElementById('diploCollectiveConflictSection');
+    const targetSelect = document.getElementById('diploCollectiveConflictTargets');
+    const statusSelect = document.getElementById('diploCollectiveConflictStatus');
+    const help = document.getElementById('diploCollectiveConflictHelp');
+    const scope = document.getElementById('diploRelationScope')?.value || 'city';
+    const relationStatus = document.getElementById('diploStatus')?.value || 'neutre';
+    const memberKeys = getDiploCollectiveAllianceMemberKeys();
+    const isCollectiveAlliance = scope === 'city' && DIPLO_GROUPABLE_STATUSES.has(relationStatus) && memberKeys.length >= 3;
+
+    if(!section || !targetSelect || !statusSelect || !help) return;
+
+    section.classList.toggle('hidden', !isCollectiveAlliance);
+    if(!isCollectiveAlliance) {
+        targetSelect.innerHTML = '';
+        targetSelect.value = '';
+        statusSelect.value = '';
+        return;
+    }
+
+    const previousSelectedTargets = new Set(prefill?.targetKeys || Array.from(targetSelect.selectedOptions).map(opt => String(opt.value)));
+    const preferredStatus = prefill?.status || statusSelect.value || '';
+    const memberSet = new Set(memberKeys.map(key => String(key)));
+    const targetEntities = getDiploEntitiesForScope('city')
+        .filter(entity => !memberSet.has(String(entity.key)))
+        .sort((left, right) => left.name.localeCompare(right.name, 'fr'));
+
+    targetSelect.innerHTML = '';
+    targetEntities.forEach(entity => {
+        const opt = document.createElement('option');
+        opt.value = entity.key;
+        opt.textContent = entity.name;
+        if(previousSelectedTargets.has(String(entity.key))) opt.selected = true;
+        targetSelect.appendChild(opt);
+    });
+
+    let collectiveConflicts = [];
+    if(preferredStatus) {
+        collectiveConflicts = getCollectiveConflictTargetsForAlliance(memberKeys, preferredStatus);
+        if(!previousSelectedTargets.size && collectiveConflicts.length) {
+            const preselected = new Set(collectiveConflicts.map(item => item.key));
+            Array.from(targetSelect.options).forEach(opt => {
+                opt.selected = preselected.has(String(opt.value));
+            });
+        }
+    } else {
+        collectiveConflicts = getCollectiveConflictTargetsForAlliance(memberKeys);
+        const firstConflict = collectiveConflicts[0];
+        if(firstConflict) {
+            statusSelect.value = firstConflict.status;
+            const preselected = new Set(collectiveConflicts.filter(item => item.status === firstConflict.status).map(item => item.key));
+            Array.from(targetSelect.options).forEach(opt => {
+                opt.selected = preselected.has(String(opt.value));
+            });
+        }
+    }
+
+    help.textContent = 'Applique le meme conflit a chaque membre de l\'alliance contre les cites selectionnees. Les relations internes de l\'alliance ne sont pas modifiees.';
+}
+
+function getGroupedAllianceCollectiveConflicts(relation) {
+    if(!relation?.isGroupedAlliance || relation.relationScope !== 'city') return [];
+    const memberKeys = (relation.entities || []).map(entity => String(entity.key));
+    return getCollectiveConflictTargetsForAlliance(memberKeys);
 }
 
 function groupDiplomacyRelations(relations) {
@@ -6432,8 +6546,12 @@ function renderDiploCard(relation) {
         const maxVisible = 4;
         const visibleEntities = expanded ? (relation.entities || []) : (relation.entities || []).slice(0, maxVisible);
         const remainingCount = Math.max(0, (relation.entities || []).length - visibleEntities.length);
+        const collectiveConflicts = getGroupedAllianceCollectiveConflicts(relation);
         const expandButton = remainingCount > 0 || expanded
             ? `<button class="diplo-alliance-more" onclick="event.stopPropagation(); toggleDiploAllianceExpanded('${String(relation._id).replace(/'/g, "\\'")}')">${expanded ? 'Réduire' : `et ${remainingCount} ${relation.relationScope === 'party' ? 'partis' : 'cités'}`}</button>`
+            : '';
+        const conflictSummary = collectiveConflicts.length
+            ? `<div class="diplo-card-meta"><i class="fa-solid fa-burst"></i> Conflits collectifs : ${collectiveConflicts.map(item => `${DIPLO_STATUS_META[item.status]?.icon || '❓'} ${escapeHtml(item.entity.name || '—')}`).join(', ')}</div>`
             : '';
         return `
         <div class="diplo-card diplo-card-grouped-alliance">
@@ -6449,6 +6567,7 @@ function renderDiploCard(relation) {
                 <div class="diplo-alliance-grid">${visibleEntities.map(renderDiploEntityToken).join('')}</div>
                 ${expandButton}
                 <div class="diplo-card-tags"><span class="diplo-status-badge diplo-badge-${relation.status}">${meta.icon} ${meta.label}</span></div>
+                ${conflictSummary}
                 ${since ? `<div class="diplo-card-meta"><i class="fa-regular fa-calendar"></i> Depuis le ${since}</div>` : ''}
                 ${relation.initiatedBy ? `<div class="diplo-card-meta"><i class="fa-solid fa-user"></i> ${escapeHtml(relation.initiatedBy)}</div>` : ''}
                 ${relation.description ? `<div class="diplo-card-desc">${escapeHtml(relation.description)}</div>` : ''}
@@ -6486,6 +6605,7 @@ function openDiploModal(relationId) {
         : null;
     const scopeInput = document.getElementById('diploRelationScope');
     const entitySelect = document.getElementById('diploEntityIds');
+    const collectiveConflictStatus = document.getElementById('diploCollectiveConflictStatus');
 
     document.getElementById('diploRelationId').value = '';
     document.getElementById('diploAllianceGroupKey').value = '';
@@ -6493,6 +6613,7 @@ function openDiploModal(relationId) {
     populateDiploModalSelects();
     Array.from(entitySelect.options).forEach(opt => { opt.selected = false; });
     document.getElementById('diploStatus').value = 'neutre';
+    if(collectiveConflictStatus) collectiveConflictStatus.value = '';
     document.getElementById('diploInitiatedBy').value = '';
     document.getElementById('diploDesc').value = '';
     document.getElementById('diploSince').value = new Date().toISOString().split('T')[0];
@@ -6510,6 +6631,16 @@ function openDiploModal(relationId) {
         if(relation.since) document.getElementById('diploSince').value = new Date(relation.since).toISOString().split('T')[0];
     }
 
+    const prefillConflicts = relation?.isGroupedAlliance
+        ? getGroupedAllianceCollectiveConflicts(relation)
+        : [];
+    updateDiploCollectiveConflictUI(prefillConflicts.length
+        ? {
+            status: prefillConflicts[0].status,
+            targetKeys: prefillConflicts.filter(item => item.status === prefillConflicts[0].status).map(item => item.key)
+        }
+        : null);
+
     document.getElementById('diplo-modal').classList.remove('hidden');
     snapForm('diplo-modal');
 }
@@ -6522,15 +6653,26 @@ function submitDiploRelation() {
     const relationScope = document.getElementById('diploRelationScope').value || 'city';
     const selectedIds = Array.from(document.getElementById('diploEntityIds').selectedOptions).map(opt => String(opt.value));
     const status = document.getElementById('diploStatus').value;
+    const collectiveConflictStatus = document.getElementById('diploCollectiveConflictStatus')?.value || '';
+    const collectiveConflictTargets = Array.from(document.getElementById('diploCollectiveConflictTargets')?.selectedOptions || []).map(opt => String(opt.value));
     const initiatedBy = document.getElementById('diploInitiatedBy').value.trim();
     const description = document.getElementById('diploDesc').value.trim();
     const since = document.getElementById('diploSince').value;
     const relationId = document.getElementById('diploRelationId').value;
-    const allianceGroupKey = document.getElementById('diploAllianceGroupKey').value;
+    let allianceGroupKey = document.getElementById('diploAllianceGroupKey').value;
 
     if(selectedIds.length < 2) return alert(`Sélectionnez au moins deux ${relationScope === 'party' ? 'partis' : 'cités'}.`);
     if(!allianceGroupKey && relationId && selectedIds.length !== 2) return alert('Une relation simple ne peut concerner que deux entités.');
     if(!DIPLO_GROUPABLE_STATUSES.has(status) && selectedIds.length !== 2) return alert('Les relations hors alliance collective doivent concerner exactement deux entités.');
+    if(collectiveConflictStatus && !DIPLO_COLLECTIVE_CONFLICT_STATUSES.has(collectiveConflictStatus)) return alert('Le statut de conflit collectif est invalide.');
+    if(collectiveConflictTargets.length && (!DIPLO_GROUPABLE_STATUSES.has(status) || relationScope !== 'city' || selectedIds.length < 3)) {
+        return alert('Le conflit collectif externe est réservé aux alliances collectives entre cités.');
+    }
+    if(collectiveConflictStatus && !collectiveConflictTargets.length) return alert('Sélectionnez au moins une cité opposée pour créer un conflit collectif.');
+
+    if(!allianceGroupKey && relationScope === 'city' && DIPLO_GROUPABLE_STATUSES.has(status) && selectedIds.length > 2) {
+        allianceGroupKey = `city:${[...selectedIds].sort().join('|')}:${Date.now()}`;
+    }
 
     socket.emit('admin_upsert_city_relation', {
         relationId: relationId || null,
@@ -6545,6 +6687,18 @@ function submitDiploRelation() {
         description,
         since
     });
+
+    if(relationScope === 'city' && collectiveConflictStatus && collectiveConflictTargets.length) {
+        socket.emit('admin_upsert_collective_conflict', {
+            allianceGroupKey,
+            sourceCityIds: selectedIds,
+            targetCityIds: collectiveConflictTargets,
+            status: collectiveConflictStatus,
+            initiatedBy,
+            description,
+            since
+        });
+    }
     _unsavedBypass = true;
     closeDiploModal();
 }

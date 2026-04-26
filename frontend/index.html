@@ -1712,16 +1712,16 @@
             <input type="hidden" id="diploRelationId">
             <input type="hidden" id="diploAllianceGroupKey">
             <label class="cfl">Type de relation</label>
-            <select id="diploRelationScope" class="modal-input" onchange="populateDiploModalSelects()">
+            <select id="diploRelationScope" class="modal-input" onchange="populateDiploModalSelects(); updateDiploCollectiveConflictUI()">
                 <option value="city">Entre cités</option>
                 <option value="party">Entre partis politiques</option>
             </select>
             <label class="cfl" style="margin-top:10px;">Entités concernées</label>
-            <select id="diploEntityIds" class="modal-input diplo-multiselect" multiple size="8">
+            <select id="diploEntityIds" class="modal-input diplo-multiselect" multiple size="8" onchange="updateDiploCollectiveConflictUI()">
             </select>
             <div id="diplo-modal-help" class="diplo-modal-help">Sélectionne 2 entités pour une relation classique. Avec le statut Allié, tu peux en sélectionner 3 ou plus pour créer ou modifier une alliance collective.</div>
             <label class="cfl" style="margin-top:10px;">Statut diplomatique</label>
-            <select id="diploStatus" class="modal-input">
+            <select id="diploStatus" class="modal-input" onchange="updateDiploCollectiveConflictUI()">
                 <option value="allie">🤝 Allié — Alliance militaire & économique</option>
                 <option value="pacte_defensif">🛡️ Pacte défensif</option>
                 <option value="axe_economique">💹 Axe économique</option>
@@ -1745,6 +1745,25 @@
                 <option value="insurrection_proxy">🔥 Conflit par procuration</option>
                 <option value="guerre">💥 En guerre ouverte</option>
             </select>
+            <div id="diploCollectiveConflictSection" class="hidden" style="margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:rgba(255,255,255,0.02);">
+                <div class="cfl" style="margin-bottom:8px;display:block;">Conflit collectif de l'alliance</div>
+                <div id="diploCollectiveConflictHelp" class="diplo-modal-help" style="margin-bottom:10px;">Applique le meme conflit a chaque membre de l'alliance contre les cites selectionnees ci-dessous.</div>
+                <label class="cfl">Statut du conflit externe</label>
+                <select id="diploCollectiveConflictStatus" class="modal-input" onchange="updateDiploCollectiveConflictUI()">
+                    <option value="">Aucun conflit collectif a ajouter</option>
+                    <option value="tension">⚠️ Tension diplomatique</option>
+                    <option value="sanction">🚫 Sanctions economiques</option>
+                    <option value="guerre_commerciale">📉 Guerre commerciale</option>
+                    <option value="blocus">⛔ Blocus</option>
+                    <option value="hostile">☠️ Relations hostiles</option>
+                    <option value="contentieux_territorial">🗺️ Contentieux territorial</option>
+                    <option value="conflit_froid">❄️ Conflit froid</option>
+                    <option value="insurrection_proxy">🔥 Conflit par procuration</option>
+                    <option value="guerre">💥 En guerre ouverte</option>
+                </select>
+                <label class="cfl" style="margin-top:10px;">Cites opposees</label>
+                <select id="diploCollectiveConflictTargets" class="modal-input diplo-multiselect" multiple size="6"></select>
+            </div>
             <label class="cfl" style="margin-top:10px;">Initiée par (personnage / événement)</label>
             <input type="text" id="diploInitiatedBy" class="modal-input" placeholder="Ex: Commandant Arvan, Traité de Solara…">
             <label class="cfl" style="margin-top:10px;">Depuis le</label>
