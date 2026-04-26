@@ -2256,7 +2256,8 @@ body[data-alert="blue"]   { outline: 3px solid rgba(59,130,246,0.25); outline-of
 #feed-pub-stock-wrap, #presse-pub-stock-wrap { padding: 6px 0 2px; }
 
 /* ====== MES PERSONNAGES VIEW ====== */
-.mes-persos-container { padding: 4px 0 40px; }
+#view-mes-persos { flex-direction: column; }
+.mes-persos-container { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0 40px; }
 .mp-admin-panel { margin: 0 0 16px; background: linear-gradient(135deg, rgba(245,158,11,0.12), rgba(20,21,26,0.95)); border: 1px solid rgba(245,158,11,0.32); border-radius: var(--radius-xl); padding: 14px 16px; }
 .mp-admin-header { font-family: var(--font-display); font-size: 0.8rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #f9be48; display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .mp-admin-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
