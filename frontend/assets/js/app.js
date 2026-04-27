@@ -6717,18 +6717,25 @@ function renderDiploCard(relation) {
         const sourceEntities = relation.sourceEntities || [];
         const targetEntity = relation.targetEntity;
         const allianceName = String(relation.sourceAllianceGroupName || '').trim() || 'Alliance collective';
+        const expanded = expandedDiploAllianceIds.has(String(relation._id));
+        const visibleEntities = expanded ? sourceEntities : sourceEntities.slice(0, 2);
+        const remainingCount = Math.max(0, sourceEntities.length - visibleEntities.length);
+        const expandButton = sourceEntities.length
+            ? `<button class="diplo-alliance-more" onclick="event.stopPropagation(); toggleDiploAllianceExpanded('${String(relation._id).replace(/'/g, "\\'")}')">${expanded ? 'Masquer les membres' : `Voir les membres (${sourceEntities.length})`}</button>`
+            : '';
         return `
         <div class="diplo-card diplo-card-grouped-alliance">
             <div class="diplo-card-banner diplo-banner-${relation.status}"></div>
             <div class="diplo-card-body">
                 <div class="diplo-alliance-head">
                     <div>
-                        <div class="diplo-alliance-title">${escapeHtml(allianceName)}</div>
+                        <button type="button" class="diplo-alliance-title" style="background:none;border:none;padding:0;color:inherit;cursor:pointer;text-align:left;font:inherit;" onclick="event.stopPropagation(); toggleDiploAllianceExpanded('${String(relation._id).replace(/'/g, "\\'")}')">${escapeHtml(allianceName)}</button>
                         <div class="diplo-scope-label">Alliance de ${relation.sourceAllianceScope === 'party' ? 'partis' : 'cités'} contre ${targetEntity?.scope === 'party' ? 'un parti' : 'une cité'}</div>
                     </div>
                     <div class="diplo-alliance-count">${sourceEntities.length} ${relation.sourceAllianceScope === 'party' ? 'partis' : 'cités'}</div>
                 </div>
-                <div class="diplo-alliance-grid">${sourceEntities.slice(0, 4).map(renderDiploEntityToken).join('')}</div>
+                <div class="diplo-alliance-grid">${visibleEntities.map(renderDiploEntityToken).join('')}</div>
+                ${expandButton}
                 <div class="diplo-card-cities">
                     <div class="diplo-cities-pair">
                         <div class="diplo-vs">VS</div>

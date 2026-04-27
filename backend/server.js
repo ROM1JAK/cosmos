@@ -723,6 +723,101 @@ function getCosmosTensionLevel(value) {
 	return { key: 'low', label: 'Relativement calme', riskLabel: 'Risque de conflit faible' };
 }
 
+function getDiplomacyRelationWeight(status, contextCategory) {
+	const statusWeight = COSMOS_DIPLOMACY_STATUS_WEIGHTS[status] || 0;
+	const contextWeight = COSMOS_DIPLOMACY_CONTEXT_WEIGHTS[contextCategory] || 0;
+	return statusWeight + contextWeight;
+}
+
+function buildDiplomacyImpact(baseWeight, participantCount, relationKind) {
+	const safeParticipants = Math.max(2, Number(participantCount) || 2);
+	if (baseWeight === 0) return 0;
+
+	if (baseWeight > 0) {
+		const spread = 1 + Math.min(2.2, (safeParticipants - 2) * (relationKind === 'mixed' ? 0.45 : 0.3));
+		const flashpointBonus = relationKind === 'mixed' ? 1.25 : 1;
+		return baseWeight * spread * flashpointBonus;
+	}
+
+	const stabilitySpread = 1 + Math.min(1.1, (safeParticipants - 2) * 0.18);
+	return baseWeight * stabilitySpread;
+}
+
+function summarizeDiplomacyRelations(cityRelations, partyRelations, mixedRelations) {
+	const allianceBuckets = new Map();
+	const records = [];
+
+	cityRelations.forEach(relation => {
+		if (relation.allianceGroupKey) {
+			const bucketKey = `city:${relation.allianceGroupKey}`;
+			if (!allianceBuckets.has(bucketKey)) {
+				allianceBuckets.set(bucketKey, {
+					relationKind: 'alliance',
+					scope: 'city',
+					status: relation.status,
+					contextCategory: relation.contextCategory,
+					members: new Set()
+				});
+			}
+			const bucket = allianceBuckets.get(bucketKey);
+			if (relation.cityA) bucket.members.add(String(relation.cityA));
+			if (relation.cityB) bucket.members.add(String(relation.cityB));
+			return;
+		}
+
+		records.push({ relationKind: 'bilateral', status: relation.status, contextCategory: relation.contextCategory, participantCount: 2 });
+	});
+
+	partyRelations.forEach(relation => {
+		if (relation.allianceGroupKey) {
+			const bucketKey = `party:${relation.allianceGroupKey}`;
+			if (!allianceBuckets.has(bucketKey)) {
+				allianceBuckets.set(bucketKey, {
+					relationKind: 'alliance',
+					scope: 'party',
+					status: relation.status,
+					contextCategory: relation.contextCategory,
+					members: new Set()
+				});
+			}
+			const bucket = allianceBuckets.get(bucketKey);
+			if (relation.partyA?.key) bucket.members.add(String(relation.partyA.key));
+			if (relation.partyB?.key) bucket.members.add(String(relation.partyB.key));
+			return;
+		}
+
+		records.push({ relationKind: 'bilateral', status: relation.status, contextCategory: relation.contextCategory, participantCount: 2 });
+	});
+
+	allianceBuckets.forEach(bucket => {
+		records.push({
+			relationKind: 'alliance',
+			status: bucket.status,
+			contextCategory: bucket.contextCategory,
+			participantCount: bucket.members.size
+		});
+	});
+
+	mixedRelations.forEach(relation => {
+		records.push({
+			relationKind: 'mixed',
+			status: relation.status,
+			contextCategory: relation.contextCategory,
+			participantCount: (relation.sourceEntities?.length || 0) + (relation.targetEntity ? 1 : 0)
+		});
+	});
+
+	return records.map(record => {
+		const baseWeight = getDiplomacyRelationWeight(record.status, record.contextCategory);
+		const impact = buildDiplomacyImpact(baseWeight, record.participantCount, record.relationKind);
+		return {
+			...record,
+			baseWeight,
+			impact
+		};
+	});
+}
+
 async function buildCosmosTension() {
 	const now = Date.now();
 	const recentPostCutoff = new Date(now - (COSMOS_TENSION_POST_WINDOW_DAYS * 24 * 60 * 60 * 1000));
@@ -733,9 +828,9 @@ async function buildCosmosTension() {
 		Post.find({ timestamp: { $gte: recentPostCutoff } })
 			.select('authorRole isArticle isLiveNews isBreakingNews urgencyLevel isAnonymous journalName timestamp')
 			.lean(),
-		CityRelation.find().select('status contextCategory allianceGroupKey').lean(),
-		PartyRelation.find().select('status contextCategory allianceGroupKey').lean(),
-		MixedRelation.find().select('status contextCategory sourceAllianceGroupKey').lean(),
+		CityRelation.find().select('status contextCategory allianceGroupKey cityA cityB').lean(),
+		PartyRelation.find().select('status contextCategory allianceGroupKey partyA partyB').lean(),
+		MixedRelation.find().select('status contextCategory sourceAllianceGroupKey sourceEntities targetEntity').lean(),
 		Alert.findOne({ active: true }).sort({ timestamp: -1 }).lean(),
 		AdminLog.find({ createdAt: { $gte: recentLogCutoff }, timelineType: { $in: ['alert', 'event', 'article'] } })
 			.select('timelineType timelineTone message createdAt')
@@ -743,22 +838,23 @@ async function buildCosmosTension() {
 		Event.find({ timestamp: { $gte: recentEventCutoff } }).select('evenement timestamp').lean()
 	]);
 
-	const allRelations = [...cityRelations, ...partyRelations, ...mixedRelations];
-	const relationWeights = allRelations.map(relation => {
-		const statusWeight = COSMOS_DIPLOMACY_STATUS_WEIGHTS[relation.status] || 0;
-		const contextWeight = COSMOS_DIPLOMACY_CONTEXT_WEIGHTS[relation.contextCategory] || 0;
-		return statusWeight + contextWeight;
-	});
-	const relationAverage = relationWeights.length
-		? relationWeights.reduce((sum, value) => sum + value, 0) / relationWeights.length
-		: 0;
-	const diplomacyScore = relationWeights.length
-		? Math.round((normalizeToPercent(relationAverage, -8, 30) / 100) * 42)
-		: 8;
-
-	const hostileRelations = allRelations.filter(relation => (COSMOS_DIPLOMACY_STATUS_WEIGHTS[relation.status] || 0) >= 8).length;
-	const allianceRelations = allRelations.filter(relation => (COSMOS_DIPLOMACY_STATUS_WEIGHTS[relation.status] || 0) <= -2).length;
-	const allianceRelief = clampNumber(Math.round(allianceRelations * 1.4), 0, 10);
+	const diplomacyRecords = summarizeDiplomacyRelations(cityRelations, partyRelations, mixedRelations);
+	const hostilePressure = diplomacyRecords.reduce((sum, record) => sum + Math.max(0, record.impact), 0);
+	const stabilityPressure = diplomacyRecords.reduce((sum, record) => sum + Math.abs(Math.min(0, record.impact)), 0);
+	const hostileRelations = diplomacyRecords.filter(record => record.baseWeight >= 8).length;
+	const allianceRelations = diplomacyRecords.filter(record => record.baseWeight <= -2).length;
+	const severeFlashpoints = diplomacyRecords.filter(record => record.impact >= 18).length;
+	const mixedFlashpoints = diplomacyRecords.filter(record => record.relationKind === 'mixed' && record.impact > 0).length;
+	const diplomacyScore = clampNumber(
+		Math.round(
+			Math.min(24, hostilePressure * 0.85)
+			+ Math.min(10, severeFlashpoints * 1.6)
+			+ Math.min(8, mixedFlashpoints * 2)
+		),
+		0,
+		42
+	);
+	const allianceRelief = clampNumber(Math.round(Math.min(14, stabilityPressure * 0.42)), 0, 14);
 
 	const journalistPosts = recentPosts.filter(post => JOURNALIST_ROLE_PATTERN.test(String(post.authorRole || '')) || post.isArticle || post.isLiveNews || post.journalName).length;
 	const breakingPosts = recentPosts.filter(post => post.isBreakingNews).length;
@@ -795,7 +891,7 @@ async function buildCosmosTension() {
 			key: 'diplomacy',
 			label: 'Diplomatie',
 			value: diplomacyScore,
-			detail: `${hostileRelations} relations hostiles, ${allianceRelations} alliances/pactes stabilisateurs`
+			detail: `${hostileRelations} foyers hostiles, ${severeFlashpoints} point(s) chauds majeurs, ${mixedFlashpoints} coalition(s) en conflit direct`
 		},
 		{
 			key: 'media',
@@ -845,6 +941,8 @@ async function buildCosmosTension() {
 			mixedRelations: mixedRelations.length,
 			hostileRelations,
 			allianceRelations,
+			severeFlashpoints,
+			mixedFlashpoints,
 			journalistPosts,
 			breakingPosts,
 			liveNewsCount,
