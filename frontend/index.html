@@ -332,6 +332,15 @@
         </div>
     </div>
 
+    <div id="media-lightbox" class="media-lightbox hidden" onclick="closeMediaLightbox()">
+        <button type="button" class="media-lightbox-close" onclick="event.stopPropagation(); closeMediaLightbox()" aria-label="Fermer l'image">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+        <div class="media-lightbox-stage" onclick="event.stopPropagation()">
+            <img id="media-lightbox-image" class="media-lightbox-image" src="" alt="Aperçu image">
+        </div>
+    </div>
+
     <button id="menu-toggle-btn" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
 
     <div id="main-view-wrapper">

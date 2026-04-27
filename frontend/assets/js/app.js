@@ -161,6 +161,27 @@ function deleteOwnLiveNews(postId) {
     socket.emit('delete_post', { postId, ownerId: PLAYER_ID });
 }
 
+function openMediaLightbox(url, alt = 'Image du post') {
+    const lightbox = document.getElementById('media-lightbox');
+    const image = document.getElementById('media-lightbox-image');
+    if(!lightbox || !image || !url) return;
+    image.src = url;
+    image.alt = alt || 'Image du post';
+    lightbox.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeMediaLightbox() {
+    const lightbox = document.getElementById('media-lightbox');
+    const image = document.getElementById('media-lightbox-image');
+    if(lightbox) lightbox.classList.add('hidden');
+    if(image) {
+        image.src = '';
+        image.alt = 'Aperçu image';
+    }
+    document.body.style.overflow = '';
+}
+
 function renderCosmosTensionWidget() {
     const root = document.getElementById('cosmos-tension-widget');
     const fab = document.getElementById('cosmos-tension-fab');
@@ -3328,7 +3349,7 @@ function displayMessage(msg, isDm = false) {
          actionsHTML += `</div>`;
     }
     let contentHTML = "";
-    if (msg.type === "image") contentHTML = `<img src="${msg.content}" class="chat-image" onclick="window.open(this.src)">`;
+    if (msg.type === "image") contentHTML = `<img src="${msg.content}" class="chat-image" onclick="event.stopPropagation(); openMediaLightbox('${String(msg.content).replace(/'/g, "\\'")}', 'Image du message')">`;
     else if (msg.type === "video") { const ytId = getYoutubeId(msg.content); if (ytId) contentHTML = `<iframe class="video-frame" src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe>`; else contentHTML = `<video class="video-direct" controls><source src="${msg.content}"></video>`; } 
     else if (msg.type === "audio") { contentHTML = `<div id="audio-placeholder-${msg._id}"></div>`; }
     else contentHTML = `<div class="text-body" id="content-${msg._id}">${formatText(msg.content)}</div>`;
@@ -3500,7 +3521,7 @@ function buildQuotedPostMarkup(post, options = {}) {
         } else if(post.mediaType === 'audio') {
             mediaHtml = `<audio class="quoted-post-audio" controls src="${post.mediaUrl}"></audio>`;
         } else {
-            mediaHtml = `<img src="${post.mediaUrl}" class="quoted-post-media" alt="media post cité">`;
+            mediaHtml = `<img src="${post.mediaUrl}" class="quoted-post-media" alt="media post cité" onclick="event.stopPropagation(); openMediaLightbox('${String(post.mediaUrl).replace(/'/g, "\\'")}', 'Image du post cité')">`;
         }
     }
     const badges = [
@@ -3894,7 +3915,7 @@ function generateCommentsHTML(comments, postId) {
         const delBtn = IS_ADMIN ? `<button class="comment-del-btn" onclick="deleteComment('${postId}', '${c.id}')"><i class="fa-solid fa-trash"></i></button>` : "";
         let mediaHtml = "";
         if(c.mediaUrl) {
-            if(c.mediaType === 'image') mediaHtml = `<img src="${c.mediaUrl}" class="comment-media">`;
+            if(c.mediaType === 'image') mediaHtml = `<img src="${c.mediaUrl}" class="comment-media" onclick="event.stopPropagation(); openMediaLightbox('${String(c.mediaUrl).replace(/'/g, "\\'")}', 'Image du commentaire')">`;
             if(c.mediaType === 'video') mediaHtml = `<video src="${c.mediaUrl}" controls class="comment-media"></video>`;
             if(c.mediaType === 'audio') mediaHtml = `<audio src="${c.mediaUrl}" controls style="width:100%; margin-top:5px;"></audio>`;
         }
@@ -3935,8 +3956,8 @@ function createPostElement(post) {
              else mediaHTML = `<video class="post-media" controls src="${post.mediaUrl}"></video>`;
         } else if (post.mediaType === 'audio') { mediaHTML = `<audio controls src="${post.mediaUrl}" style="width:100%; margin-top:10px;"></audio>`; } 
         else { 
-             if(isJournalistMode) bannerHTML = `<img src="${post.mediaUrl}" class="post-banner">`;
-             else mediaHTML = `<img src="${post.mediaUrl}" class="post-media">`; 
+             if(isJournalistMode) bannerHTML = `<img src="${post.mediaUrl}" class="post-banner" onclick="event.stopPropagation(); openMediaLightbox('${String(post.mediaUrl).replace(/'/g, "\\'")}', 'Image de l\'article')">`;
+             else mediaHTML = `<img src="${post.mediaUrl}" class="post-media" onclick="event.stopPropagation(); openMediaLightbox('${String(post.mediaUrl).replace(/'/g, "\\'")}', 'Image du post')">`; 
         }
     }
     
