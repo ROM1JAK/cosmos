@@ -1343,7 +1343,12 @@ module.exports = function initSocketHandlers(deps) {
       if(normalizedCityIds.length < 2) return;
       if(!DIPLO_GROUPABLE_STATUSES.has(safeStatus) && normalizedCityIds.length !== 2) return;
 
-      const groupKey = DIPLO_GROUPABLE_STATUSES.has(safeStatus) && normalizedCityIds.length > 2
+      const shouldPersistAllianceGroup = normalizedCityIds.length >= 2 && (
+          Boolean(String(allianceGroupName || '').trim())
+          || Boolean(String(allianceGroupKey || '').trim())
+          || (DIPLO_GROUPABLE_STATUSES.has(safeStatus) && normalizedCityIds.length > 2)
+      );
+      const groupKey = shouldPersistAllianceGroup
           ? (allianceGroupKey || buildDiploGroupKey('city', normalizedCityIds))
           : '';
       payload.allianceGroupKey = groupKey;

@@ -6323,8 +6323,7 @@ function populateDiploModalSelects() {
 
     if(allianceSel) {
         const previousAllianceKey = allianceSel.value || '';
-        const groupedAlliances = groupDiplomacyRelations(cityRelationsData)
-            .filter(relation => relation.isGroupedAlliance && relation.relationScope === 'city')
+        const groupedAlliances = getCityAllianceCatalog()
             .sort((left, right) => String(left.allianceGroupName || '').localeCompare(String(right.allianceGroupName || ''), 'fr'));
 
         allianceSel.innerHTML = '<option value="">Aucune, saisie manuelle classique</option>';
@@ -6355,10 +6354,37 @@ function populateDiploModalSelects() {
     updateDiploAllianceModeUI();
 }
 
+function getCityAllianceCatalog() {
+    const buckets = new Map();
+
+    cityRelationsData.forEach(relation => {
+        if((relation.relationScope || 'city') !== 'city' || !relation.allianceGroupKey) return;
+
+        const bucketKey = String(relation.allianceGroupKey);
+        if(!buckets.has(bucketKey)) {
+            buckets.set(bucketKey, {
+                allianceGroupKey: bucketKey,
+                allianceGroupName: relation.allianceGroupName || '',
+                status: relation.status,
+                entities: []
+            });
+        }
+
+        const bucket = buckets.get(bucketKey);
+        const entityMap = new Map(bucket.entities.map(entity => [entity.id, entity]));
+        getDiploRelationEntities(relation).forEach(entity => entityMap.set(entity.id, entity));
+        bucket.entities = [...entityMap.values()].sort((left, right) => left.name.localeCompare(right.name, 'fr'));
+        if(!bucket.allianceGroupName && relation.allianceGroupName) bucket.allianceGroupName = relation.allianceGroupName;
+        bucket.status = relation.status || bucket.status;
+    });
+
+    return [...buckets.values()].filter(bucket => bucket.entities.length >= 2);
+}
+
 function getAllianceMembersByGroupKey(allianceGroupKey) {
     if(!allianceGroupKey) return [];
-    const groupedAlliance = groupDiplomacyRelations(cityRelationsData)
-        .find(relation => relation.isGroupedAlliance && relation.relationScope === 'city' && String(relation.allianceGroupKey) === String(allianceGroupKey));
+    const groupedAlliance = getCityAllianceCatalog()
+        .find(relation => String(relation.allianceGroupKey) === String(allianceGroupKey));
     return groupedAlliance?.entities || [];
 }
 
@@ -6416,7 +6442,7 @@ function getDiploCollectiveAllianceMemberKeys() {
 }
 
 function getCollectiveConflictTargetsForAlliance(memberKeys, statusFilter = '') {
-    if(!Array.isArray(memberKeys) || memberKeys.length < 3) return [];
+    if(!Array.isArray(memberKeys) || memberKeys.length < 2) return [];
 
     const memberSet = new Set(memberKeys.map(key => String(key)));
     const matchCountByTarget = new Map();
@@ -6464,17 +6490,19 @@ function updateDiploCollectiveConflictUI(prefill = null) {
     const help = document.getElementById('diploCollectiveConflictHelp');
     const scope = document.getElementById('diploRelationScope')?.value || 'city';
     const relationStatus = document.getElementById('diploStatus')?.value || 'neutre';
+    const allianceGroupKey = document.getElementById('diploAllianceGroupKey')?.value || '';
+    const allianceNameValue = document.getElementById('diploAllianceName')?.value.trim() || '';
     const memberKeys = getDiploCollectiveAllianceMemberKeys();
-    const isCollectiveAlliance = scope === 'city' && DIPLO_GROUPABLE_STATUSES.has(relationStatus) && memberKeys.length >= 3;
+    const isAllianceDefinition = scope === 'city' && memberKeys.length >= 2 && (DIPLO_GROUPABLE_STATUSES.has(relationStatus) || allianceGroupKey || allianceNameValue);
 
     if(allianceNameWrap) {
-        allianceNameWrap.classList.toggle('hidden', !(DIPLO_GROUPABLE_STATUSES.has(relationStatus) && memberKeys.length >= 3));
+        allianceNameWrap.classList.toggle('hidden', !(scope === 'city' && memberKeys.length >= 2));
     }
 
     if(!section || !targetSelect || !statusSelect || !help) return;
 
-    section.classList.toggle('hidden', !isCollectiveAlliance);
-    if(!isCollectiveAlliance) {
+    section.classList.toggle('hidden', !isAllianceDefinition);
+    if(!isAllianceDefinition) {
         targetSelect.innerHTML = '';
         targetSelect.value = '';
         statusSelect.value = '';
@@ -6522,8 +6550,9 @@ function updateDiploCollectiveConflictUI(prefill = null) {
 }
 
 function getGroupedAllianceCollectiveConflicts(relation) {
-    if(!relation?.isGroupedAlliance || relation.relationScope !== 'city') return [];
+    if((relation?.relationScope || 'city') !== 'city') return [];
     const memberKeys = (relation.entities || []).map(entity => String(entity.key));
+    if(memberKeys.length < 2) return [];
     return getCollectiveConflictTargetsForAlliance(memberKeys);
 }
 
@@ -6789,9 +6818,12 @@ function submitDiploRelation() {
     if(selectedIds.length < 2) return alert(`Sélectionnez au moins deux ${relationScope === 'party' ? 'partis' : 'cités'}.`);
     if(!allianceGroupKey && relationId && selectedIds.length !== 2) return alert('Une relation simple ne peut concerner que deux entités.');
     if(!DIPLO_GROUPABLE_STATUSES.has(status) && selectedIds.length !== 2) return alert('Les relations hors alliance collective doivent concerner exactement deux entités.');
+    if(selectedIds.length >= 2 && allianceGroupName && !allianceGroupKey) {
+        allianceGroupKey = `city:${[...selectedIds].sort().join('|')}:${Date.now()}`;
+    }
     if(DIPLO_GROUPABLE_STATUSES.has(status) && selectedIds.length >= 3 && !allianceGroupName) return alert('Donnez un nom à l\'alliance collective pour la retrouver plus facilement.');
     if(collectiveConflictStatus && !DIPLO_COLLECTIVE_CONFLICT_STATUSES.has(collectiveConflictStatus)) return alert('Le statut de conflit collectif est invalide.');
-    if(collectiveConflictTargets.length && (!DIPLO_GROUPABLE_STATUSES.has(status) || relationScope !== 'city' || selectedIds.length < 3)) {
+    if(collectiveConflictTargets.length && (relationScope !== 'city' || selectedIds.length < 2 || (!DIPLO_GROUPABLE_STATUSES.has(status) && !allianceGroupKey && !allianceGroupName))) {
         return alert('Le conflit collectif externe est réservé aux alliances collectives entre cités.');
     }
     if(collectiveConflictStatus && !collectiveConflictTargets.length) return alert('Sélectionnez au moins une cité opposée pour créer un conflit collectif.');
