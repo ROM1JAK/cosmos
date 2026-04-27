@@ -1210,7 +1210,7 @@ module.exports = function initSocketHandlers(deps) {
       target.emit('city_relations_data', await getDiplomacyRelationsPayload());
   }
 
-  async function saveCityRelationPair(idA, idB, payload, relationId = null) {
+    async function saveCityRelationPair(idA, idB, payload, relationId = null) {
       const [safeA, safeB] = [String(idA), String(idB)].sort();
       let relation;
       if(relationId) {
@@ -1231,11 +1231,12 @@ module.exports = function initSocketHandlers(deps) {
       relation.description = payload.description;
       relation.initiatedBy = payload.initiatedBy;
       relation.allianceGroupKey = payload.allianceGroupKey || '';
+      relation.allianceGroupName = payload.allianceGroupName || '';
       if(payload.sinceDate) relation.since = payload.sinceDate;
       await relation.save();
   }
 
-  async function savePartyRelationPair(partyA, partyB, payload, relationId = null) {
+    async function savePartyRelationPair(partyA, partyB, payload, relationId = null) {
       const [leftParty, rightParty] = [partyA, partyB].sort((left, right) => left.key.localeCompare(right.key));
       let relation;
       if(relationId) {
@@ -1256,6 +1257,7 @@ module.exports = function initSocketHandlers(deps) {
       relation.description = payload.description;
       relation.initiatedBy = payload.initiatedBy;
       relation.allianceGroupKey = payload.allianceGroupKey || '';
+      relation.allianceGroupName = payload.allianceGroupName || '';
       if(payload.sinceDate) relation.since = payload.sinceDate;
       await relation.save();
   }
@@ -1284,7 +1286,7 @@ module.exports = function initSocketHandlers(deps) {
       socket.emit('political_parties_data', await getPoliticalPartiesCatalog());
   });
 
-  socket.on('admin_upsert_city_relation', async ({ relationId, relationScope, cityAId, cityBId, cityIds, partyKeys, status, contextCategory, description, initiatedBy, since, allianceGroupKey }) => {
+    socket.on('admin_upsert_city_relation', async ({ relationId, relationScope, cityAId, cityBId, cityIds, partyKeys, status, contextCategory, description, initiatedBy, since, allianceGroupKey, allianceGroupName }) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
@@ -1298,7 +1300,8 @@ module.exports = function initSocketHandlers(deps) {
           description: description || '',
           initiatedBy: initiatedBy || '',
           sinceDate: since ? new Date(since) : null,
-          allianceGroupKey: ''
+          allianceGroupKey: '',
+          allianceGroupName: ''
       };
 
       if(scope === 'party') {
@@ -1314,6 +1317,7 @@ module.exports = function initSocketHandlers(deps) {
               ? (allianceGroupKey || buildDiploGroupKey('party', parties.map(party => party.key)))
               : '';
           payload.allianceGroupKey = groupKey;
+          payload.allianceGroupName = groupKey ? String(allianceGroupName || '').trim() : '';
 
           if(allianceGroupKey) await PartyRelation.deleteMany({ allianceGroupKey });
 
@@ -1343,6 +1347,7 @@ module.exports = function initSocketHandlers(deps) {
           ? (allianceGroupKey || buildDiploGroupKey('city', normalizedCityIds))
           : '';
       payload.allianceGroupKey = groupKey;
+      payload.allianceGroupName = groupKey ? String(allianceGroupName || '').trim() : '';
 
       if(allianceGroupKey) await CityRelation.deleteMany({ allianceGroupKey });
 

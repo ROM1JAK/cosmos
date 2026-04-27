@@ -61,6 +61,7 @@ const PartyRelationSchema = new mongoose.Schema({
         default: 'general'
     },
     allianceGroupKey: { type: String, default: '' },
+    allianceGroupName: { type: String, default: '' },
     description: { type: String, default: '' },
     since: { type: Date, default: Date.now },
     initiatedBy: { type: String, default: '' }

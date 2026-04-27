@@ -6369,6 +6369,7 @@ function getCollectiveConflictTargetsForAlliance(memberKeys, statusFilter = '') 
 
 function updateDiploCollectiveConflictUI(prefill = null) {
     const section = document.getElementById('diploCollectiveConflictSection');
+    const allianceNameWrap = document.getElementById('diploAllianceNameWrap');
     const targetSelect = document.getElementById('diploCollectiveConflictTargets');
     const statusSelect = document.getElementById('diploCollectiveConflictStatus');
     const help = document.getElementById('diploCollectiveConflictHelp');
@@ -6376,6 +6377,10 @@ function updateDiploCollectiveConflictUI(prefill = null) {
     const relationStatus = document.getElementById('diploStatus')?.value || 'neutre';
     const memberKeys = getDiploCollectiveAllianceMemberKeys();
     const isCollectiveAlliance = scope === 'city' && DIPLO_GROUPABLE_STATUSES.has(relationStatus) && memberKeys.length >= 3;
+
+    if(allianceNameWrap) {
+        allianceNameWrap.classList.toggle('hidden', !(DIPLO_GROUPABLE_STATUSES.has(relationStatus) && memberKeys.length >= 3));
+    }
 
     if(!section || !targetSelect || !statusSelect || !help) return;
 
@@ -6467,6 +6472,7 @@ function groupDiplomacyRelations(relations) {
             initiatedBy: sample.initiatedBy || '',
             description: sample.description || '',
             allianceGroupKey: sample.allianceGroupKey || '',
+            allianceGroupName: sample.allianceGroupName || '',
             entities,
             isGroupedAlliance: true
         });
@@ -6547,6 +6553,7 @@ function renderDiploCard(relation) {
         const visibleEntities = expanded ? (relation.entities || []) : (relation.entities || []).slice(0, maxVisible);
         const remainingCount = Math.max(0, (relation.entities || []).length - visibleEntities.length);
         const collectiveConflicts = getGroupedAllianceCollectiveConflicts(relation);
+        const allianceName = String(relation.allianceGroupName || '').trim();
         const expandButton = remainingCount > 0 || expanded
             ? `<button class="diplo-alliance-more" onclick="event.stopPropagation(); toggleDiploAllianceExpanded('${String(relation._id).replace(/'/g, "\\'")}')">${expanded ? 'Réduire' : `et ${remainingCount} ${relation.relationScope === 'party' ? 'partis' : 'cités'}`}</button>`
             : '';
@@ -6559,7 +6566,7 @@ function renderDiploCard(relation) {
             <div class="diplo-card-body">
                 <div class="diplo-alliance-head">
                     <div>
-                        <div class="diplo-alliance-title">Alliance collective</div>
+                        <div class="diplo-alliance-title">${escapeHtml(allianceName || 'Alliance collective')}</div>
                         <div class="diplo-scope-label">${escapeHtml(scopeLabel)}</div>
                     </div>
                     <div class="diplo-alliance-count">${relation.entities.length} ${relation.relationScope === 'party' ? 'partis' : 'cités'}</div>
@@ -6606,6 +6613,7 @@ function openDiploModal(relationId) {
     const scopeInput = document.getElementById('diploRelationScope');
     const entitySelect = document.getElementById('diploEntityIds');
     const collectiveConflictStatus = document.getElementById('diploCollectiveConflictStatus');
+    const allianceNameInput = document.getElementById('diploAllianceName');
 
     document.getElementById('diploRelationId').value = '';
     document.getElementById('diploAllianceGroupKey').value = '';
@@ -6614,6 +6622,7 @@ function openDiploModal(relationId) {
     Array.from(entitySelect.options).forEach(opt => { opt.selected = false; });
     document.getElementById('diploStatus').value = 'neutre';
     if(collectiveConflictStatus) collectiveConflictStatus.value = '';
+    if(allianceNameInput) allianceNameInput.value = '';
     document.getElementById('diploInitiatedBy').value = '';
     document.getElementById('diploDesc').value = '';
     document.getElementById('diploSince').value = new Date().toISOString().split('T')[0];
@@ -6625,6 +6634,7 @@ function openDiploModal(relationId) {
         });
         if(!relation.isGroupedAlliance) document.getElementById('diploRelationId').value = String(relation._id);
         if(relation.allianceGroupKey) document.getElementById('diploAllianceGroupKey').value = relation.allianceGroupKey;
+        if(allianceNameInput) allianceNameInput.value = relation.allianceGroupName || '';
         document.getElementById('diploStatus').value = relation.status || 'neutre';
         document.getElementById('diploInitiatedBy').value = relation.initiatedBy || '';
         document.getElementById('diploDesc').value = relation.description || '';
@@ -6653,6 +6663,7 @@ function submitDiploRelation() {
     const relationScope = document.getElementById('diploRelationScope').value || 'city';
     const selectedIds = Array.from(document.getElementById('diploEntityIds').selectedOptions).map(opt => String(opt.value));
     const status = document.getElementById('diploStatus').value;
+    const allianceGroupName = document.getElementById('diploAllianceName')?.value.trim() || '';
     const collectiveConflictStatus = document.getElementById('diploCollectiveConflictStatus')?.value || '';
     const collectiveConflictTargets = Array.from(document.getElementById('diploCollectiveConflictTargets')?.selectedOptions || []).map(opt => String(opt.value));
     const initiatedBy = document.getElementById('diploInitiatedBy').value.trim();
@@ -6664,6 +6675,7 @@ function submitDiploRelation() {
     if(selectedIds.length < 2) return alert(`Sélectionnez au moins deux ${relationScope === 'party' ? 'partis' : 'cités'}.`);
     if(!allianceGroupKey && relationId && selectedIds.length !== 2) return alert('Une relation simple ne peut concerner que deux entités.');
     if(!DIPLO_GROUPABLE_STATUSES.has(status) && selectedIds.length !== 2) return alert('Les relations hors alliance collective doivent concerner exactement deux entités.');
+    if(DIPLO_GROUPABLE_STATUSES.has(status) && selectedIds.length >= 3 && !allianceGroupName) return alert('Donnez un nom à l\'alliance collective pour la retrouver plus facilement.');
     if(collectiveConflictStatus && !DIPLO_COLLECTIVE_CONFLICT_STATUSES.has(collectiveConflictStatus)) return alert('Le statut de conflit collectif est invalide.');
     if(collectiveConflictTargets.length && (!DIPLO_GROUPABLE_STATUSES.has(status) || relationScope !== 'city' || selectedIds.length < 3)) {
         return alert('Le conflit collectif externe est réservé aux alliances collectives entre cités.');
@@ -6678,6 +6690,7 @@ function submitDiploRelation() {
         relationId: relationId || null,
         relationScope,
         allianceGroupKey: allianceGroupKey || '',
+        allianceGroupName: allianceGroupName || '',
         cityIds: relationScope === 'city' ? selectedIds : [],
         cityAId: relationScope === 'city' ? (selectedIds[0] || '') : '',
         cityBId: relationScope === 'city' ? (selectedIds[1] || '') : '',
