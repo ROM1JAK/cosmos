@@ -1414,6 +1414,37 @@ module.exports = function initSocketHandlers(deps) {
       await emitDiplomacyRelations(io);
       await broadcastCosmosTension();
   });
+
+  socket.on('admin_upsert_collective_relation_to_city', async ({ allianceGroupKey, targetCityId, status, contextCategory, description, initiatedBy, since }) => {
+      const username = onlineUsers[socket.id];
+      const user = username ? await User.findOne({ username }) : null;
+      if(!user || !user.isAdmin) return;
+
+      const safeStatus = DIPLO_STATUS_VALUES.has(status) ? status : '';
+      const safeTargetCityId = String(targetCityId || '').trim();
+      if(!safeStatus || !safeTargetCityId) return;
+
+      const allianceMemberIds = await resolveAllianceMemberCityIds(allianceGroupKey, []);
+      if(allianceMemberIds.length < 2) return;
+      if(allianceMemberIds.includes(safeTargetCityId)) return;
+
+      const payload = {
+          status: safeStatus,
+          contextCategory: DIPLO_CONTEXT_VALUES.has(contextCategory) ? contextCategory : 'general',
+          description: description || '',
+          initiatedBy: initiatedBy || '',
+          sinceDate: since ? new Date(since) : null,
+          allianceGroupKey: '',
+          allianceGroupName: ''
+      };
+
+      for(const memberId of allianceMemberIds) {
+          await saveCityRelationPair(memberId, safeTargetCityId, payload);
+      }
+
+      await emitDiplomacyRelations(io);
+      await broadcastCosmosTension();
+  });
   // ========== [FIN DIPLOMATIE SOCKET] ==========
 
   // ========== [CARTES] SOCKET EVENTS ==========

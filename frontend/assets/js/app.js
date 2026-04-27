@@ -6301,6 +6301,8 @@ function populateDiploModalSelects() {
     const sel = document.getElementById('diploEntityIds');
     const scope = document.getElementById('diploRelationScope')?.value || 'city';
     const help = document.getElementById('diplo-modal-help');
+    const allianceSel = document.getElementById('diploExistingAlliance');
+    const targetSel = document.getElementById('diploAllianceTargetCity');
     if(!sel) return;
 
     const previousValues = new Set(Array.from(sel.selectedOptions).map(opt => String(opt.value)));
@@ -6318,6 +6320,93 @@ function populateDiploModalSelects() {
     if(help) {
         help.textContent = `Sélectionne 2 ${scope === 'party' ? 'partis' : 'cités'} pour une relation classique. Avec un statut d'alliance, tu peux en sélectionner 3 ou plus pour créer ou modifier une alliance collective.`;
     }
+
+    if(allianceSel) {
+        const previousAllianceKey = allianceSel.value || '';
+        const groupedAlliances = groupDiplomacyRelations(cityRelationsData)
+            .filter(relation => relation.isGroupedAlliance && relation.relationScope === 'city')
+            .sort((left, right) => String(left.allianceGroupName || '').localeCompare(String(right.allianceGroupName || ''), 'fr'));
+
+        allianceSel.innerHTML = '<option value="">Aucune, saisie manuelle classique</option>';
+        groupedAlliances.forEach(relation => {
+            const opt = document.createElement('option');
+            opt.value = String(relation.allianceGroupKey || '');
+            const label = String(relation.allianceGroupName || '').trim() || 'Alliance collective';
+            opt.textContent = `${label} (${relation.entities.length} cités)`;
+            if(opt.value === previousAllianceKey) opt.selected = true;
+            allianceSel.appendChild(opt);
+        });
+    }
+
+    if(targetSel) {
+        const previousTarget = targetSel.value || '';
+        const cities = getDiploEntitiesForScope('city').sort((left, right) => left.name.localeCompare(right.name, 'fr'));
+        targetSel.innerHTML = '<option value="">Choisir une cité</option>';
+        cities.forEach(city => {
+            const opt = document.createElement('option');
+            opt.value = city.key;
+            opt.textContent = city.name;
+            if(String(city.key) === previousTarget) opt.selected = true;
+            targetSel.appendChild(opt);
+        });
+    }
+
+    updateDiploCollectiveConflictUI();
+    updateDiploAllianceModeUI();
+}
+
+function getAllianceMembersByGroupKey(allianceGroupKey) {
+    if(!allianceGroupKey) return [];
+    const groupedAlliance = groupDiplomacyRelations(cityRelationsData)
+        .find(relation => relation.isGroupedAlliance && relation.relationScope === 'city' && String(relation.allianceGroupKey) === String(allianceGroupKey));
+    return groupedAlliance?.entities || [];
+}
+
+function updateDiploAllianceModeUI() {
+    const scope = document.getElementById('diploRelationScope')?.value || 'city';
+    const entitySelect = document.getElementById('diploEntityIds');
+    const help = document.getElementById('diplo-modal-help');
+    const allianceSection = document.getElementById('diploAllianceRelationSection');
+    const allianceSelect = document.getElementById('diploExistingAlliance');
+    const targetSelect = document.getElementById('diploAllianceTargetCity');
+    if(!entitySelect || !help || !allianceSection || !allianceSelect || !targetSelect) return;
+
+    const allianceGroupKey = String(allianceSelect.value || '');
+    const members = getAllianceMembersByGroupKey(allianceGroupKey);
+    const targetCityKey = String(targetSelect.value || '');
+    const isAllianceMode = scope === 'city' && allianceGroupKey && targetCityKey;
+
+    allianceSection.classList.toggle('hidden', scope !== 'city');
+
+    if(scope !== 'city') {
+        entitySelect.disabled = false;
+        return;
+    }
+
+    if(!allianceGroupKey) {
+        entitySelect.disabled = false;
+        Array.from(entitySelect.options).forEach(opt => { opt.disabled = false; });
+        help.textContent = 'Sélectionne 2 cités pour une relation classique. Avec un statut d\'alliance, tu peux en sélectionner 3 ou plus pour créer ou modifier une alliance collective.';
+        updateDiploCollectiveConflictUI();
+        return;
+    }
+
+    const memberSet = new Set(members.map(member => String(member.key)));
+    Array.from(entitySelect.options).forEach(opt => {
+        opt.selected = memberSet.has(String(opt.value));
+        opt.disabled = true;
+    });
+    entitySelect.disabled = true;
+
+    Array.from(targetSelect.options).forEach(opt => {
+        if(!opt.value) return;
+        opt.disabled = memberSet.has(String(opt.value));
+    });
+
+    const allianceName = String(allianceSelect.options[allianceSelect.selectedIndex]?.textContent || 'Alliance collective');
+    help.textContent = isAllianceMode
+        ? `Le statut choisi sera applique a ${allianceName} contre la cite cible selectionnee.`
+        : `Alliance preselectionnee: ${allianceName}. Choisis maintenant une cite cible pour appliquer le statut a toute l'alliance.`;
 
     updateDiploCollectiveConflictUI();
 }
@@ -6614,15 +6703,21 @@ function openDiploModal(relationId) {
     const entitySelect = document.getElementById('diploEntityIds');
     const collectiveConflictStatus = document.getElementById('diploCollectiveConflictStatus');
     const allianceNameInput = document.getElementById('diploAllianceName');
+    const existingAllianceSelect = document.getElementById('diploExistingAlliance');
+    const allianceTargetSelect = document.getElementById('diploAllianceTargetCity');
 
     document.getElementById('diploRelationId').value = '';
     document.getElementById('diploAllianceGroupKey').value = '';
     scopeInput.value = relation?.relationScope || 'city';
     populateDiploModalSelects();
     Array.from(entitySelect.options).forEach(opt => { opt.selected = false; });
+    entitySelect.disabled = false;
+    Array.from(entitySelect.options).forEach(opt => { opt.disabled = false; });
     document.getElementById('diploStatus').value = 'neutre';
     if(collectiveConflictStatus) collectiveConflictStatus.value = '';
     if(allianceNameInput) allianceNameInput.value = '';
+    if(existingAllianceSelect) existingAllianceSelect.value = '';
+    if(allianceTargetSelect) allianceTargetSelect.value = '';
     document.getElementById('diploInitiatedBy').value = '';
     document.getElementById('diploDesc').value = '';
     document.getElementById('diploSince').value = new Date().toISOString().split('T')[0];
@@ -6650,6 +6745,7 @@ function openDiploModal(relationId) {
             targetKeys: prefillConflicts.filter(item => item.status === prefillConflicts[0].status).map(item => item.key)
         }
         : null);
+    updateDiploAllianceModeUI();
 
     document.getElementById('diplo-modal').classList.remove('hidden');
     snapForm('diplo-modal');
@@ -6661,6 +6757,8 @@ function closeDiploModal() {
 
 function submitDiploRelation() {
     const relationScope = document.getElementById('diploRelationScope').value || 'city';
+    const existingAllianceGroupKey = document.getElementById('diploExistingAlliance')?.value || '';
+    const allianceTargetCityId = document.getElementById('diploAllianceTargetCity')?.value || '';
     const selectedIds = Array.from(document.getElementById('diploEntityIds').selectedOptions).map(opt => String(opt.value));
     const status = document.getElementById('diploStatus').value;
     const allianceGroupName = document.getElementById('diploAllianceName')?.value.trim() || '';
@@ -6671,6 +6769,22 @@ function submitDiploRelation() {
     const since = document.getElementById('diploSince').value;
     const relationId = document.getElementById('diploRelationId').value;
     let allianceGroupKey = document.getElementById('diploAllianceGroupKey').value;
+    const useExistingAllianceMode = relationScope === 'city' && existingAllianceGroupKey && allianceTargetCityId;
+
+    if(useExistingAllianceMode) {
+        if(!DIPLO_STATUS_META[status]) return alert('Le statut diplomatique est invalide.');
+        socket.emit('admin_upsert_collective_relation_to_city', {
+            allianceGroupKey: existingAllianceGroupKey,
+            targetCityId: allianceTargetCityId,
+            status,
+            initiatedBy,
+            description,
+            since
+        });
+        _unsavedBypass = true;
+        closeDiploModal();
+        return;
+    }
 
     if(selectedIds.length < 2) return alert(`Sélectionnez au moins deux ${relationScope === 'party' ? 'partis' : 'cités'}.`);
     if(!allianceGroupKey && relationId && selectedIds.length !== 2) return alert('Une relation simple ne peut concerner que deux entités.');

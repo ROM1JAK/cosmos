@@ -1720,6 +1720,18 @@
             <select id="diploEntityIds" class="modal-input diplo-multiselect" multiple size="8" onchange="updateDiploCollectiveConflictUI()">
             </select>
             <div id="diplo-modal-help" class="diplo-modal-help">Sélectionne 2 entités pour une relation classique. Avec le statut Allié, tu peux en sélectionner 3 ou plus pour créer ou modifier une alliance collective.</div>
+            <div id="diploAllianceRelationSection" style="margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:rgba(255,255,255,0.02);">
+                <div class="cfl" style="margin-bottom:8px;display:block;">Relation via alliance collective existante</div>
+                <div class="diplo-modal-help" style="margin-bottom:10px;">Optionnel : choisis une alliance collective existante puis une cité cible pour appliquer le statut choisi à tous ses membres d'un coup.</div>
+                <label class="cfl">Alliance collective</label>
+                <select id="diploExistingAlliance" class="modal-input" onchange="updateDiploAllianceModeUI()">
+                    <option value="">Aucune, saisie manuelle classique</option>
+                </select>
+                <label class="cfl" style="margin-top:10px;">Cité cible</label>
+                <select id="diploAllianceTargetCity" class="modal-input" onchange="updateDiploAllianceModeUI()">
+                    <option value="">Choisir une cité</option>
+                </select>
+            </div>
             <label class="cfl" style="margin-top:10px;">Statut diplomatique</label>
             <select id="diploStatus" class="modal-input" onchange="updateDiploCollectiveConflictUI()">
                 <option value="allie">🤝 Allié — Alliance militaire & économique</option>

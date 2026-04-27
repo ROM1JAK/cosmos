@@ -11,6 +11,10 @@
         "/^node --check \"\\.vscode/backend/socketHandler\\.js\"$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^node --check \\.\\\\backend\\\\socketHandler\\.js$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }
