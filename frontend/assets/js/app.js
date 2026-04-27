@@ -6253,6 +6253,10 @@ function getDiploEntitiesForScope(scope) {
 }
 
 function getDiploRelationEntities(relation) {
+    if(relation.relationScope === 'mixed') {
+        return [...(relation.sourceEntities || []), ...(relation.targetEntity ? [relation.targetEntity] : [])]
+            .filter(Boolean);
+    }
     if(relation.relationScope === 'party') {
         return [relation.partyA, relation.partyB]
             .filter(Boolean)
@@ -6323,7 +6327,7 @@ function populateDiploModalSelects() {
 
     if(allianceSel) {
         const previousAllianceKey = allianceSel.value || '';
-        const groupedAlliances = getCityAllianceCatalog()
+        const groupedAlliances = getAllianceCatalog(scope)
             .sort((left, right) => String(left.allianceGroupName || '').localeCompare(String(right.allianceGroupName || ''), 'fr'));
 
         allianceSel.innerHTML = '<option value="">Aucune, saisie manuelle classique</option>';
@@ -6331,7 +6335,7 @@ function populateDiploModalSelects() {
             const opt = document.createElement('option');
             opt.value = String(relation.allianceGroupKey || '');
             const label = String(relation.allianceGroupName || '').trim() || 'Alliance collective';
-            opt.textContent = `${label} (${relation.entities.length} cités)`;
+            opt.textContent = `${label} (${relation.entities.length} ${scope === 'party' ? 'partis' : 'cités'})`;
             if(opt.value === previousAllianceKey) opt.selected = true;
             allianceSel.appendChild(opt);
         });
@@ -6339,13 +6343,16 @@ function populateDiploModalSelects() {
 
     if(targetSel) {
         const previousTarget = targetSel.value || '';
-        const cities = getDiploEntitiesForScope('city').sort((left, right) => left.name.localeCompare(right.name, 'fr'));
-        targetSel.innerHTML = '<option value="">Choisir une cité</option>';
-        cities.forEach(city => {
+        const targetLabel = document.getElementById('diploAllianceTargetLabel');
+        const targetEntities = [...getDiploEntitiesForScope('city'), ...getDiploEntitiesForScope('party')]
+            .sort((left, right) => left.name.localeCompare(right.name, 'fr'));
+        if(targetLabel) targetLabel.textContent = 'Entité cible';
+        targetSel.innerHTML = '<option value="">Choisir une cité ou un parti</option>';
+        targetEntities.forEach(entity => {
             const opt = document.createElement('option');
-            opt.value = city.key;
-            opt.textContent = city.name;
-            if(String(city.key) === previousTarget) opt.selected = true;
+            opt.value = entity.id;
+            opt.textContent = `${entity.name} · ${DIPLO_SCOPE_META[entity.scope]?.label || entity.scope}`;
+            if(String(entity.id) === previousTarget) opt.selected = true;
             targetSel.appendChild(opt);
         });
     }
@@ -6354,17 +6361,18 @@ function populateDiploModalSelects() {
     updateDiploAllianceModeUI();
 }
 
-function getCityAllianceCatalog() {
+function getAllianceCatalog(scope = 'city') {
     const buckets = new Map();
 
     cityRelationsData.forEach(relation => {
-        if((relation.relationScope || 'city') !== 'city' || !relation.allianceGroupKey) return;
+        if((relation.relationScope || 'city') !== scope || !relation.allianceGroupKey) return;
 
         const bucketKey = String(relation.allianceGroupKey);
         if(!buckets.has(bucketKey)) {
             buckets.set(bucketKey, {
                 allianceGroupKey: bucketKey,
                 allianceGroupName: relation.allianceGroupName || '',
+                relationScope: scope,
                 status: relation.status,
                 entities: []
             });
@@ -6383,7 +6391,8 @@ function getCityAllianceCatalog() {
 
 function getAllianceMembersByGroupKey(allianceGroupKey) {
     if(!allianceGroupKey) return [];
-    const groupedAlliance = getCityAllianceCatalog()
+    const scope = document.getElementById('diploRelationScope')?.value || 'city';
+    const groupedAlliance = getAllianceCatalog(scope)
         .find(relation => String(relation.allianceGroupKey) === String(allianceGroupKey));
     return groupedAlliance?.entities || [];
 }
@@ -6399,25 +6408,21 @@ function updateDiploAllianceModeUI() {
 
     const allianceGroupKey = String(allianceSelect.value || '');
     const members = getAllianceMembersByGroupKey(allianceGroupKey);
-    const targetCityKey = String(targetSelect.value || '');
-    const isAllianceMode = scope === 'city' && allianceGroupKey && targetCityKey;
+    const targetEntityKey = String(targetSelect.value || '');
+    const isAllianceMode = Boolean(allianceGroupKey && targetEntityKey);
 
-    allianceSection.classList.toggle('hidden', scope !== 'city');
-
-    if(scope !== 'city') {
-        entitySelect.disabled = false;
-        return;
-    }
+    allianceSection.classList.toggle('hidden', !['city', 'party'].includes(scope));
 
     if(!allianceGroupKey) {
         entitySelect.disabled = false;
         Array.from(entitySelect.options).forEach(opt => { opt.disabled = false; });
-        help.textContent = 'Sélectionne 2 cités pour une relation classique. Avec un statut d\'alliance, tu peux en sélectionner 3 ou plus pour créer ou modifier une alliance collective.';
+        help.textContent = `Sélectionne 2 ${scope === 'party' ? 'partis' : 'cités'} pour une relation classique. Avec un statut d'alliance, tu peux en sélectionner 3 ou plus pour créer ou modifier une alliance collective.`;
         updateDiploCollectiveConflictUI();
         return;
     }
 
     const memberSet = new Set(members.map(member => String(member.key)));
+    const memberIdSet = new Set(members.map(member => String(member.id)));
     Array.from(entitySelect.options).forEach(opt => {
         opt.selected = memberSet.has(String(opt.value));
         opt.disabled = true;
@@ -6426,13 +6431,13 @@ function updateDiploAllianceModeUI() {
 
     Array.from(targetSelect.options).forEach(opt => {
         if(!opt.value) return;
-        opt.disabled = memberSet.has(String(opt.value));
+        opt.disabled = memberIdSet.has(String(opt.value));
     });
 
     const allianceName = String(allianceSelect.options[allianceSelect.selectedIndex]?.textContent || 'Alliance collective');
     help.textContent = isAllianceMode
-        ? `Le statut choisi sera applique a ${allianceName} contre la cite cible selectionnee.`
-        : `Alliance preselectionnee: ${allianceName}. Choisis maintenant une cite cible pour appliquer le statut a toute l'alliance.`;
+    ? `Le statut choisi sera applique a ${allianceName} contre l'entité cible selectionnee.`
+    : `Alliance preselectionnee: ${allianceName}. Choisis maintenant une cité ou un parti cible pour appliquer le statut a toute l'alliance.`;
 
     updateDiploCollectiveConflictUI();
 }
@@ -6609,7 +6614,14 @@ function renderDiplomacy() {
 
     let list = groupDiplomacyRelations(cityRelationsData);
 
-    if(filterScope) list = list.filter(relation => (relation.relationScope || 'city') === filterScope);
+    if(filterScope) {
+        list = list.filter(relation => {
+            if((relation.relationScope || 'city') === filterScope) return true;
+            if((relation.relationScope || 'city') !== 'mixed') return false;
+            const entities = getDiploRelationEntities(relation);
+            return entities.some(entity => entity.scope === filterScope);
+        });
+    }
     if(filterEntity) {
         list = list.filter(relation => {
             const entities = relation.isGroupedAlliance ? (relation.entities || []) : getDiploRelationEntities(relation);
@@ -6701,6 +6713,37 @@ function renderDiploCard(relation) {
         </div>`;
     }
 
+    if(relation.relationScope === 'mixed') {
+        const sourceEntities = relation.sourceEntities || [];
+        const targetEntity = relation.targetEntity;
+        const allianceName = String(relation.sourceAllianceGroupName || '').trim() || 'Alliance collective';
+        return `
+        <div class="diplo-card diplo-card-grouped-alliance">
+            <div class="diplo-card-banner diplo-banner-${relation.status}"></div>
+            <div class="diplo-card-body">
+                <div class="diplo-alliance-head">
+                    <div>
+                        <div class="diplo-alliance-title">${escapeHtml(allianceName)}</div>
+                        <div class="diplo-scope-label">Alliance de ${relation.sourceAllianceScope === 'party' ? 'partis' : 'cités'} contre ${targetEntity?.scope === 'party' ? 'un parti' : 'une cité'}</div>
+                    </div>
+                    <div class="diplo-alliance-count">${sourceEntities.length} ${relation.sourceAllianceScope === 'party' ? 'partis' : 'cités'}</div>
+                </div>
+                <div class="diplo-alliance-grid">${sourceEntities.slice(0, 4).map(renderDiploEntityToken).join('')}</div>
+                <div class="diplo-card-cities">
+                    <div class="diplo-cities-pair">
+                        <div class="diplo-vs">VS</div>
+                        ${renderDiploEntityToken(targetEntity || { scope: 'city', name: '—', logo: '' })}
+                    </div>
+                </div>
+                <div class="diplo-card-tags"><span class="diplo-status-badge diplo-badge-${relation.status}">${meta.icon} ${meta.label}</span></div>
+                ${since ? `<div class="diplo-card-meta"><i class="fa-regular fa-calendar"></i> Depuis le ${since}</div>` : ''}
+                ${relation.initiatedBy ? `<div class="diplo-card-meta"><i class="fa-solid fa-user"></i> ${escapeHtml(relation.initiatedBy)}</div>` : ''}
+                ${relation.description ? `<div class="diplo-card-desc">${escapeHtml(relation.description)}</div>` : ''}
+                ${adminActions}
+            </div>
+        </div>`;
+    }
+
     const entities = getDiploRelationEntities(relation);
     const [entityA, entityB] = entities;
     return `
@@ -6737,7 +6780,7 @@ function openDiploModal(relationId) {
 
     document.getElementById('diploRelationId').value = '';
     document.getElementById('diploAllianceGroupKey').value = '';
-    scopeInput.value = relation?.relationScope || 'city';
+    scopeInput.value = relation?.relationScope === 'mixed' ? (relation.sourceAllianceScope || 'city') : (relation?.relationScope || 'city');
     populateDiploModalSelects();
     Array.from(entitySelect.options).forEach(opt => { opt.selected = false; });
     entitySelect.disabled = false;
@@ -6752,12 +6795,14 @@ function openDiploModal(relationId) {
     document.getElementById('diploSince').value = new Date().toISOString().split('T')[0];
 
     if(relation) {
-        const selectedValues = new Set((relation.isGroupedAlliance ? relation.entities : getDiploRelationEntities(relation)).map(entity => String(entity.key)));
+        const selectedValues = new Set((relation.relationScope === 'mixed' ? (relation.sourceEntities || []) : (relation.isGroupedAlliance ? relation.entities : getDiploRelationEntities(relation))).map(entity => String(entity.key)));
         Array.from(entitySelect.options).forEach(opt => {
             opt.selected = selectedValues.has(String(opt.value));
         });
         if(!relation.isGroupedAlliance) document.getElementById('diploRelationId').value = String(relation._id);
         if(relation.allianceGroupKey) document.getElementById('diploAllianceGroupKey').value = relation.allianceGroupKey;
+        if(existingAllianceSelect && relation.relationScope === 'mixed') existingAllianceSelect.value = relation.sourceAllianceGroupKey || '';
+        if(allianceTargetSelect && relation.relationScope === 'mixed' && relation.targetEntity?.id) allianceTargetSelect.value = relation.targetEntity.id;
         if(allianceNameInput) allianceNameInput.value = relation.allianceGroupName || '';
         document.getElementById('diploStatus').value = relation.status || 'neutre';
         document.getElementById('diploInitiatedBy').value = relation.initiatedBy || '';
@@ -6787,7 +6832,7 @@ function closeDiploModal() {
 function submitDiploRelation() {
     const relationScope = document.getElementById('diploRelationScope').value || 'city';
     const existingAllianceGroupKey = document.getElementById('diploExistingAlliance')?.value || '';
-    const allianceTargetCityId = document.getElementById('diploAllianceTargetCity')?.value || '';
+    const allianceTargetEntityId = document.getElementById('diploAllianceTargetCity')?.value || '';
     const selectedIds = Array.from(document.getElementById('diploEntityIds').selectedOptions).map(opt => String(opt.value));
     const status = document.getElementById('diploStatus').value;
     const allianceGroupName = document.getElementById('diploAllianceName')?.value.trim() || '';
@@ -6798,13 +6843,18 @@ function submitDiploRelation() {
     const since = document.getElementById('diploSince').value;
     const relationId = document.getElementById('diploRelationId').value;
     let allianceGroupKey = document.getElementById('diploAllianceGroupKey').value;
-    const useExistingAllianceMode = relationScope === 'city' && existingAllianceGroupKey && allianceTargetCityId;
+    const useExistingAllianceMode = Boolean(existingAllianceGroupKey && allianceTargetEntityId);
 
     if(useExistingAllianceMode) {
         if(!DIPLO_STATUS_META[status]) return alert('Le statut diplomatique est invalide.');
-        socket.emit('admin_upsert_collective_relation_to_city', {
+        const [targetEntityScope = 'city', targetEntityKey = ''] = String(allianceTargetEntityId).split(':');
+        if(!targetEntityKey) return alert('Choisissez une entité cible valide.');
+        socket.emit('admin_upsert_collective_relation_to_entity', {
+            relationScope,
             allianceGroupKey: existingAllianceGroupKey,
-            targetCityId: allianceTargetCityId,
+            targetEntityScope,
+            targetEntityKey,
+            relationId: relationId || null,
             status,
             initiatedBy,
             description,

@@ -61,6 +61,7 @@ const AdminLog = require('./models/AdminLog');
 const City = require('./models/City');
 const CityRelation = require('./models/CityRelation');
 const PartyRelation = require('./models/PartyRelation');
+const MixedRelation = require('./models/MixedRelation');
 const MapMarker = require('./models/MapMarker');
 const MapOverlay = require('./models/MapOverlay');
 
@@ -728,12 +729,13 @@ async function buildCosmosTension() {
 	const recentEventCutoff = new Date(now - (COSMOS_TENSION_EVENT_WINDOW_DAYS * 24 * 60 * 60 * 1000));
 	const recentLogCutoff = new Date(now - (COSMOS_TENSION_LOG_WINDOW_DAYS * 24 * 60 * 60 * 1000));
 
-	const [recentPosts, cityRelations, partyRelations, activeAlert, recentLogs, recentEvents] = await Promise.all([
+	const [recentPosts, cityRelations, partyRelations, mixedRelations, activeAlert, recentLogs, recentEvents] = await Promise.all([
 		Post.find({ timestamp: { $gte: recentPostCutoff } })
 			.select('authorRole isArticle isLiveNews isBreakingNews urgencyLevel isAnonymous journalName timestamp')
 			.lean(),
 		CityRelation.find().select('status contextCategory allianceGroupKey').lean(),
 		PartyRelation.find().select('status contextCategory allianceGroupKey').lean(),
+		MixedRelation.find().select('status contextCategory sourceAllianceGroupKey').lean(),
 		Alert.findOne({ active: true }).sort({ timestamp: -1 }).lean(),
 		AdminLog.find({ createdAt: { $gte: recentLogCutoff }, timelineType: { $in: ['alert', 'event', 'article'] } })
 			.select('timelineType timelineTone message createdAt')
@@ -741,7 +743,7 @@ async function buildCosmosTension() {
 		Event.find({ timestamp: { $gte: recentEventCutoff } }).select('evenement timestamp').lean()
 	]);
 
-	const allRelations = [...cityRelations, ...partyRelations];
+	const allRelations = [...cityRelations, ...partyRelations, ...mixedRelations];
 	const relationWeights = allRelations.map(relation => {
 		const statusWeight = COSMOS_DIPLOMACY_STATUS_WEIGHTS[relation.status] || 0;
 		const contextWeight = COSMOS_DIPLOMACY_CONTEXT_WEIGHTS[relation.contextCategory] || 0;
@@ -840,6 +842,7 @@ async function buildCosmosTension() {
 		stats: {
 			cityRelations: cityRelations.length,
 			partyRelations: partyRelations.length,
+			mixedRelations: mixedRelations.length,
 			hostileRelations,
 			allianceRelations,
 			journalistPosts,
@@ -961,6 +964,7 @@ initSocketHandlers({
 	City,
 	CityRelation,
 	PartyRelation,
+	MixedRelation,
 	MapMarker,
 	MapOverlay,
 	Stock,

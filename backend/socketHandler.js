@@ -18,6 +18,7 @@ module.exports = function initSocketHandlers(deps) {
     City,
     CityRelation,
     PartyRelation,
+    MixedRelation,
     MapMarker,
     MapOverlay,
     Stock,
@@ -1184,13 +1185,50 @@ module.exports = function initSocketHandlers(deps) {
       return [...catalog.values()].sort((left, right) => left.name.localeCompare(right.name, 'fr'));
   }
 
+  async function getCitySnapshotsByIds(cityIds = []) {
+      const ids = [...new Set((Array.isArray(cityIds) ? cityIds : []).map(id => String(id || '').trim()).filter(Boolean))];
+      if(!ids.length) return [];
+      const cities = await City.find({ _id: { $in: ids } }).select('name flag').lean();
+      const cityMap = new Map(cities.map(city => [String(city._id), city]));
+      return ids.map(id => {
+          const city = cityMap.get(id);
+          if(!city) return null;
+          return {
+              scope: 'city',
+              key: id,
+              id: `city:${id}`,
+              name: city.name,
+              logo: city.flag || ''
+          };
+      }).filter(Boolean);
+  }
+
+  async function getPartySnapshotsByKeys(partyKeys = []) {
+      const keys = [...new Set((Array.isArray(partyKeys) ? partyKeys : []).map(key => String(key || '').trim()).filter(Boolean))];
+      if(!keys.length) return [];
+      const catalog = await getPoliticalPartiesCatalog();
+      const partyMap = new Map(catalog.map(party => [party.key, party]));
+      return keys.map(key => {
+          const party = partyMap.get(key);
+          if(!party) return null;
+          return {
+              scope: 'party',
+              key,
+              id: `party:${key}`,
+              name: party.name,
+              logo: party.logo || ''
+          };
+      }).filter(Boolean);
+  }
+
   async function getDiplomacyRelationsPayload() {
-      const [cityRelations, partyRelations] = await Promise.all([
+      const [cityRelations, partyRelations, mixedRelations] = await Promise.all([
           CityRelation.find()
               .populate('cityA', 'name flag archipel')
               .populate('cityB', 'name flag archipel')
               .sort({ updatedAt: -1 }),
-          PartyRelation.find().sort({ updatedAt: -1 }).lean()
+          PartyRelation.find().sort({ updatedAt: -1 }).lean(),
+          MixedRelation.find().sort({ updatedAt: -1 }).lean()
       ]);
 
       const cityPayload = cityRelations.map(relation => ({
@@ -1202,7 +1240,12 @@ module.exports = function initSocketHandlers(deps) {
           relationScope: 'party'
       }));
 
-      return [...cityPayload, ...partyPayload]
+      const mixedPayload = mixedRelations.map(relation => ({
+          ...relation,
+          relationScope: 'mixed'
+      }));
+
+      return [...cityPayload, ...partyPayload, ...mixedPayload]
           .sort((left, right) => new Date(right.updatedAt || 0) - new Date(left.updatedAt || 0));
   }
 
@@ -1278,6 +1321,72 @@ module.exports = function initSocketHandlers(deps) {
           .filter(Boolean))].sort();
   }
 
+  async function resolveAllianceMemberPartyKeys(allianceGroupKey, fallbackPartyKeys = []) {
+      if(allianceGroupKey) {
+          const allianceRelations = await PartyRelation.find({ allianceGroupKey }).select('partyA partyB').lean();
+          const memberKeys = new Set();
+          allianceRelations.forEach(relation => {
+              if(relation.partyA?.key) memberKeys.add(String(relation.partyA.key));
+              if(relation.partyB?.key) memberKeys.add(String(relation.partyB.key));
+          });
+          if(memberKeys.size >= 2) return [...memberKeys].sort();
+      }
+
+      return [...new Set((Array.isArray(fallbackPartyKeys) ? fallbackPartyKeys : [])
+          .map(key => String(key || '').trim())
+          .filter(Boolean))].sort();
+  }
+
+  async function saveMixedRelation(payload, relationId = null) {
+      let relation;
+      if(relationId) {
+          relation = await MixedRelation.findById(relationId);
+      } else {
+          relation = await MixedRelation.findOne({
+              sourceAllianceGroupKey: payload.sourceAllianceGroupKey,
+              'targetEntity.scope': payload.targetEntity.scope,
+              'targetEntity.key': payload.targetEntity.key
+          });
+      }
+      if(!relation) relation = new MixedRelation();
+      relation.sourceAllianceScope = payload.sourceAllianceScope;
+      relation.sourceAllianceGroupKey = payload.sourceAllianceGroupKey;
+      relation.sourceAllianceGroupName = payload.sourceAllianceGroupName || '';
+      relation.sourceEntities = payload.sourceEntities || [];
+      relation.targetEntity = payload.targetEntity;
+      relation.status = payload.status;
+      relation.contextCategory = payload.contextCategory;
+      relation.description = payload.description;
+      relation.initiatedBy = payload.initiatedBy;
+      if(payload.sinceDate) relation.since = payload.sinceDate;
+      await relation.save();
+  }
+
+  async function syncMixedRelationsForAlliance(scope, allianceGroupKey, allianceGroupName = '') {
+      const safeGroupKey = String(allianceGroupKey || '').trim();
+      if(!safeGroupKey) return;
+
+      const sourceEntities = scope === 'party'
+          ? await getPartySnapshotsByKeys(await resolveAllianceMemberPartyKeys(safeGroupKey, []))
+          : await getCitySnapshotsByIds(await resolveAllianceMemberCityIds(safeGroupKey, []));
+
+      if(!sourceEntities.length) {
+          await MixedRelation.deleteMany({ sourceAllianceGroupKey: safeGroupKey });
+          return;
+      }
+
+      await MixedRelation.updateMany(
+          { sourceAllianceGroupKey: safeGroupKey },
+          {
+              $set: {
+                  sourceAllianceScope: scope,
+                  sourceAllianceGroupName: allianceGroupName || '',
+                  sourceEntities
+              }
+          }
+      );
+  }
+
   socket.on('request_city_relations', async () => {
       await emitDiplomacyRelations(socket);
   });
@@ -1313,7 +1422,12 @@ module.exports = function initSocketHandlers(deps) {
           if(parties.length < 2) return;
           if(!DIPLO_GROUPABLE_STATUSES.has(safeStatus) && parties.length !== 2) return;
 
-          const groupKey = DIPLO_GROUPABLE_STATUSES.has(safeStatus) && parties.length > 2
+          const shouldPersistAllianceGroup = parties.length >= 2 && (
+              Boolean(String(allianceGroupName || '').trim())
+              || Boolean(String(allianceGroupKey || '').trim())
+              || (DIPLO_GROUPABLE_STATUSES.has(safeStatus) && parties.length > 2)
+          );
+          const groupKey = shouldPersistAllianceGroup
               ? (allianceGroupKey || buildDiploGroupKey('party', parties.map(party => party.key)))
               : '';
           payload.allianceGroupKey = groupKey;
@@ -1326,6 +1440,7 @@ module.exports = function initSocketHandlers(deps) {
               for(const [partyA, partyB] of pairs) {
                   await savePartyRelationPair(partyA, partyB, payload);
               }
+              await syncMixedRelationsForAlliance('party', groupKey, payload.allianceGroupName);
           } else {
               await savePartyRelationPair(parties[0], parties[1], payload, relationId || null);
           }
@@ -1361,6 +1476,7 @@ module.exports = function initSocketHandlers(deps) {
           for(const [idA, idB] of pairs) {
               await saveCityRelationPair(idA, idB, payload);
           }
+          await syncMixedRelationsForAlliance('city', groupKey, payload.allianceGroupName);
       } else {
           await saveCityRelationPair(normalizedCityIds[0], normalizedCityIds[1], payload, relationId || null);
       }
@@ -1377,8 +1493,13 @@ module.exports = function initSocketHandlers(deps) {
       const scope = relationScope === 'party' ? 'party' : 'city';
       const Model = scope === 'party' ? PartyRelation : CityRelation;
 
-      if(allianceGroupKey) await Model.deleteMany({ allianceGroupKey });
-      else if(relationId) await Model.findByIdAndDelete(relationId);
+      if(allianceGroupKey) {
+          await Model.deleteMany({ allianceGroupKey });
+          await MixedRelation.deleteMany({ sourceAllianceGroupKey: allianceGroupKey });
+      } else if(relationId) {
+          const deleted = await Model.findByIdAndDelete(relationId);
+          if(!deleted) await MixedRelation.findByIdAndDelete(relationId);
+      }
 
       await emitDiplomacyRelations(io);
       await broadcastCosmosTension();
@@ -1420,18 +1541,16 @@ module.exports = function initSocketHandlers(deps) {
       await broadcastCosmosTension();
   });
 
-  socket.on('admin_upsert_collective_relation_to_city', async ({ allianceGroupKey, targetCityId, status, contextCategory, description, initiatedBy, since }) => {
+  socket.on('admin_upsert_collective_relation_to_entity', async ({ relationScope, allianceGroupKey, targetEntityScope, targetEntityKey, relationId, status, contextCategory, description, initiatedBy, since }) => {
       const username = onlineUsers[socket.id];
       const user = username ? await User.findOne({ username }) : null;
       if(!user || !user.isAdmin) return;
 
+      const scope = relationScope === 'party' ? 'party' : 'city';
       const safeStatus = DIPLO_STATUS_VALUES.has(status) ? status : '';
-      const safeTargetCityId = String(targetCityId || '').trim();
-      if(!safeStatus || !safeTargetCityId) return;
-
-      const allianceMemberIds = await resolveAllianceMemberCityIds(allianceGroupKey, []);
-      if(allianceMemberIds.length < 2) return;
-      if(allianceMemberIds.includes(safeTargetCityId)) return;
+      const safeTargetEntityScope = targetEntityScope === 'party' ? 'party' : 'city';
+      const safeTargetEntityKey = String(targetEntityKey || '').trim();
+      if(!safeStatus || !safeTargetEntityKey) return;
 
       const payload = {
           status: safeStatus,
@@ -1443,8 +1562,67 @@ module.exports = function initSocketHandlers(deps) {
           allianceGroupName: ''
       };
 
+      if(scope !== safeTargetEntityScope) {
+          const sourceEntities = scope === 'party'
+              ? await getPartySnapshotsByKeys(await resolveAllianceMemberPartyKeys(allianceGroupKey, []))
+              : await getCitySnapshotsByIds(await resolveAllianceMemberCityIds(allianceGroupKey, []));
+          if(sourceEntities.length < 2) return;
+
+          const sourceEntityIds = new Set(sourceEntities.map(entity => entity.id));
+          const targetEntity = safeTargetEntityScope === 'party'
+              ? (await getPartySnapshotsByKeys([safeTargetEntityKey]))[0]
+              : (await getCitySnapshotsByIds([safeTargetEntityKey]))[0];
+          if(!targetEntity || sourceEntityIds.has(targetEntity.id)) return;
+
+          const sourceAllianceName = scope === 'party'
+              ? (await PartyRelation.findOne({ allianceGroupKey }).select('allianceGroupName').lean())?.allianceGroupName || ''
+              : (await CityRelation.findOne({ allianceGroupKey }).select('allianceGroupName').lean())?.allianceGroupName || '';
+
+          await saveMixedRelation({
+              sourceAllianceScope: scope,
+              sourceAllianceGroupKey: allianceGroupKey,
+              sourceAllianceGroupName: sourceAllianceName,
+              sourceEntities,
+              targetEntity,
+              status: safeStatus,
+              contextCategory: payload.contextCategory,
+              description: payload.description,
+              initiatedBy: payload.initiatedBy,
+              sinceDate: payload.sinceDate
+          }, relationId || null);
+
+          await emitDiplomacyRelations(io);
+          await broadcastCosmosTension();
+          return;
+      }
+
+      if(scope === 'party') {
+          const partyCatalog = await getPoliticalPartiesCatalog();
+          const catalogMap = new Map(partyCatalog.map(party => [party.key, party]));
+          const allianceMemberKeys = await resolveAllianceMemberPartyKeys(allianceGroupKey, []);
+          if(allianceMemberKeys.length < 2) return;
+          if(allianceMemberKeys.includes(safeTargetEntityKey)) return;
+
+          const targetParty = catalogMap.get(safeTargetEntityKey);
+          if(!targetParty) return;
+
+          for(const memberKey of allianceMemberKeys) {
+              const memberParty = catalogMap.get(memberKey);
+              if(!memberParty) continue;
+              await savePartyRelationPair(memberParty, targetParty, payload);
+          }
+
+          await emitDiplomacyRelations(io);
+          await broadcastCosmosTension();
+          return;
+      }
+
+      const allianceMemberIds = await resolveAllianceMemberCityIds(allianceGroupKey, []);
+      if(allianceMemberIds.length < 2) return;
+      if(allianceMemberIds.includes(safeTargetEntityKey)) return;
+
       for(const memberId of allianceMemberIds) {
-          await saveCityRelationPair(memberId, safeTargetCityId, payload);
+          await saveCityRelationPair(memberId, safeTargetEntityKey, payload);
       }
 
       await emitDiplomacyRelations(io);
